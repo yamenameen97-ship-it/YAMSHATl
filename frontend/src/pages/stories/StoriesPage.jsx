@@ -378,15 +378,25 @@ function formatTimeAgo(iso) {
 }
 
 const pageStyles = `
+/* v88.10 — دوائر القصص على الويب: الأزرار كانت تلف فوق الدائرة وتقطعها على الشاشات الصغيرة. الحل: دفع الدوائر للأسفل بمسافة كافية لتظهر كاملة */
 .yam-stories-page { padding: 18px; display:flex; flex-direction:column; gap:16px; width:100%; box-sizing:border-box; }
-.yam-stories-tabs { display:flex; gap:10px; flex-wrap:wrap; }
-.yam-stab { border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); color:var(--text,#eef2ff); border-radius:999px; padding:10px 16px; cursor:pointer; font:inherit; font-weight:700; }
+.yam-stories-tabs { display:flex; gap:10px; flex-wrap:wrap; position:relative; z-index:2; margin-bottom: 6px; }
+.yam-stab { border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); color:var(--text,#eef2ff); border-radius:999px; padding:10px 16px; cursor:pointer; font:inherit; font-weight:700; white-space: nowrap; }
 .yam-stab.active { background:linear-gradient(135deg,#7c3aed,#ec4899); border-color:transparent; }
 .yam-stab-add { display:inline-flex; align-items:center; justify-content:center; }
 .yam-stab-add.alt { background:rgba(56,189,248,.12); }
-.yam-stories-freeflow { display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:18px 14px; align-items:start; }
+.yam-stories-freeflow { display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:18px 14px; align-items:start; padding-top: 18px; margin-top: 8px; position: relative; z-index: 1; clear: both; }
+@media (max-width: 640px) {
+  /* على الشاشات الصغيرة: زيادة المسافة بين الأزرار والدوائر حتى لا تختفي تحتها */
+  .yam-stories-tabs { gap: 8px; margin-bottom: 14px; }
+  .yam-stab { padding: 9px 13px; font-size: 13px; }
+  .yam-stories-freeflow { padding-top: 26px; margin-top: 14px; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 20px 10px; }
+}
 .yam-story-bubble { width:100%; max-width:118px; justify-self:center; border:0; background:transparent; display:flex; flex-direction:column; align-items:center; gap:10px; cursor:pointer; color:inherit; }
 .yam-story-bubble-ring { width:92px; height:92px; padding:4px; border-radius:50%; background:linear-gradient(135deg,#a855f7,#ec4899,#f59e0b); }
+@media (max-width: 640px) {
+  .yam-story-bubble-ring { width: 78px; height: 78px; padding: 3px; }
+}
 .yam-story-bubble.unseen .yam-story-bubble-ring { box-shadow:0 0 0 4px rgba(168,85,247,.18); }
 .yam-story-bubble-media { position:relative; width:100%; height:100%; border-radius:50%; overflow:hidden; background:#111827; }
 .yam-story-bubble-media img, .yam-story-bubble-media video { width:100%; height:100%; object-fit:cover; }

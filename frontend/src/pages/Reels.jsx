@@ -1012,9 +1012,14 @@ export default function Reels() {
             box-shadow: 0 1px 3px rgba(0,0,0,.6);
           }
 
-          .ym-reel-menu-layer { position:fixed; inset:0; z-index:100; display:flex; align-items:flex-end; justify-content:center; }
+          /* v88.10 — رفع خيارات الريل من أسفل الشاشة إلى أعلى تحت زر النقاط الثلاث (منتصف الصفحة) */
+          .ym-reel-menu-layer { position:fixed; inset:0; z-index:100; display:flex; align-items:flex-start; justify-content:center; padding-top: 64px; }
           .ym-reel-menu-backdrop { position:absolute; inset:0; border:0; background:rgba(0,0,0,.55); }
-          .ym-reel-menu-sheet { position:relative; width:min(100%, 520px); padding:18px; border-radius:22px 22px 0 0; background:#121222; color:#fff; box-shadow:0 -12px 40px rgba(0,0,0,.35); }
+          .ym-reel-menu-sheet { position:relative; width:min(100%, 520px); margin: 0 12px; padding:18px; border-radius:22px; background:#121222; color:#fff; box-shadow:0 12px 40px rgba(0,0,0,.55); max-height: calc(100vh - 140px); overflow-y: auto; }
+          @media (min-width: 768px) {
+            .ym-reel-menu-layer { align-items:center; padding-top: 0; }
+            .ym-reel-menu-sheet { margin: 0; }
+          }
           .ym-reel-menu-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; font-size:17px; }
           .ym-reel-menu-head button { border:0; background:transparent; color:#fff; font-size:20px; cursor:pointer; }
           .ym-reel-edit-label { display:block; margin-bottom:8px; font-weight:700; }

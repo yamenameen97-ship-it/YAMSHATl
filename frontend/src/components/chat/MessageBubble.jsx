@@ -682,12 +682,14 @@ function MessageBubble({
           ) : null}
           {isImage && mediaUrl ? (
             <button type="button" className="yam-media-button" onClick={openCurrentMedia}>
+              {/* ✅ v88.9 FIX (2026-07-18): رفع maxHeight من 340 إلى 520 لإظهار
+                 الصور الطويلة (البورتريه) كاملة دون قص في شات ويب موبايل. */}
               <SafeImage
                 src={previewUrl}
                 fallbackSrc={previewUrl !== mediaUrl ? mediaUrl : ''}
                 alt={fileName}
                 onOpen={openCurrentMedia}
-                maxHeight={340}
+                maxHeight={520}
               />
               {!isImageOnly ? <span className="yam-bubble-media-overlay">تكبير</span> : null}
             </button>

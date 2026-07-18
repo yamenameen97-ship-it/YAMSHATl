@@ -1,9 +1,18 @@
 """
 Voice Rooms API - الغرف الصوتية الجماعية
+
+v88.3.5 — الإصلاحات:
+  1) استيراد bcrypt مرة واحدة على أعلى الملف بشكل آمن (with try/except)
+     حتى لا يتسبب استيراد كسول متأخر داخل الدالة بأي 500 غامض.
+  2) endpoint تشخيصي عام /rooms/_ping بدون مصادقة — يعطي 200 عند تحميل الراوتر
+     بنجاح، ويسهّل تشخيص "هل الراوتر أصلاً موجود؟" مقابل "هل توكن المستخدم صحيح؟".
+  3) endpoint واحد يقبل كلا المسارين /rooms و /rooms/ صراحةً — بحيث لا يعتمد
+     على redirect_slashes الذي يفقد الـAuth headers عبر cross-origin.
 """
 from datetime import datetime
 from typing import Optional
 import uuid
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -17,7 +26,36 @@ from app.models.engagement import (
     VoiceRoom, VoiceRoomMember, VoiceRoomMessage,
 )
 
+_log = logging.getLogger(__name__)
+
+# v88.3.5: استيراد آمن لـ bcrypt. إذا لم تكن passlib مثبتة (نشر ناقص)
+# لا نُفشل الراوتر بأكمله — بل نُعطّل فقط ميزة كلمة المرور للغرف الخاصة
+# ونسجّل تحذيراً واضحاً.
+try:
+    from passlib.hash import bcrypt as _bcrypt  # type: ignore
+    _BCRYPT_OK = True
+except Exception as _bcrypt_err:  # pragma: no cover
+    _bcrypt = None  # type: ignore
+    _BCRYPT_OK = False
+    _log.warning("[voice_rooms] passlib/bcrypt unavailable: %s — private rooms disabled", _bcrypt_err)
+
 router = APIRouter(tags=["voice-rooms"])
+
+
+# ============================================================
+# v88.3.5 — Health/diagnostics endpoint
+# لا يتطلب مصادقة. الفرونت يستخدمه للتأكد من أن الراوتر محمّل قبل عرض
+# رسالة "الخدمة غير متوفرة". أيضاً مفيد لطلبات الـUptime/monitoring.
+# ============================================================
+@router.get("/rooms/_ping", include_in_schema=False)
+@router.get("/rooms/_ping/", include_in_schema=False)
+def _ping():
+    return {
+        "ok": True,
+        "service": "voice_rooms",
+        "bcrypt_available": _BCRYPT_OK,
+        "ts": datetime.utcnow().isoformat(),
+    }
 
 
 class CreateRoomRequest(BaseModel):
@@ -40,40 +78,61 @@ class SendMessageRequest(BaseModel):
     content: str
 
 
+# v88.3.5: تسجيل الـPOST على كلا الشكلين /rooms و /rooms/ مباشرة (بدون redirect)
+# لأن FastAPI مع redirect_slashes=False لن يحوّل تلقائياً، وبعض عملاء المتصفح
+# (خصوصاً iOS/PWA) يضيفون slash تلقائياً.
 @router.post("/rooms")
+@router.post("/rooms/")
 def create_room(req: CreateRoomRequest,
                 db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
+    # v88.3.5: تحقق مبكّر واضح مع رسائل عربية
+    if not req.title or not req.title.strip():
+        raise HTTPException(400, "عنوان الغرفة مطلوب")
     if req.seats_count < 2 or req.seats_count > 15:
-        raise HTTPException(400, "seats_count must be 2..15")
-    room = VoiceRoom(
-        owner_id=user.id,
-        title=req.title,
-        description=req.description,
-        cover_image=req.cover_image,
-        background_id=req.background_id,
-        category=req.category,
-        language=req.language,
-        seats_count=req.seats_count,
-        is_private=req.is_private,
-        agora_channel=f"vr_{uuid.uuid4().hex[:16]}",
-    )
-    if req.password:
-        from passlib.hash import bcrypt
-        room.password_hash = bcrypt.hash(req.password)
-    db.add(room)
-    db.commit()
-    db.refresh(room)
-    # المالك يأخذ مقعد 0 تلقائيًا
-    db.add(VoiceRoomMember(
-        room_id=room.id, user_id=user.id, role="owner", seat_index=0,
-    ))
-    db.commit()
-    return {"id": room.id, "agora_channel": room.agora_channel,
-            "title": room.title, "seats_count": room.seats_count}
+        raise HTTPException(400, "عدد المقاعد يجب أن يكون بين 2 و 15")
+    if req.is_private and (not req.password or not req.password.strip()):
+        raise HTTPException(400, "الغرفة الخاصة تتطلب كلمة مرور")
+
+    try:
+        room = VoiceRoom(
+            owner_id=user.id,
+            title=req.title.strip(),
+            description=(req.description or "").strip() or None,
+            cover_image=req.cover_image,
+            background_id=req.background_id,
+            category=req.category or "general",
+            language=req.language or "ar",
+            seats_count=req.seats_count,
+            is_private=bool(req.is_private),
+            agora_channel=f"vr_{uuid.uuid4().hex[:16]}",
+        )
+        # v88.3.5: تشفير كلمة المرور باستخدام bcrypt المستورد أعلى الملف
+        if req.is_private and req.password:
+            if not _BCRYPT_OK:
+                raise HTTPException(503, "خدمة الغرف الخاصة غير مهيّأة على السيرفر — استخدم غرفة عامة")
+            room.password_hash = _bcrypt.hash(req.password.strip())
+
+        db.add(room)
+        db.commit()
+        db.refresh(room)
+        # المالك يأخذ مقعد 0 تلقائيًا
+        db.add(VoiceRoomMember(
+            room_id=room.id, user_id=user.id, role="owner", seat_index=0,
+        ))
+        db.commit()
+        return {"id": room.id, "agora_channel": room.agora_channel,
+                "title": room.title, "seats_count": room.seats_count}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _log.exception("[voice_rooms.create] failed for user=%s: %s", user.id, exc)
+        db.rollback()
+        raise HTTPException(500, f"تعذر إنشاء الغرفة: {type(exc).__name__}")
 
 
 @router.get("/rooms")
+@router.get("/rooms/")
 def list_rooms(category: Optional[str] = Query(None),
                db: Session = Depends(get_db),
                user: User = Depends(get_current_user)):
@@ -140,8 +199,9 @@ def join_room(room_id: int, password: Optional[str] = None,
     if not room or not room.is_active:
         raise HTTPException(404, "room_not_found")
     if room.is_private and room.password_hash:
-        from passlib.hash import bcrypt
-        if not password or not bcrypt.verify(password, room.password_hash):
+        if not _BCRYPT_OK:
+            raise HTTPException(503, "خدمة الغرف الخاصة غير مهيّأة على السيرفر")
+        if not password or not _bcrypt.verify(password, room.password_hash):
             raise HTTPException(403, "invalid_password")
 
     existing = db.execute(select(VoiceRoomMember).where(and_(

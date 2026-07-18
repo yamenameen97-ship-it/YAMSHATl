@@ -359,6 +359,11 @@ import './styles/yamshat-fixes-v87.22-FOUR-CRITICAL-FIXES.css';
 // يجب أن يبقى آخر استيراد CSS ليفوز في Cascade.
 import './styles/yamshat-fixes-v87.23-SETTINGS-YAM-HOME-MOBILE.css';
 
+// ⭐ v88.9 (2026-07-18) — إصلاح جذري لقص الصور في المنشورات والدردشة
+// على شاشات الجوال الصغيرة (وشات ويب موبايل). يفرض object-fit:contain
+// ويرفع max-height ذكيًا لإظهار الصور كاملة. يجب أن يبقى آخر استيراد CSS.
+import './styles/yamshat-fixes-v88.9-IMAGE-CROP-FINAL-FIX.css';
+
 // ✅ v87.24 — الإصلاح النهائي الشامل للمشاكل الأربع:
 // 1) البروفايل لا يسحب → overflow-y:auto + touch-action:pan-y جذري
 // 2) الصور/الفيديو في المنشورات تتكسر → aspect-ratio + object-fit:contain

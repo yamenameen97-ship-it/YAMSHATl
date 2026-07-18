@@ -27,11 +27,16 @@ from app.core.config import settings
 logger = logging.getLogger("yamshat.main")
 logging.basicConfig(level=logging.INFO)
 
+# v88.3.5: تعطيل redirect_slashes — بدونه FastAPI يعيد 307 من /rooms إلى /rooms/
+# عبر cross-origin، وهذا يُفقِد الكوكيز والـAuth headers في المتصفح فيبدو الطلب
+# كأنّه فشل ب 404 على الفرونت. تعطيله يضمن أن /api/voice/rooms و /api/voice/rooms/
+# كلاهما يعمل مباشرة بدون تحويلات.
 app = FastAPI(
     title="Yamshat API",
     version="1.0.1",
     docs_url="/api/docs" if settings.DEBUG else None,
     redoc_url=None,
+    redirect_slashes=False,
 )
 
 # ============================================================
@@ -311,7 +316,12 @@ _include("app.api.routes.reports.router", prefix="/api/reports")
 # 🎮 Engagement & Gamification
 _include("app.api.routes.engagement.router", prefix="/api/engagement")
 # 🔊 Voice Rooms
+# v88.3.5: نسجّل الراوتر على 3 بوادئ لضمان الوصول من أي إصدار فرونت
+#   1) /api/voice           → المسار الأساسي (يستدعي /api/voice/rooms)
+#   2) /api/voice-rooms     → alias حديث تسميته أوضح
+#   3) /api                 → alias قديم (/api/rooms) للشاشات القديمة
 _include("app.api.routes.voice_rooms.router", prefix="/api/voice")
+_include("app.api.routes.voice_rooms.router", prefix="/api/voice-rooms")
 
 # ============================================================
 # ♻️ Legacy compatibility aliases

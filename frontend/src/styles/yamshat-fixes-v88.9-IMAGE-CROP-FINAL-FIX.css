@@ -1,0 +1,252 @@
+/* ============================================================================
+   Yamshat — v88.9 IMAGE CROP FINAL FIX  (2026-07-18)
+   ----------------------------------------------------------------------------
+   المشكلة المُبلَّغ عنها من المستخدم:
+     1) الصورة في المنشورات تظهر مقصوصة على شاشة الجوال الصغيرة، بينما تظهر
+        كاملة على الشاشة الكبيرة.
+     2) الصورة داخل الدردشة (شات ويب موبايل) تظهر مقصوصة — لا يظهر منها إلا
+        الأعلى فقط.
+
+   السبب الجذري (Root Cause):
+     • عدة ملفات CSS قديمة كانت تفرض `object-fit: cover !important`
+       على صور الدردشة والمنشورات — وهذا يقص أعلى/أسفل الصورة الطويلة.
+     • بعض القواعد كانت تحدد `max-height: 340px` مع `width: 100%` مما
+       يجبر الصور الطويلة (البورتريه) على القص القسري.
+     • حاويات البنر في MobilePostCard كانت تستخدم `height: 100%` مع حاوية
+       أم بدون ارتفاع محدد → قص في متصفحات الجوال.
+
+   الحل الجذري في هذا الملف:
+     • فرض `object-fit: contain` على جميع صور الدردشة والمنشورات.
+     • ضبط `max-height` ذكي (min(70vh, 520px)) يتيح ظهور الصور الطويلة كاملة.
+     • ضبط `width: auto` مع `max-width` لتحافظ الصورة على نسبتها الطبيعية.
+     • قواعد بأولوية قصوى (`html body … !important`) لكسر أي CSS legacy.
+
+   ⚠ هذا الملف يجب تحميله آخِراً في index.css (بعد v87.16 و v87.21).
+   ========================================================================== */
+
+/* =========================
+   1) الدردشة — Chat bubbles
+   ========================= */
+
+/* الحاوية الأم لزر الوسائط: لا ترتفعها ولا تقصها */
+html body .yam-media-button,
+html body .yam-bubble .yam-media-button,
+html body .yam-message-group .yam-media-button {
+  width: auto !important;
+  max-width: min(320px, 82vw) !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  background: transparent !important;
+  padding: 0 !important;
+  display: inline-block !important;
+  border-radius: 14px !important;
+}
+
+/* الصورة نفسها داخل SafeImage */
+html body .yam-safe-image,
+html body .yam-bubble .yam-safe-image,
+html body .yam-bubble.is-media-only .yam-safe-image,
+html body .yam-bubble.is-image-only .yam-safe-image,
+html body .yam-bubble.is-video-only .yam-safe-image {
+  width: auto !important;
+  max-width: min(320px, 82vw) !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  display: inline-flex !important;
+  background: transparent !important;
+  border-radius: 14px !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* عنصر <img> الفعلي — الإصلاح الجذري */
+html body .yam-safe-image img,
+html body .yam-bubble .yam-safe-image img,
+html body .yam-bubble.is-media-only .yam-safe-image img,
+html body .yam-bubble.is-image-only .yam-safe-image img,
+html body .yam-bubble.is-video-only .yam-safe-image img,
+html body .yam-media-button img,
+html body .yam-bubble-media {
+  display: block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: min(70vh, 520px) !important;
+  min-height: 0 !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  margin: 0 auto !important;
+  border-radius: 14px !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+}
+
+/* الفيديو داخل فقاعة الدردشة — نفس المعالجة */
+html body .yam-bubble video.yam-bubble-media,
+html body .yam-media-button video,
+html body .yam-bubble.is-media-only video.yam-bubble-media,
+html body .yam-bubble.is-image-only video.yam-bubble-media,
+html body .yam-bubble.is-video-only video.yam-bubble-media {
+  display: block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: min(70vh, 520px) !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  margin: 0 auto !important;
+  border-radius: 14px !important;
+  background: #000 !important;
+}
+
+/* شاشات الجوال الصغيرة (≤ 720px) — إعطاء الصورة مساحة إضافية */
+@media (max-width: 720px) {
+  html body .yam-safe-image,
+  html body .yam-bubble .yam-safe-image,
+  html body .yam-media-button {
+    max-width: 82vw !important;
+  }
+
+  html body .yam-safe-image img,
+  html body .yam-bubble .yam-safe-image img,
+  html body .yam-media-button img,
+  html body .yam-bubble-media,
+  html body .yam-bubble video.yam-bubble-media,
+  html body .yam-media-button video {
+    max-width: 82vw !important;
+    max-height: 72vh !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+}
+
+/* شاشات صغيرة جداً (≤ 400px) — Redmi 5A, Galaxy Fold مغلق */
+@media (max-width: 400px) {
+  html body .yam-safe-image img,
+  html body .yam-media-button img,
+  html body .yam-bubble-media {
+    max-width: 88vw !important;
+    max-height: 68vh !important;
+  }
+}
+
+/* =========================
+   2) المنشورات — PostCard (Desktop/Tablet)
+   ========================= */
+
+html body .ym-pc-media {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  background: rgba(0, 0, 0, 0.4) !important;
+  border-radius: 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+html body .ym-pc-media img {
+  display: block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: min(85dvh, 900px) !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  margin: 0 auto !important;
+  background: transparent !important;
+}
+
+/* =========================
+   3) المنشورات — MobilePostCard (Mobile)
+   ========================= */
+
+html body .ym-post-banner-new {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  overflow: hidden !important;
+  background: rgba(0, 0, 0, 0.4) !important;
+  border-radius: 12px !important;
+  display: block !important;
+  position: relative !important;
+}
+
+html body .ym-post-banner-new .banner-image-container,
+html body .ym-post-banner-new .banner-video-container {
+  position: relative !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  background: transparent !important;
+  display: block !important;
+  overflow: hidden !important;
+}
+
+html body .ym-post-banner-new .banner-image-container img {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: min(85dvh, 820px) !important;
+  min-height: 0 !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  margin: 0 auto !important;
+  opacity: 1 !important;
+  background: rgba(0, 0, 0, 0.4) !important;
+}
+
+html body .ym-post-banner-new .banner-video-container video {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: min(78dvh, 720px) !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  margin: 0 auto !important;
+  background: #000 !important;
+}
+
+/* شاشات صغيرة جداً للمنشورات (≤ 400px) */
+@media (max-width: 400px) {
+  html body .ym-post-banner-new .banner-image-container img,
+  html body .ym-pc-media img {
+    max-height: 78dvh !important;
+  }
+}
+
+/* =========================
+   4) معرض متعدد الصور (MultiImageGallery) — لا نقصّ
+   ========================= */
+
+html body .ym-multi-image-gallery img,
+html body [class*="multi-image"] img,
+html body [class*="post-gallery"] img {
+  max-height: min(70dvh, 700px) !important;
+  object-fit: contain !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+}
+
+/* =========================
+   5) دعم fallback للمتصفحات القديمة
+   ========================= */
+@supports not (max-height: 70dvh) {
+  html body .ym-post-banner-new .banner-image-container img,
+  html body .ym-pc-media img {
+    max-height: 70vh !important;
+  }
+  html body .yam-safe-image img,
+  html body .yam-media-button img,
+  html body .yam-bubble-media {
+    max-height: 60vh !important;
+  }
+}

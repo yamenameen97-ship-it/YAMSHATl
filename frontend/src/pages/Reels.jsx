@@ -624,56 +624,60 @@ export default function Reels() {
                       </span>
                     )}
                   </button>
-                  <button
-                    type="button"
-                    className={`ym-author-follow-plus ${reel.is_following ? 'is-following' : ''}`}
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      const wasFollowing = reel.is_following;
-                      // التحديث التفاؤلي
-                      setReels((prev) => prev.map((r) => (r.id === reel.id ? { ...r, is_following: !wasFollowing } : r)));
-                      try {
-                        // v59.6: توحيد الاستدعاء على endpoint واحد فعلي في الباك اند:
-                        // POST /api/users/follow { following: <username> } — يعمل toggle تلقائياً
-                        // ثم fallback للمسارات المتاحة الأخرى احتياطاً
-                        let serverFollowing = !wasFollowing;
+                  {/* ✅ v88.17: إخفاء زر المتابعة إذا كان المستخدم متابِعاً مسبقاً
+                      + إخفاؤه إذا كان الريل للمستخدم نفسه (لا يتابع نفسه).
+                      المشكلة السابقة: الزر كان يظهر دائماً حتى لو تمت المتابعة من قبل. */}
+                  {(!reel.is_following && reel.username && reel.username !== currentUsername) ? (
+                    <button
+                      type="button"
+                      className="ym-author-follow-plus"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const wasFollowing = reel.is_following;
+                        // التحديث التفاؤلي — إخفاء الزر فوراً
+                        setReels((prev) => prev.map((r) => (r.username === reel.username ? { ...r, is_following: !wasFollowing } : r)));
                         try {
-                          const { data } = await API.post('/users/follow', { following: reel.username });
-                          if (data && typeof data.following === 'boolean') {
-                            serverFollowing = data.following;
-                          }
-                        } catch (primaryErr) {
-                          // fallback: profile_v2 (Flask) بـ username في المسار
+                          // v59.6: توحيد الاستدعاء على endpoint واحد فعلي في الباك اند:
+                          // POST /api/users/follow { following: <username> } — يعمل toggle تلقائياً
+                          let serverFollowing = !wasFollowing;
                           try {
-                            if (wasFollowing) {
-                              await API.post(`/unfollow/${encodeURIComponent(reel.username)}`);
-                              serverFollowing = false;
-                            } else {
-                              await API.post(`/follow/${encodeURIComponent(reel.username)}`);
-                              serverFollowing = true;
+                            const { data } = await API.post('/users/follow', { following: reel.username });
+                            if (data && typeof data.following === 'boolean') {
+                              serverFollowing = data.following;
                             }
-                          } catch (secondaryErr) {
-                            throw primaryErr;
+                          } catch (primaryErr) {
+                            // fallback: profile_v2 (Flask) بـ username في المسار
+                            try {
+                              if (wasFollowing) {
+                                await API.post(`/unfollow/${encodeURIComponent(reel.username)}`);
+                                serverFollowing = false;
+                              } else {
+                                await API.post(`/follow/${encodeURIComponent(reel.username)}`);
+                                serverFollowing = true;
+                              }
+                            } catch (secondaryErr) {
+                              throw primaryErr;
+                            }
+                          }
+                          // ✅ v88.17: تحديث جميع ريلزات نفس المستخدم دفعة واحدة
+                          setReels((prev) => prev.map((r) => (r.username === reel.username ? { ...r, is_following: serverFollowing } : r)));
+                          pushToast?.({ type: 'success', title: serverFollowing ? 'تمت المتابعة' : 'تم إلغاء المتابعة' });
+                        } catch (err) {
+                          // rollback عند فشل حقيقي
+                          setReels((prev) => prev.map((r) => (r.username === reel.username ? { ...r, is_following: wasFollowing } : r)));
+                          const status = err?.response?.status;
+                          if (status === 401 || status === 403) {
+                            pushToast?.({ type: 'error', title: 'يلزم تسجيل الدخول للمتابعة' });
+                          } else {
+                            pushToast?.({ type: 'error', title: 'تعذّر تحديث المتابعة' });
                           }
                         }
-                        // مزامنة الحالة مع الخادم
-                        setReels((prev) => prev.map((r) => (r.id === reel.id ? { ...r, is_following: serverFollowing } : r)));
-                        pushToast?.({ type: 'success', title: serverFollowing ? 'تمت المتابعة' : 'تم إلغاء المتابعة' });
-                      } catch (err) {
-                        // rollback عند فشل حقيقي
-                        setReels((prev) => prev.map((r) => (r.id === reel.id ? { ...r, is_following: wasFollowing } : r)));
-                        const status = err?.response?.status;
-                        if (status === 401 || status === 403) {
-                          pushToast?.({ type: 'error', title: 'يلزم تسجيل الدخول للمتابعة' });
-                        } else {
-                          pushToast?.({ type: 'error', title: 'تعذّر تحديث المتابعة' });
-                        }
-                      }
-                    }}
-                    aria-label={reel.is_following ? 'إلغاء المتابعة' : 'متابعة'}
-                  >
-                    {reel.is_following ? '✓' : '+'}
-                  </button>
+                      }}
+                      aria-label="متابعة"
+                    >
+                      +
+                    </button>
+                  ) : null}
                 </div>
 
                 {/* Like */}
@@ -1101,20 +1105,21 @@ export default function Reels() {
             font-size: 22px;
             line-height: 1;
           }
-          /* ✅ v85.8: تصغير زر المتابعة — لم يعد يغطي صورة الملف الشخصي.
-             من 22px → 15px مع إزاحة خفيفة تحت الأفاتار لتجنب تغطية الوجه */
+          /* ✅ v88.17: تصغير نهائي لزر المتابعة إلى 14px (أصغر ممكن مع إمكانية اللمس).
+             + إزاحة أكبر للأسفل (-8px) حتى لا يخترق دائرة الأفاتار أبداً.
+             + حذف حالة is-following نهائياً لأن الزر يُخفي نفسه عند المتابعة. */
           .ym-author-follow-plus {
             position: absolute;
-            bottom: -6px;
+            bottom: -8px;
             left: 50%;
             transform: translateX(-50%);
-            width: 16px;
-            height: 16px;
+            width: 14px;
+            height: 14px;
             border-radius: 999px;
             background: #ff3b6b;
             color: #fff;
             font-weight: 900;
-            font-size: 10px;
+            font-size: 9px;
             line-height: 1;
             display: grid;
             place-items: center;
@@ -1125,13 +1130,9 @@ export default function Reels() {
             touch-action: manipulation;
             -webkit-tap-highlight-color: transparent;
             transition: transform .15s ease, background .2s ease;
+            z-index: 2;
           }
           .ym-author-follow-plus:active { transform: translateX(-50%) scale(0.85); }
-          .ym-author-follow-plus.is-following {
-            background: #8b5cf6;
-            box-shadow: 0 2px 6px rgba(139,92,246,.55);
-            font-size: 9px;
-          }
           .ym-action-label {
             color: #fff;
             font-size: 12px;

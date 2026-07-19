@@ -27,6 +27,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
  */
 
 const DISMISS_STORAGE_KEY = 'yamshat_update_dismissed_at';
+const APPLYING_STORAGE_KEY = 'yamshat_update_applying';
 // v88.11: قلّصنا مدة الهدوء من 6 ساعات إلى 30 دقيقة فقط
 // حتى نضمن أن المستخدم يرى التحديث الجديد بشكل شبه فوري
 const DISMISS_COOLDOWN_MS = 30 * 60 * 1000;
@@ -42,32 +43,31 @@ function wasRecentlyDismissed() {
 }
 
 /**
- * إجبار مسح جميع الكاشات (Service Worker + Browser caches)
- * لضمان تنزيل الإصدار الجديد كاملاً بدون أي بقايا.
+ * Reload once after a waiting worker becomes the controller. The worker itself
+ * owns its versioned caches; deleting them from the page races its activation.
  */
-async function nukeAllCaches() {
+function reloadAfterUpdate() {
   try {
-    if ('caches' in window) {
-      const names = await caches.keys();
-      await Promise.all(names.map((name) => caches.delete(name)));
-      console.log('[UpdatePrompt] ✅ تم مسح جميع الكاشات:', names.length);
-    }
-  } catch (err) {
-    console.warn('[UpdatePrompt] تعذّر مسح بعض الكاشات:', err);
+    sessionStorage.setItem(APPLYING_STORAGE_KEY, '1');
+  } catch {
+    /* noop */
+  }
+  window.location.reload();
+}
+
+function isApplyingUpdate() {
+  try {
+    return sessionStorage.getItem(APPLYING_STORAGE_KEY) === '1';
+  } catch {
+    return false;
   }
 }
 
-/**
- * hard reload يتخطى كاش المتصفح (equivalent to Ctrl+Shift+R).
- */
-function hardReload() {
+function clearApplyingUpdate() {
   try {
-    // إضافة query cache-buster لضمان طلب index.html جديد
-    const url = new URL(window.location.href);
-    url.searchParams.set('_v', String(Date.now()));
-    window.location.replace(url.toString());
+    sessionStorage.removeItem(APPLYING_STORAGE_KEY);
   } catch {
-    window.location.reload();
+    /* noop */
   }
 }
 
@@ -78,50 +78,48 @@ export default function AppUpdatePrompt() {
   const [collapsed, setCollapsed] = useState(false);
   const controllerChangedRef = useRef(false);
 
-  // ─────────────────────────────────────────────────────────────────
-  // مستمع أحداث SW: يعرض النافذة عند توفر تحديث
-  // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const handleReady = (event) => {
-      const nextRegistration = event.detail?.registration || null;
-      // نقبل الحدث حتى بدون registration (بعض المسارات ترسل حدث فقط)
-      if (nextRegistration) {
-        setRegistration(nextRegistration);
-      }
-      if (wasRecentlyDismissed()) {
-        setCollapsed(true);
-        setVisible(true);
-      } else {
-        setCollapsed(false);
-        setVisible(true);
-      }
-    };
-
-    // ندعم الحدثَين معاً لتغطية كل مصادر الإشعار
-    window.addEventListener('yamshat:update-ready', handleReady);
-    window.addEventListener('yamshat:update-available', handleReady);
-    return () => {
-      window.removeEventListener('yamshat:update-ready', handleReady);
-      window.removeEventListener('yamshat:update-available', handleReady);
-    };
+    if (isApplyingUpdate()) {
+      window.setTimeout(clearApplyingUpdate, 1200);
+    }
   }, []);
 
   // ─────────────────────────────────────────────────────────────────
-  // v88.11: مراقبة controllerchange — بمجرد تفعيل SW الجديد
-  // ننفّذ hard reload فوراً لتحميل الأصول الجديدة كاملة.
+  // Show only when there is an actual waiting worker. Bare broadcast events
+  // are intentionally ignored: they caused the sheet to reappear on every load.
+  // ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleReady = async (event) => {
+      const candidate = event.detail?.registration || null;
+      let nextRegistration = candidate;
+      if (!nextRegistration && 'serviceWorker' in navigator) {
+        nextRegistration = await navigator.serviceWorker.getRegistration();
+      }
+      if (!nextRegistration?.waiting || isApplyingUpdate()) return;
+      setRegistration(nextRegistration);
+      setCollapsed(wasRecentlyDismissed());
+      setVisible(true);
+    };
+
+    window.addEventListener('yamshat:update-ready', handleReady);
+    // A waiting worker can already exist before the event listener attaches.
+    handleReady({ detail: {} });
+    return () => window.removeEventListener('yamshat:update-ready', handleReady);
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────
+  // A controller change is expected only after the user confirms the update.
+  // Reload once, never on passive service-worker activation.
   // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return undefined;
     const onControllerChange = () => {
-      if (controllerChangedRef.current) return;
+      if (!isApplyingUpdate() || controllerChangedRef.current) return;
       controllerChangedRef.current = true;
-      console.log('[UpdatePrompt] ✅ SW controller changed — reloading');
-      hardReload();
+      reloadAfterUpdate();
     };
     navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-    return () => {
-      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-    };
+    return () => navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
   }, []);
 
   // ─────────────────────────────────────────────────────────────────
@@ -130,46 +128,28 @@ export default function AppUpdatePrompt() {
   const handleUpdateNow = useCallback(async () => {
     setRefreshing(true);
     try {
-      // مسح كل الكاشات أولاً
-      await nukeAllCaches();
-
-      // مسح دفاتر أذونات التذكير
+      const reg = registration || await navigator.serviceWorker?.getRegistration();
+      // Do not call update(), clear caches, or reload if there is no real update.
+      // Those operations were the source of the repeated update/login flicker.
+      if (!reg?.waiting) {
+        setVisible(false);
+        setRefreshing(false);
+        return;
+      }
       try {
         localStorage.removeItem(DISMISS_STORAGE_KEY);
+        sessionStorage.setItem(APPLYING_STORAGE_KEY, '1');
       } catch {
         /* noop */
       }
-
-      // محاولة تفعيل SW جديد ينتظر
-      const reg =
-        registration ||
-        (navigator.serviceWorker && (await navigator.serviceWorker.getRegistration())) ||
-        null;
-
-      if (reg) {
-        try {
-          await reg.update();
-        } catch {
-          /* noop */
-        }
-        if (reg.waiting) {
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-          // في العادة يتبعه controllerchange → hardReload تلقائياً
-          // لكن نضع reload احتياطي بعد 1.5 ثانية في حال لم يُطلق الحدث
-          setTimeout(() => {
-            if (!controllerChangedRef.current) hardReload();
-          }, 1500);
-          return;
-        }
-      }
-
-      // لا يوجد waiting worker: قد يكون التحديث بالفعل مُفعّلاً
-      // نُنفّذ hard reload مباشرة لضمان تحميل index.html الجديد
-      hardReload();
+      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      // Fallback for browsers that do not deliver controllerchange promptly.
+      window.setTimeout(() => {
+        if (!controllerChangedRef.current) reloadAfterUpdate();
+      }, 2500);
     } catch (err) {
-      console.error('[UpdatePrompt] خطأ أثناء التحديث:', err);
-      // fallback: إعادة تحميل مباشرة
-      hardReload();
+      console.error('[UpdatePrompt] update activation failed:', err);
+      setRefreshing(false);
     }
   }, [registration]);
 

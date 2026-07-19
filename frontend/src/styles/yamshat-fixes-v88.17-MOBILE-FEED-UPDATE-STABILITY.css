@@ -1,0 +1,49 @@
+/* ============================================================================
+   YAMSHAT v88.17 — Mobile feed media integrity
+   This file is deliberately imported last. It overrides legacy 16:9 + cover
+   rules that crop portrait/landscape post images only in the mobile feed.
+   ============================================================================ */
+@media (max-width: 768px) {
+  html body .ym-post-card .ym-post-banner-new {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    aspect-ratio: auto !important;
+    overflow: hidden !important;
+  }
+
+  html body .ym-post-card .ym-post-banner-new .banner-image-container,
+  html body .ym-post-card .ym-post-banner-new .banner-video-container {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    aspect-ratio: auto !important;
+    display: block !important;
+    overflow: hidden !important;
+  }
+
+  html body .ym-post-card .ym-post-banner-new .banner-image-container img,
+  html body .ym-post-card .ym-post-banner-new .banner-video-container video {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: min(82dvh, 960px) !important;
+    aspect-ratio: auto !important;
+    object-fit: contain !important;
+    object-position: center center !important;
+    margin: 0 auto !important;
+  }
+}
+
+@supports not (height: 1dvh) {
+  @media (max-width: 768px) {
+    html body .ym-post-card .ym-post-banner-new .banner-image-container img,
+    html body .ym-post-card .ym-post-banner-new .banner-video-container video {
+      max-height: min(82vh, 960px) !important;
+    }
+  }
+}

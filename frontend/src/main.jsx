@@ -389,6 +389,9 @@ import './styles/yamshat-fixes-v88.5.1-VOICE-PLAY-COMPOSER-UNIFIED.css';
 // يجب أن يكون هذا آخر import CSS ليفوز في Cascade.
 import './styles/yamshat-fixes-v88.8-IMAGE-VIEWER-FIX.css';
 
+// v88.17: must stay last — preserves full post media on the mobile feed.
+import './styles/yamshat-fixes-v88.17-MOBILE-FEED-UPDATE-STABILITY.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';
@@ -397,51 +400,19 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v88-MEDIA-VOICE-FINAL';
+const BUILD_ID = 'yamshat-v88.17-MOBILE-FEED-UPDATE-STABILITY';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {
+  // Build changes are handled by Vite asset hashes and the service-worker update
+  // lifecycle. Removing all workers/caches here used to create an update/reload
+  // loop on mobile and could interrupt the login form.
   if (typeof window === 'undefined') return false;
-
   try {
-    const previousBuild = localStorage.getItem(BUILD_STORAGE_KEY);
-    if (previousBuild === BUILD_ID) return false;
-
     localStorage.setItem(BUILD_STORAGE_KEY, BUILD_ID);
-    localStorage.removeItem('backendOrigin');
-    localStorage.removeItem('apiBase');
-    localStorage.removeItem('yamshat_post_draft');
-    localStorage.removeItem('yamshat_quote_draft');
-
-    // 🚨 v85.9 — كسر كاش Service Worker القديم قسراً على الجوال (PWA):
-    //   * إلغاء تسجيل كل SW مسجّلة سابقاً حتى يُعاد تنزيل sw.js الجديد.
-    //   * مسح كل الكاشات المخزّنة (Cache Storage) — بما فيها caches
-    //     المحفوظة تحت أسماء VERSION قديمة.
-    // بدون هذا، مستخدم الجوال يرى النسخة القديمة من الأصول حتى بعد
-    // مسح كاش المتصفح، لأن الـ SW القديم يخدم من Cache Storage مباشرةً.
-    try {
-      if ('serviceWorker' in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map((r) => r.unregister().catch(() => null)));
-      }
-    } catch { /* ignore */ }
-    try {
-      if ('caches' in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k).catch(() => null)));
-      }
-    } catch { /* ignore */ }
-
-    const reloadFlag = `yamshat_build_reload:${BUILD_ID}`;
-    if (!sessionStorage.getItem(reloadFlag)) {
-      sessionStorage.setItem(reloadFlag, '1');
-      window.location.replace(window.location.href);
-      return true;
-    }
   } catch {
-    // ignore reset failures to avoid blocking startup
+    /* Storage may be unavailable in private mode; startup must continue. */
   }
-
   return false;
 }
 

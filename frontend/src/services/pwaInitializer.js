@@ -27,6 +27,7 @@ export class PWAInitializer {
 
     this.state = {
       isInitialized: false,
+      initPromise: null,
       swRegistration: null,
       updateAvailable: false,
       isOnline: navigator.onLine,
@@ -39,14 +40,12 @@ export class PWAInitializer {
    * تهيئة PWA
    */
   async init(options = {}) {
-    if (this.state.isInitialized) {
-      console.warn('[PWA] Already initialized');
-      return;
-    }
+    if (this.state.isInitialized) return this.state.swRegistration;
+    if (this.state.initPromise) return this.state.initPromise;
 
-    // دمج الخيارات الجديدة
+    // Merge options once and serialize initialization to prevent duplicate listeners.
     this.config = { ...this.config, ...options };
-
+    this.state.initPromise = (async () => {
     try {
       console.log('[PWA] Initializing...');
 
@@ -90,10 +89,16 @@ export class PWAInitializer {
       this.state.isInitialized = true;
       console.log('[PWA] Initialization completed');
       this.emit('initialized');
+      return this.state.swRegistration;
     } catch (error) {
       console.error('[PWA] Initialization error:', error);
       this.emit('error', error);
+      return null;
+    } finally {
+      this.state.initPromise = null;
     }
+    })();
+    return this.state.initPromise;
   }
 
   /**
@@ -154,8 +159,8 @@ export class PWAInitializer {
     if (!newWorker) return;
 
     newWorker.addEventListener('statechange', () => {
-      if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-        // تحديث متاح
+      if (newWorker.state === 'installed' && navigator.serviceWorker.controller && registration.waiting === newWorker) {
+        // A real update is waiting for explicit user approval.
         this.state.updateAvailable = true;
         console.log('[PWA] Update available — dispatching yamshat:update-ready');
         this.emit('update-available');

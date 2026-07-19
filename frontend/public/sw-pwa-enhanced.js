@@ -11,7 +11,7 @@
  *  6) Background sync بدون رمي استثناءات غير مُعالجة
  */
 
-const SW_VERSION = '1.0.3-pwa-enhanced-fixed';
+const SW_VERSION = '88.11.0-native-update-prompt-20260718-231230';
 
 const CACHE_NAMES = {
   STATIC: `yamshat-static-${SW_VERSION}`,

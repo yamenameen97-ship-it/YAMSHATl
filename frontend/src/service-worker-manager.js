@@ -51,16 +51,16 @@ function setupUpdateListener() {
 
     if (type === 'yamshat:update-available') {
       console.log('[SWM] تحديث جديد متاح:', version);
-      
-      // إطلاق حدث مخصص يمكن للتطبيق الاستماع له
-      window.dispatchEvent(
-        new CustomEvent('yamshat:update-available', {
-          detail: { version, message },
-        })
-      );
 
-      // إظهار إخطار للمستخدم
-      showUpdateNotification(version, message);
+      // v88.11: نُطلق حدثين معاً:
+      //   - update-available (توافق رجعي)
+      //   - update-ready     (حدث موحد يلتقطه <AppUpdatePrompt />)
+      const detail = { registration: swRegistration, version, message };
+      window.dispatchEvent(new CustomEvent('yamshat:update-available', { detail }));
+      window.dispatchEvent(new CustomEvent('yamshat:update-ready', { detail }));
+
+      // ✅ لم نعد نستخدم showUpdateNotification (حقن HTML) —
+      // مكوّن <AppUpdatePrompt /> React يتولّى العرض بأسلوب النظام.
     }
 
     if (type === 'yamshat:sync-now') {
@@ -112,8 +112,18 @@ async function checkForUpdates() {
 
 /**
  * إظهار إخطار التحديث للمستخدم
+ *
+ * v88.11 DEPRECATED: تمّ تعطيل حقن HTML الخارجي. العرض الرسمي
+ * حالياً يتم عبر مكوّن React <AppUpdatePrompt /> ليظهر بأسلوب
+ * نظام YAMSHAT الموحّد. نُبقي الدالة ك no-op حتّى لا تنكسر الاستدعاءات القديمة.
  */
+// eslint-disable-next-line no-unused-vars
 function showUpdateNotification(version, message) {
+  console.log('[SWM] showUpdateNotification: deprecated — يُعرض الآن عبر <AppUpdatePrompt /> React.');
+  return;
+  // الكود القديم محفوظ للمرجعية فقط، لكن لا يعمل بسبب return أعلاه:
+  // eslint-disable-next-line no-unreachable
+  ((_v, _m) => {
   // إنشاء عنصر إخطار
   const notification = document.createElement('div');
   notification.id = 'yamshat-update-notification';
@@ -258,6 +268,7 @@ function showUpdateNotification(version, message) {
       notification.remove();
     }
   }, 10000);
+  })(version, message);
 }
 
 /**

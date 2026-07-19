@@ -205,16 +205,43 @@ export default function CallExperience({
       : [{ id: 'peer', name: participantName, role: 'peer' }]
   );
 
-  // Global call state subscription
+  // ✅ FIX v88.15 (BUST DISAPPEARS ON FIRST CLICK):
+  // The previous version subscribed to callService immediately after mount.
+  // subscribeCall() delivers a synchronous snapshot of the CURRENT activeCall
+  // right when a listener is added — and on the very first click there is no
+  // active call yet, so it delivered `null`, which triggered onClose() and the
+  // sheet vanished before startCall() could even run.
+  //
+  // The fix has two guards:
+  //   1) `sheetOpenedRef` ignores the FIRST null-snapshot (the synchronous
+  //      push at subscribe-time) so an empty state never auto-closes the UI
+  //      before we've had a chance to start the call.
+  //   2) We only honor a later null-snapshot as "call ended" AFTER we have
+  //      seen a real (non-null) snapshot at least once, meaning a call really
+  //      existed and then really ended (remote hangup, endCall(), …).
+  const sheetLifecycleRef = useRef({ sawActive: false, mounted: false });
   useEffect(() => {
     if (!open) return undefined;
+    sheetLifecycleRef.current = { sawActive: false, mounted: true };
     const unsubscribe = subscribeCall((snapshot) => {
+      // Ignore the priming null-snapshot fired synchronously on subscribe.
+      if (!snapshot && !sheetLifecycleRef.current.sawActive) {
+        return;
+      }
       setCallState(snapshot);
       if (snapshot?.status) onStatusChange?.(snapshot.status);
       if (snapshot?.mediaError) setStreamError(snapshot.mediaError);
-      if (!snapshot) onClose?.();
+      if (snapshot) {
+        sheetLifecycleRef.current.sawActive = true;
+      } else if (sheetLifecycleRef.current.sawActive && sheetLifecycleRef.current.mounted) {
+        // Real end-of-call (not the priming null) → close the sheet.
+        onClose?.();
+      }
     });
-    return () => unsubscribe?.();
+    return () => {
+      sheetLifecycleRef.current.mounted = false;
+      unsubscribe?.();
+    };
   }, [open, onClose, onStatusChange]);
 
   // Pre-flight permission probe
@@ -237,17 +264,34 @@ export default function CallExperience({
     return () => { cancelled = true; };
   }, [open, mode]);
 
-  // Signaling
+  // ✅ FIX v88.15 (BUST DISAPPEARS ON FIRST CLICK) — Signaling:
+  // Kick off startCall() SYNCHRONOUSLY within the same microtask as the mount
+  // so the callService activeCall exists before the subscribe effect can ever
+  // observe a null snapshot. This works together with the guard added in the
+  // subscription effect above and eliminates the race where the very first
+  // click of the voice/video button would open the sheet and close it
+  // immediately (only to reappear on the second click).
   useEffect(() => {
     if (!open) return undefined;
     let cancelled = false;
+    // Seed a placeholder "connecting" state IMMEDIATELY so the sheet has
+    // something to render on the first paint (prevents blank-flash / auto-close).
+    setCallState((prev) => prev || {
+      status: 'connecting',
+      mode,
+      peer: callTarget,
+      role: incomingInvite ? 'callee' : 'caller',
+      startedAt: Date.now(),
+      remoteStream: null,
+      mediaError: null,
+    });
     (async () => {
       try {
         if (incomingInvite) await svcAcceptIncoming(incomingInvite);
         else await svcStartCall({ peer: callTarget, mode });
         if (!cancelled) setStreamError(null);
       } catch (err) {
-        setStreamError(describeMediaError(err));
+        if (!cancelled) setStreamError(describeMediaError(err));
       }
     })();
     const qualityTimer = window.setInterval(() => {

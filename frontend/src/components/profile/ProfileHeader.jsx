@@ -162,8 +162,27 @@ export default function ProfileHeader({
   const activeTab = externalActiveTab || internalTab;
   const moreMenuRef = useRef(null);
 
-  const [coverImage, setCoverImage] = useState(profile?.user?.profile?.cover_photo || '');
-  const [avatarImage, setAvatarImage] = useState(profile?.user?.avatar || '');
+  // ✅ v88.12 FIX: قراءة الصورة الشخصية والغلاف من جميع المصادر المحتملة
+  //  (backend قد يُرجع الحقل تحت avatar / avatar_url / profile.cover_photo / cover_url ...)
+  const readAvatar = (p) =>
+    p?.user?.avatar || p?.user?.avatar_url || p?.avatar || p?.avatar_url
+    || p?.user?.profile?.avatar || p?.user?.profile?.avatar_url || '';
+  const readCover = (p) =>
+    p?.user?.profile?.cover_photo || p?.user?.profile?.cover_url
+    || p?.user?.cover_photo || p?.user?.cover_url
+    || p?.cover_photo || p?.cover_url || '';
+
+  // ✅ v88.12 FIX: نسخة محلية احتياطية (localStorage) حتى عند فشل backend في الإرجاع
+  const readLocalMedia = (kind) => {
+    try {
+      const uname = profile?.user?.username;
+      if (!uname) return '';
+      return window.localStorage.getItem(`yamshat:profile:${kind}:${uname}`) || '';
+    } catch { return ''; }
+  };
+
+  const [coverImage, setCoverImage] = useState(readCover(profile) || readLocalMedia('cover'));
+  const [avatarImage, setAvatarImage] = useState(readAvatar(profile) || readLocalMedia('avatar'));
   const [coverFile, setCoverFile] = useState(null);
   const [avatarFile, setAvatarFile] = useState(null);
   const [coverImageError, setCoverImageError] = useState(false);
@@ -173,13 +192,15 @@ export default function ProfileHeader({
   const avatarInputRef = useRef(null);
 
   useEffect(() => {
-    setCoverImage(profile?.user?.profile?.cover_photo || '');
-    setAvatarImage(profile?.user?.avatar || '');
+    const nextCover = readCover(profile) || readLocalMedia('cover');
+    const nextAvatar = readAvatar(profile) || readLocalMedia('avatar');
+    setCoverImage(nextCover);
+    setAvatarImage(nextAvatar);
     setCoverFile(null);
     setAvatarFile(null);
     setCoverImageError(false);
     setAvatarImageError(false);
-  }, [profile?.user?.profile?.cover_photo, profile?.user?.avatar]);
+  }, [profile?.user?.profile?.cover_photo, profile?.user?.profile?.cover_url, profile?.user?.avatar, profile?.user?.avatar_url, profile?.user?.username]);
 
   const handleTabChange = useCallback((tab) => {
     setInternalTab(tab);
@@ -224,13 +245,33 @@ export default function ProfileHeader({
     return nextUrl;
   };
 
+  // ✅ v88.12 FIX: بعد نجاح الحفظ في backend، نخزّن الرابط النهائي في localStorage
+  //  لضمان استمرار العرض حتى بعد التنقّل بين الصفحات والعودة، حتى لو تأخر backend
+  //  في الرد أو أعاد بنية مختلفة قليلاً في getProfileBundle.
+  const persistLocalMedia = (kind, url) => {
+    try {
+      const uname = profile?.user?.username;
+      if (!uname || !url) return;
+      window.localStorage.setItem(`yamshat:profile:${kind}:${uname}`, String(url));
+    } catch { /* ignore */ }
+  };
+
   const applyCrop = async () => {
     try {
       const avatarUrl = await uploadImageAndResolveUrl(avatarFile, avatarImage);
-      await updateMyProfile({ avatar: avatarUrl, avatar_url: avatarUrl });
-      setAvatarImage(avatarUrl);
+      const res = await updateMyProfile({ avatar: avatarUrl, avatar_url: avatarUrl });
+      // ✅ v88.12: قراءة الرابط النهائي من رد الخادم إن وُجد
+      const savedUrl = res?.data?.avatar || res?.data?.avatar_url || avatarUrl;
+      persistLocalMedia('avatar', savedUrl);
+      setAvatarImage(savedUrl);
       setAvatarFile(null);
       setShowAvatarCropper(false);
+      // ✅ v88.12: إشعار بقية التطبيق (Header/BottomNav) لتحديث الأفاتار فوراً
+      try {
+        window.dispatchEvent(new CustomEvent('yamshat:profile-media-updated', {
+          detail: { kind: 'avatar', url: savedUrl },
+        }));
+      } catch { /* ignore */ }
     } catch (error) {
       console.error('Failed to update avatar:', error);
       alert('فشل تحديث الصورة الشخصية');
@@ -240,10 +281,17 @@ export default function ProfileHeader({
   const saveCoverImage = async () => {
     try {
       const coverUrl = await uploadImageAndResolveUrl(coverFile, coverImage);
-      await updateMyProfile({ cover_photo: coverUrl, cover_url: coverUrl });
-      setCoverImage(coverUrl);
+      const res = await updateMyProfile({ cover_photo: coverUrl, cover_url: coverUrl });
+      const savedUrl = res?.data?.profile?.cover_photo || res?.data?.cover_photo || res?.data?.cover_url || coverUrl;
+      persistLocalMedia('cover', savedUrl);
+      setCoverImage(savedUrl);
       setCoverFile(null);
       setShowCoverEditor(false);
+      try {
+        window.dispatchEvent(new CustomEvent('yamshat:profile-media-updated', {
+          detail: { kind: 'cover', url: savedUrl },
+        }));
+      } catch { /* ignore */ }
     } catch (error) {
       console.error('Failed to update cover:', error);
       alert('فشل تحديث صورة الغلاف');
@@ -275,9 +323,28 @@ export default function ProfileHeader({
     || profile?.user?.username
     || 'مستخدم';
   const username = profile?.user?.username || 'مستخدم';
-  const postsCount = profile?.posts_count || 0;
-  const followersCount = profile?.followers_count || 0;
-  const followingCount = profile?.following_count || 0;
+  // ✅ v88.14 FIX: ربط العدادات فعلياً بالبيانات المُرجعة من الباك إند
+  // الباك إند يرجع البيانات في counts.{posts,followers,following} + user.followers_count/following_count
+  // + posts array. نقرأ من كل المصادر المحتملة لضمان عرض قيم فعلية دائماً.
+  const postsCount = (
+    Number(profile?.counts?.posts) ||
+    Number(profile?.posts_count) ||
+    Number(profile?.user?.posts_count) ||
+    (Array.isArray(profile?.posts) ? profile.posts.length : 0) ||
+    0
+  );
+  const followersCount = (
+    Number(profile?.counts?.followers) ||
+    Number(profile?.followers_count) ||
+    Number(profile?.user?.followers_count) ||
+    0
+  );
+  const followingCount = (
+    Number(profile?.counts?.following) ||
+    Number(profile?.following_count) ||
+    Number(profile?.user?.following_count) ||
+    0
+  );
   const bio = profile?.user?.profile?.bio || '';
   const tagline = profile?.user?.profile?.activity_tagline || 'منشئ محتوى رقمي';
   const isVerified = profile?.user?.is_verified || profile?.user?.verified || false;

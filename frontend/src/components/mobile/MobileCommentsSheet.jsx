@@ -73,9 +73,28 @@ function MobileCommentsSheet({ open, postId, onClose }) {
     // ✅ v60.8 FIX: تعيين data-attribute على body حتى يتم إخفاء BottomNav عبر CSS
     // وبالتالي تظهر منطقة كتابة التعليق بالكامل ولا تفقد خلف شريط التنقل
     document.body.setAttribute('data-ym-sheet', 'open');
+
+    // ✅ v88.12 FIX: مواكبة visualViewport (لوحة المفاتيح على الجوال)
+    // كي يبقى صندوق كتابة التعليق فوق لوحة المفاتيح دائماً بدلاً من الاختفاء أسفل الشاشة.
+    // نضبط متغير CSS ‎--ym-kb-inset‎ إلى ارتفاع لوحة المفاتيح المرئية.
+    const updateKbInset = () => {
+      try {
+        const vv = window.visualViewport;
+        if (!vv) { document.documentElement.style.setProperty('--ym-kb-inset', '0px'); return; }
+        const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+        document.documentElement.style.setProperty('--ym-kb-inset', `${Math.round(kb)}px`);
+      } catch { /* ignore */ }
+    };
+    updateKbInset();
+    window.visualViewport?.addEventListener('resize', updateKbInset);
+    window.visualViewport?.addEventListener('scroll', updateKbInset);
+
     return () => {
       document.body.style.overflow = prev;
       document.body.removeAttribute('data-ym-sheet');
+      window.visualViewport?.removeEventListener('resize', updateKbInset);
+      window.visualViewport?.removeEventListener('scroll', updateKbInset);
+      document.documentElement.style.setProperty('--ym-kb-inset', '0px');
     };
   }, [open]);
 
@@ -142,22 +161,32 @@ function MobileCommentsSheet({ open, postId, onClose }) {
     <div className="ym-sheet-overlay" data-yam-comments-sheet="true" role="dialog" aria-modal="true" aria-label="التعليقات" dir="rtl" onClick={onClose}>
       <style>{`
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] {
-          align-items: flex-end !important;
+          align-items: stretch !important;
           justify-content: center !important;
           padding: 0 !important;
-          z-index: 1200 !important;
+          z-index: 2147483000 !important; /* v88.12: أعلى من BottomNav / MobileTopBar بأمان */
+          position: fixed !important;
+          inset: 0 !important;
         }
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet {
           width: 100% !important;
           max-width: 100% !important;
-          height: min(82dvh, 760px) !important;
-          max-height: min(82dvh, 760px) !important;
+          /* v88.12: نستخدم 100dvh مع padding سفلي = لوحة المفاتيح + safe-area
+             لضمان بقاء الـ composer دائماً مرئياً فوق لوحة المفاتيح، ولن يختفي خلف BottomNav. */
+          height: 100dvh !important;
+          max-height: 100dvh !important;
           margin: 0 !important;
           border-radius: 24px 24px 0 0 !important;
           display: flex !important;
           flex-direction: column !important;
           overflow: hidden !important;
           transform: none !important;
+          position: absolute !important;
+          inset-inline: 0 !important;
+          bottom: 0 !important;
+          /* الارتفاع الفعلي للمحتوى = 82vh بحد أقصى؛ الباقي شفاف فوقه لإغلاق بالنقر */
+          top: auto !important;
+          max-block-size: min(100dvh, 760px) !important;
         }
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-head {
           flex-shrink: 0 !important;
@@ -167,29 +196,49 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           flex: 1 1 auto !important;
           min-height: 0 !important;
           overflow-y: auto !important;
-          padding-bottom: 12px !important;
+          /* v88.12: مساحة أسفل قائمة التعليقات = ارتفاع الـ composer التقريبي + لوحة المفاتيح */
+          padding-bottom: calc(80px + var(--ym-kb-inset, 0px)) !important;
           -webkit-overflow-scrolling: touch !important;
         }
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-composer {
-          position: sticky !important;
-          bottom: 0 !important;
-          inset-inline: 0 !important;
-          margin-top: auto !important;
+          /* v88.12 FIX: تثبيت مطلق داخل الـ sheet مع رفعه بمقدار لوحة المفاتيح المرئية.
+             هذا يضمن أن صندوق الكتابة دائماً مرئي ويستقبل النقر، ولن يختفي
+             خلف BottomNav أو أسفل الشاشة عند فتح لوحة المفاتيح. */
+          position: absolute !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: calc(var(--ym-kb-inset, 0px)) !important;
+          margin-top: 0 !important;
           display: flex !important;
           align-items: center !important;
           gap: 10px !important;
           padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px)) !important;
-          background: rgba(9, 12, 26, 0.96) !important;
+          background: rgba(9, 12, 26, 0.98) !important;
+          backdrop-filter: blur(10px) !important;
+          -webkit-backdrop-filter: blur(10px) !important;
           border-top: 1px solid rgba(255,255,255,0.08) !important;
-          z-index: 2 !important;
+          z-index: 5 !important;
           transform: none !important;
         }
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-input {
           flex: 1 1 auto !important;
           min-height: 46px !important;
+          font-size: 16px !important; /* v88.12: يمنع Safari/iOS من التكبير التلقائي */
         }
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-send {
           flex-shrink: 0 !important;
+        }
+        /* v88.12 FIX: إخفاء نهائي لأي BottomNav محتمل أثناء فتح ورقة التعليقات
+           (تكرار الحماية على مستوى المكوّن حتى لو لم يُحمَّل CSS القديم) */
+        html body[data-ym-sheet="open"] .mobile-bottom-nav,
+        html body[data-ym-sheet="open"] .yam-bottom-nav,
+        html body[data-ym-sheet="open"] .ym-bottomnav,
+        html body[data-ym-sheet="open"] nav.bottom-nav,
+        html body[data-ym-sheet="open"] [class*="BottomNav"],
+        html body[data-ym-sheet="open"] [class*="bottomnav"] {
+          display: none !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
         }
       `}</style>
       <div className="ym-sheet" dir="rtl" onClick={(e) => e.stopPropagation()}>

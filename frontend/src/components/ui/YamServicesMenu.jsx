@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 const PRIMARY_ITEMS = [
@@ -21,6 +21,8 @@ const SERVICE_ITEMS = [
 ];
 
 export default function YamServicesMenu({ open = false, onClose, onLogout, brandLabel = 'Yamshat' }) {
+  const panelRef = useRef(null);
+
   useEffect(() => {
     if (!open) return undefined;
 
@@ -29,21 +31,52 @@ export default function YamServicesMenu({ open = false, onClose, onLogout, brand
       if (event.key === 'Escape') onClose?.();
     };
 
+    // ✅ v88.14 FIX: النقر خارج صندوق القائمة (على أي عنصر في الصفحة خلفها)
+    // يُغلق القائمة تلقائياً — لا حاجة للضغط على زر الإغلاق.
+    // نستخدم capture=true + مرحلة pointerdown للسبق قبل أي click داخلي.
+    const handleOutsidePointer = (event) => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const target = event.target;
+      if (target instanceof Node && panel.contains(target)) {
+        return; // نقر داخل الصندوق — تجاهل
+      }
+      // أي نقر خارج الصندوق يغلق القائمة
+      onClose?.();
+    };
+
     document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', handleEscape);
+    // نستخدم pointerdown لتغطية الفأرة واللمس معاً + capture لضمان الأولوية
+    document.addEventListener('pointerdown', handleOutsidePointer, true);
 
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('pointerdown', handleOutsidePointer, true);
     };
   }, [open, onClose]);
 
   if (!open) return null;
 
   return (
-    <div className="yam-services-layer" dir="rtl">
+    <div
+      className="yam-services-layer"
+      dir="rtl"
+      onClick={(e) => {
+        // ✅ v88.14: النقر على الطبقة الخارجية (خارج الصندوق) يغلق القائمة
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+    >
       <button type="button" className="yam-services-backdrop" aria-label="إغلاق القائمة" onClick={onClose} />
-      <aside className="yam-services-panel" role="dialog" aria-modal="true" aria-label="قائمة يام شات">
+      <aside
+        ref={panelRef}
+        className="yam-services-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="قائمة يام شات"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="yam-services-header">
           <div className="yam-services-brand-badge">Y</div>
           <div className="yam-services-brand-copy">

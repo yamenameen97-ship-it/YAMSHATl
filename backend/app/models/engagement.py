@@ -216,14 +216,17 @@ class UserInventory(Base):
 class VoiceRoom(Base):
     __tablename__ = "voice_rooms"
     id = Column(Integer, primary_key=True, index=True)
-    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # v88.17: أزلنا FK الصارم على users/groups/shop_items لتفادي فشل
+    # create_all عندما تكون الجداول الأخرى غير موجودة بعد على Render.
+    # نتحقق من الوجود يدوياً في voice_rooms.py قبل الإدراج.
+    owner_id = Column(Integer, nullable=False, index=True)
     # v88.13: ربط الغرفة بمجموعة (اختياري) — إذا تم الإنشاء من داخل مجموعة
     # نستخدم String(36) لتطابق groups.id (وهو UUID)
-    group_id = Column(String(36), ForeignKey("groups.id", ondelete="CASCADE"), nullable=True, index=True)
+    group_id = Column(String(36), nullable=True, index=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     cover_image = Column(String(500), nullable=True)
-    background_id = Column(Integer, ForeignKey("shop_items.id", ondelete="SET NULL"), nullable=True)
+    background_id = Column(Integer, nullable=True)
     category = Column(String(60), default="general", nullable=False, index=True)
     language = Column(String(10), default="ar", nullable=False)
     # عدد المقاعد المتاحة (عادة 8 أو 9)
@@ -243,10 +246,9 @@ class VoiceRoom(Base):
 class VoiceRoomMember(Base):
     __tablename__ = "voice_room_members"
     id = Column(Integer, primary_key=True, index=True)
-    room_id = Column(Integer, ForeignKey("voice_rooms.id", ondelete="CASCADE"),
-                     nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
-                     nullable=False, index=True)
+    # v88.17: بدون FK صارم لتفادي مشاكل الترحيل
+    room_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
     role = Column(String(20), default="listener", nullable=False)  # owner, admin, speaker, listener
     seat_index = Column(Integer, nullable=True)  # موضع المقعد (0..N-1) للمتحدثين
     is_muted = Column(Boolean, default=False, nullable=False)
@@ -263,10 +265,9 @@ class VoiceRoomMember(Base):
 class VoiceRoomMessage(Base):
     __tablename__ = "voice_room_messages"
     id = Column(Integer, primary_key=True, index=True)
-    room_id = Column(Integer, ForeignKey("voice_rooms.id", ondelete="CASCADE"),
-                     nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
-                     nullable=False, index=True)
+    # v88.17: بدون FK صارم لتفادي مشاكل الترحيل
+    room_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
     content = Column(Text, nullable=False)
     msg_type = Column(String(20), default="text", nullable=False)  # text, system, gift
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

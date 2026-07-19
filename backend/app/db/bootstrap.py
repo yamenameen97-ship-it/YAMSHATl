@@ -890,61 +890,38 @@ def _ensure_seed_accounts(engine: Engine) -> None:
 
 
 def _ensure_voice_rooms_tables(engine: Engine) -> None:
-    """v88.13: ضمان وجود جداول الغرف الصوتية بشكل idempotent.
+    """v88.17: ضمان جذري لوجود جداول الغرف الصوتية.
 
-    كان بعض النشر يفقد جداول voice_rooms/voice_room_members/voice_room_messages
-    بسبب أن create_all يفشل صامتاً عندما تكون هناك أخطاء sequence أخرى.
-    هنا نجبر إنشاءها بشكل مستقل ونسجّل النتيجة صراحةً.
-    كذلك نضمن وجود عمود group_id الجديد لربط الغرف بالمجموعات.
+    v88.13 كان يعتمد على `Base.metadata.create_all` الذي يفشل صامتاً على
+    PostgreSQL/Render عندما يوجد FK إلى `groups.id` أو `shop_items.id` غير موجودة
+    بعد. v88.17 يستخدم raw SQL بدون FK لضمان الإنشاء بأي ثمن، وهذا هو
+    الإصلاح الجذري النهائي لمشكلة "خدمة الغرف الصوتية غير متوفرة حالياً".
     """
     import logging as _logging
     _log = _logging.getLogger(__name__)
-    voice_tables = ('voice_rooms', 'voice_room_members', 'voice_room_messages')
     try:
-        existing = set(inspect(engine).get_table_names())
-        missing = [t for t in voice_tables if t not in existing]
-        if missing:
-            _log.warning('[voice_rooms] tables missing: %s — creating now', missing)
-            # استيراد النماذج للتأكد من تسجيلها في Base.metadata
-            from app.models.engagement import (  # noqa: F401
-                VoiceRoom, VoiceRoomMember, VoiceRoomMessage,
-            )
-            tables_to_create = [
-                Base.metadata.tables[t] for t in voice_tables
-                if t in Base.metadata.tables
-            ]
-            if tables_to_create:
-                Base.metadata.create_all(bind=engine, tables=tables_to_create)
-                _log.info('[voice_rooms] tables created successfully')
-            # تحقق نهائي
-            existing_after = set(inspect(engine).get_table_names())
-            still_missing = [t for t in voice_tables if t not in existing_after]
-            if still_missing:
-                _log.error('[voice_rooms] still missing after create_all: %s', still_missing)
-
-        # v88.13: إضافة عمود group_id إذا كان غير موجود (للقواعد القائمة)
-        if _table_exists(engine, 'voice_rooms'):
-            cols = _column_names(engine, 'voice_rooms')
-            if 'group_id' not in cols:
-                _log.warning('[voice_rooms] adding missing column: group_id')
-                try:
-                    with engine.begin() as conn:
-                        conn.execute(text(
-                            "ALTER TABLE voice_rooms ADD COLUMN group_id VARCHAR(36) NULL"
-                        ))
-                    # محاولة إضافة فهرس (تجاهل إذا فشل)
-                    try:
-                        with engine.begin() as conn:
-                            conn.execute(text(
-                                "CREATE INDEX IF NOT EXISTS ix_voice_rooms_group_id "
-                                "ON voice_rooms(group_id)"
-                            ))
-                    except Exception as _idx_exc:
-                        _log.debug('[voice_rooms] index create skipped: %s', _idx_exc)
-                except Exception as _alter_exc:
-                    _log.warning('[voice_rooms] ALTER add group_id failed: %s', _alter_exc)
+        # الطريق الجديد: raw SQL بدون FK (idempotent, يعمل حتى لو غابت groups/shop_items)
+        from app.db.bootstrap_voice_patch import ensure_voice_rooms_hard
+        ensure_voice_rooms_hard(engine)
     except Exception as exc:
-        _log.exception('[voice_rooms] ensure tables failed: %s', exc)
+        _log.exception('[voice_rooms] hard-guarantee failed, falling back to metadata create_all: %s', exc)
+        # fallback: الطريقة القديمة
+        voice_tables = ('voice_rooms', 'voice_room_members', 'voice_room_messages')
+        try:
+            existing = set(inspect(engine).get_table_names())
+            missing = [t for t in voice_tables if t not in existing]
+            if missing:
+                from app.models.engagement import (  # noqa: F401
+                    VoiceRoom, VoiceRoomMember, VoiceRoomMessage,
+                )
+                tables_to_create = [
+                    Base.metadata.tables[t] for t in voice_tables
+                    if t in Base.metadata.tables
+                ]
+                if tables_to_create:
+                    Base.metadata.create_all(bind=engine, tables=tables_to_create)
+        except Exception as exc2:
+            _log.exception('[voice_rooms] fallback also failed: %s', exc2)
 
 
 def initialize_database(engine: Engine, force: bool = False) -> None:

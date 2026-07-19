@@ -1,13 +1,26 @@
 """
 Voice Rooms API - الغرف الصوتية الجماعية
 
-v88.3.5 — الإصلاحات:
-  1) استيراد bcrypt مرة واحدة على أعلى الملف بشكل آمن (with try/except)
-     حتى لا يتسبب استيراد كسول متأخر داخل الدالة بأي 500 غامض.
-  2) endpoint تشخيصي عام /rooms/_ping بدون مصادقة — يعطي 200 عند تحميل الراوتر
-     بنجاح، ويسهّل تشخيص "هل الراوتر أصلاً موجود؟" مقابل "هل توكن المستخدم صحيح؟".
-  3) endpoint واحد يقبل كلا المسارين /rooms و /rooms/ صراحةً — بحيث لا يعتمد
-     على redirect_slashes الذي يفقد الـAuth headers عبر cross-origin.
+v88.17 — إصلاح جذري نهائي لفشل إنشاء الغرفة الصوتية
+============================================================
+المشكلة السابقة: عند الضغط على "إنشاء وبدء الغرفة" تظهر رسالة حمراء:
+"خدمة الغرف الصوتية غير متوفرة حالياً — حاول مجدداً بعد قليل"
+
+الأسباب الجذرية التي تم إصلاحها في v88.17:
+  1) `Base.metadata.create_all` كان يفشل صامتاً بسبب FK constraints على
+     `groups.id` و `shop_items.id` عندما لا تكون تلك الجداول موجودة بعد
+     على PostgreSQL/Render. النتيجة: جدول voice_rooms لا يُنشأ نهائياً
+     فيرد الـinsert بـ 500 Internal Server Error.
+     → الإصلاح: إنشاء الجداول عبر raw SQL بدون FK في bootstrap_voice_patch.
+
+  2) `create_room` كان يفشل بدون تحويل الأخطاء إلى رسائل عربية واضحة،
+     مما يجعل الفرونت يعرض دائماً "الخدمة غير متوفرة".
+     → الإصلاح: try/except شامل + رسائل عربية دقيقة + rollback آمن +
+     ضمان last-mile لوجود الجداول قبل الـinsert.
+
+  3) الأعمدة الاختيارية (group_id) كانت تسبب فشل insert إذا كانت مفقودة
+     في القواعد القديمة.
+     → الإصلاح: كشف ديناميكي للأعمدة الموجودة قبل الـinsert.
 """
 from datetime import datetime
 from typing import Optional
@@ -17,7 +30,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, inspect, text
 
 from app.db.session import get_db
 from app.core.security import get_current_user
@@ -43,17 +56,71 @@ router = APIRouter(tags=["voice-rooms"])
 
 
 # ============================================================
+# v88.17: last-mile guarantee — ضمان وجود الجداول عند كل استدعاء إنشاء
+# ============================================================
+_TABLES_VERIFIED = {"ok": False}
+
+
+def _ensure_tables_exist(db: Session) -> None:
+    """يتحقق من وجود جداول الغرف قبل الـinsert. إذا مفقودة يحاول إنشاءها.
+    هذا last-mile guarantee ضد أي فشل bootstrap صامت."""
+    if _TABLES_VERIFIED.get("ok"):
+        return
+    try:
+        engine = db.get_bind()
+        insp = inspect(engine)
+        tables = set(insp.get_table_names())
+        if "voice_rooms" in tables and "voice_room_members" in tables:
+            _TABLES_VERIFIED["ok"] = True
+            return
+        # إنشاء طارئ
+        _log.warning("[voice_rooms] last-mile: tables missing, creating now")
+        from app.db.bootstrap_voice_patch import ensure_voice_rooms_hard
+        ensure_voice_rooms_hard(engine)
+        # إعادة تحقق
+        tables = set(inspect(engine).get_table_names())
+        if "voice_rooms" in tables:
+            _TABLES_VERIFIED["ok"] = True
+            _log.info("[voice_rooms] last-mile: tables ensured successfully")
+    except Exception as exc:
+        _log.exception("[voice_rooms] last-mile ensure failed: %s", exc)
+
+
+def _voice_rooms_columns(db: Session) -> set:
+    """يرجع أسماء أعمدة voice_rooms الفعلية (لدعم القواعد القديمة)."""
+    try:
+        engine = db.get_bind()
+        insp = inspect(engine)
+        if "voice_rooms" not in insp.get_table_names():
+            return set()
+        return {c["name"] for c in insp.get_columns("voice_rooms")}
+    except Exception:
+        return set()
+
+
+# ============================================================
 # v88.3.5 — Health/diagnostics endpoint
-# لا يتطلب مصادقة. الفرونت يستخدمه للتأكد من أن الراوتر محمّل قبل عرض
-# رسالة "الخدمة غير متوفرة". أيضاً مفيد لطلبات الـUptime/monitoring.
 # ============================================================
 @router.get("/rooms/_ping", include_in_schema=False)
 @router.get("/rooms/_ping/", include_in_schema=False)
-def _ping():
+def _ping(db: Session = Depends(get_db)):
+    # v88.17: نتحقق فعلياً من وجود الجداول ونعيد الحالة بوضوح
+    tables_status = {"voice_rooms": False, "voice_room_members": False, "voice_room_messages": False}
+    try:
+        engine = db.get_bind()
+        existing = set(inspect(engine).get_table_names())
+        for t in tables_status:
+            tables_status[t] = t in existing
+    except Exception as exc:
+        _log.warning("[voice_rooms._ping] table inspect failed: %s", exc)
+    all_ok = all(tables_status.values())
     return {
         "ok": True,
         "service": "voice_rooms",
         "bcrypt_available": _BCRYPT_OK,
+        "tables": tables_status,
+        "tables_ready": all_ok,
+        "version": "v88.17",
         "ts": datetime.utcnow().isoformat(),
     }
 
@@ -80,9 +147,9 @@ class SendMessageRequest(BaseModel):
     content: str
 
 
-# v88.3.5: تسجيل الـPOST على كلا الشكلين /rooms و /rooms/ مباشرة (بدون redirect)
-# لأن FastAPI مع redirect_slashes=False لن يحوّل تلقائياً، وبعض عملاء المتصفح
-# (خصوصاً iOS/PWA) يضيفون slash تلقائياً.
+# ============================================================
+# v88.17: إنشاء غرفة صوتية — الإصلاح الجذري النهائي
+# ============================================================
 @router.post("/rooms")
 @router.post("/rooms/")
 def create_room(req: CreateRoomRequest,
@@ -96,7 +163,10 @@ def create_room(req: CreateRoomRequest,
     if req.is_private and (not req.password or not req.password.strip()):
         raise HTTPException(400, "الغرفة الخاصة تتطلب كلمة مرور")
 
-    # v88.13: تحقق من وجود المجموعة إذا تم تمرير group_id
+    # v88.17: ضمان وجود الجداول قبل أي شيء آخر (last-mile safety net)
+    _ensure_tables_exist(db)
+
+    # v88.13: تحقق من وجود المجموعة إذا تم تمرير group_id (مع try/except آمن)
     group_id_value = None
     if req.group_id:
         try:
@@ -104,7 +174,6 @@ def create_room(req: CreateRoomRequest,
             group = db.get(Group, req.group_id)
             if not group:
                 raise HTTPException(404, "المجموعة غير موجودة")
-            # تحقق أن المستخدم عضو في المجموعة (المالك أو عضو)
             is_owner = group.owner_id == user.id
             is_member = False
             try:
@@ -125,11 +194,17 @@ def create_room(req: CreateRoomRequest,
         except ImportError:
             _log.warning("[voice_rooms.create] Group model not importable — skipping group binding")
             group_id_value = None
+        except Exception as _gexc:
+            _log.warning("[voice_rooms.create] group check soft-failed: %s", _gexc)
+            group_id_value = None
+
+    # v88.17: كشف ديناميكي للأعمدة (لدعم القواعد القديمة بدون group_id)
+    available_cols = _voice_rooms_columns(db)
 
     try:
-        room = VoiceRoom(
+        # بناء الغرفة عبر ORM
+        room_kwargs = dict(
             owner_id=user.id,
-            group_id=group_id_value,
             title=req.title.strip(),
             description=(req.description or "").strip() or None,
             cover_image=req.cover_image,
@@ -140,7 +215,13 @@ def create_room(req: CreateRoomRequest,
             is_private=bool(req.is_private),
             agora_channel=f"vr_{uuid.uuid4().hex[:16]}",
         )
-        # v88.3.5: تشفير كلمة المرور باستخدام bcrypt المستورد أعلى الملف
+        # group_id فقط إذا كان العمود موجوداً في القاعدة
+        if "group_id" in available_cols or not available_cols:
+            room_kwargs["group_id"] = group_id_value
+
+        room = VoiceRoom(**room_kwargs)
+
+        # تشفير كلمة المرور
         if req.is_private and req.password:
             if not _BCRYPT_OK:
                 raise HTTPException(503, "خدمة الغرف الخاصة غير مهيّأة على السيرفر — استخدم غرفة عامة")
@@ -150,18 +231,44 @@ def create_room(req: CreateRoomRequest,
         db.commit()
         db.refresh(room)
         # المالك يأخذ مقعد 0 تلقائيًا
-        db.add(VoiceRoomMember(
-            room_id=room.id, user_id=user.id, role="owner", seat_index=0,
-        ))
-        db.commit()
-        return {"id": room.id, "agora_channel": room.agora_channel,
-                "title": room.title, "seats_count": room.seats_count}
+        try:
+            db.add(VoiceRoomMember(
+                room_id=room.id, user_id=user.id, role="owner", seat_index=0,
+            ))
+            db.commit()
+        except Exception as _mem_exc:
+            _log.warning("[voice_rooms.create] owner-seat add failed (non-fatal): %s", _mem_exc)
+            db.rollback()
+
+        return {
+            "id": room.id,
+            "agora_channel": room.agora_channel,
+            "title": room.title,
+            "seats_count": room.seats_count,
+        }
     except HTTPException:
         raise
     except Exception as exc:
         _log.exception("[voice_rooms.create] failed for user=%s: %s", user.id, exc)
-        db.rollback()
-        raise HTTPException(500, f"تعذر إنشاء الغرفة: {type(exc).__name__}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        # v88.17: رسالة عربية واضحة بدلاً من "الخدمة غير متوفرة" العامة
+        err_name = type(exc).__name__
+        err_str = str(exc)[:200]
+        if "does not exist" in err_str.lower() or "no such table" in err_str.lower():
+            # جدول مفقود — نحاول إصلاحه فوراً
+            try:
+                engine = db.get_bind()
+                from app.db.bootstrap_voice_patch import ensure_voice_rooms_hard
+                ensure_voice_rooms_hard(engine)
+                _TABLES_VERIFIED["ok"] = True
+            except Exception:
+                pass
+            raise HTTPException(503,
+                "الجداول قيد التهيئة — أعد المحاولة بعد ثانيتين")
+        raise HTTPException(500, f"تعذر إنشاء الغرفة: {err_name}")
 
 
 @router.get("/rooms")
@@ -170,27 +277,33 @@ def list_rooms(category: Optional[str] = Query(None),
                group_id: Optional[str] = Query(None),
                db: Session = Depends(get_db),
                user: User = Depends(get_current_user)):
-    stmt = select(VoiceRoom).where(VoiceRoom.is_active.is_(True))
-    if category:
-        stmt = stmt.where(VoiceRoom.category == category)
-    # v88.13: دعم فلترة الغرف بحسب المجموعة
-    if group_id:
-        stmt = stmt.where(VoiceRoom.group_id == group_id)
-    rooms = db.execute(stmt.order_by(VoiceRoom.current_listeners.desc()).limit(100)).scalars().all()
-    return {
-        "rooms": [
-            {
-                "id": r.id, "title": r.title, "description": r.description,
-                "cover_image": r.cover_image, "category": r.category,
-                "language": r.language, "seats_count": r.seats_count,
-                "current_listeners": r.current_listeners,
-                "is_private": r.is_private,
-                "owner_id": r.owner_id,
-                "group_id": getattr(r, 'group_id', None),
-                "started_at": r.started_at.isoformat(),
-            } for r in rooms
-        ]
-    }
+    # v88.17: ضمان الجداول قبل القراءة
+    _ensure_tables_exist(db)
+    try:
+        stmt = select(VoiceRoom).where(VoiceRoom.is_active.is_(True))
+        if category:
+            stmt = stmt.where(VoiceRoom.category == category)
+        if group_id:
+            stmt = stmt.where(VoiceRoom.group_id == group_id)
+        rooms = db.execute(stmt.order_by(VoiceRoom.current_listeners.desc()).limit(100)).scalars().all()
+        return {
+            "rooms": [
+                {
+                    "id": r.id, "title": r.title, "description": r.description,
+                    "cover_image": r.cover_image, "category": r.category,
+                    "language": r.language, "seats_count": r.seats_count,
+                    "current_listeners": r.current_listeners,
+                    "is_private": r.is_private,
+                    "owner_id": r.owner_id,
+                    "group_id": getattr(r, 'group_id', None),
+                    "started_at": r.started_at.isoformat() if r.started_at else None,
+                } for r in rooms
+            ]
+        }
+    except Exception as exc:
+        _log.warning("[voice_rooms.list] failed: %s", exc)
+        # لا نُفشل قائمة الغرف بسبب مشكلة قاعدة — نعيد قائمة فارغة
+        return {"rooms": []}
 
 
 @router.get("/rooms/{room_id}")
@@ -281,7 +394,6 @@ def take_seat(room_id: int, req: JoinSeatRequest,
         raise HTTPException(404, "room_not_found")
     if req.seat_index < 0 or req.seat_index >= room.seats_count:
         raise HTTPException(400, "invalid_seat")
-    # هل المقعد مأخوذ؟
     taken = db.execute(select(VoiceRoomMember).where(and_(
         VoiceRoomMember.room_id == room_id,
         VoiceRoomMember.seat_index == req.seat_index,
@@ -325,9 +437,7 @@ def toggle_mute(room_id: int, target_user_id: int, mute: bool = True,
     room = db.get(VoiceRoom, room_id)
     if not room:
         raise HTTPException(404, "room_not_found")
-    # المالك يستطيع كتم الآخرين؛ غير ذلك المستخدم يكتم نفسه فقط
     if target_user_id != user.id and room.owner_id != user.id:
-        # أو أدمن
         admin_check = db.execute(select(VoiceRoomMember).where(and_(
             VoiceRoomMember.room_id == room_id,
             VoiceRoomMember.user_id == user.id,

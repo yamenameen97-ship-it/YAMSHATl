@@ -889,6 +889,64 @@ def _ensure_seed_accounts(engine: Engine) -> None:
         _upsert_seed_account(connection, DEFAULT_PRIMARY_ADMIN, role='admin')
 
 
+def _ensure_voice_rooms_tables(engine: Engine) -> None:
+    """v88.13: ضمان وجود جداول الغرف الصوتية بشكل idempotent.
+
+    كان بعض النشر يفقد جداول voice_rooms/voice_room_members/voice_room_messages
+    بسبب أن create_all يفشل صامتاً عندما تكون هناك أخطاء sequence أخرى.
+    هنا نجبر إنشاءها بشكل مستقل ونسجّل النتيجة صراحةً.
+    كذلك نضمن وجود عمود group_id الجديد لربط الغرف بالمجموعات.
+    """
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    voice_tables = ('voice_rooms', 'voice_room_members', 'voice_room_messages')
+    try:
+        existing = set(inspect(engine).get_table_names())
+        missing = [t for t in voice_tables if t not in existing]
+        if missing:
+            _log.warning('[voice_rooms] tables missing: %s — creating now', missing)
+            # استيراد النماذج للتأكد من تسجيلها في Base.metadata
+            from app.models.engagement import (  # noqa: F401
+                VoiceRoom, VoiceRoomMember, VoiceRoomMessage,
+            )
+            tables_to_create = [
+                Base.metadata.tables[t] for t in voice_tables
+                if t in Base.metadata.tables
+            ]
+            if tables_to_create:
+                Base.metadata.create_all(bind=engine, tables=tables_to_create)
+                _log.info('[voice_rooms] tables created successfully')
+            # تحقق نهائي
+            existing_after = set(inspect(engine).get_table_names())
+            still_missing = [t for t in voice_tables if t not in existing_after]
+            if still_missing:
+                _log.error('[voice_rooms] still missing after create_all: %s', still_missing)
+
+        # v88.13: إضافة عمود group_id إذا كان غير موجود (للقواعد القائمة)
+        if _table_exists(engine, 'voice_rooms'):
+            cols = _column_names(engine, 'voice_rooms')
+            if 'group_id' not in cols:
+                _log.warning('[voice_rooms] adding missing column: group_id')
+                try:
+                    with engine.begin() as conn:
+                        conn.execute(text(
+                            "ALTER TABLE voice_rooms ADD COLUMN group_id VARCHAR(36) NULL"
+                        ))
+                    # محاولة إضافة فهرس (تجاهل إذا فشل)
+                    try:
+                        with engine.begin() as conn:
+                            conn.execute(text(
+                                "CREATE INDEX IF NOT EXISTS ix_voice_rooms_group_id "
+                                "ON voice_rooms(group_id)"
+                            ))
+                    except Exception as _idx_exc:
+                        _log.debug('[voice_rooms] index create skipped: %s', _idx_exc)
+                except Exception as _alter_exc:
+                    _log.warning('[voice_rooms] ALTER add group_id failed: %s', _alter_exc)
+    except Exception as exc:
+        _log.exception('[voice_rooms] ensure tables failed: %s', exc)
+
+
 def initialize_database(engine: Engine, force: bool = False) -> None:
     import logging as _logging
     _log = _logging.getLogger(__name__)
@@ -898,6 +956,15 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
     except Exception as exc:
         _log.exception('Could not inspect database tables: %s', exc)
         return
+
+    # v88.13: قبل أي شيء آخر، اضمن وجود جداول الغرف الصوتية
+    # هذا يعالج مشكلة "خدمة الغرف الصوتية غير متوفرة" التي تظهر عند
+    # وجود قاعدة بيانات ناقصة الجداول على Render.
+    _ensure_voice_rooms_tables(engine)
+    try:
+        existing_tables = inspect(engine).get_table_names()
+    except Exception:
+        pass
 
     should_bootstrap = (
         force
@@ -964,6 +1031,11 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
         _ensure_seed_accounts(engine)
     except Exception as exc:
         _log.warning('Could not ensure seed accounts: %s', exc)
+    # v88.13: تحقق نهائي بعد كل الترحيلات — يجب أن تكون جداول الغرف موجودة
+    try:
+        _ensure_voice_rooms_tables(engine)
+    except Exception as exc:
+        _log.warning('Final voice_rooms guarantee failed: %s', exc)
     try:
         _set_alembic_revision(engine)
     except Exception as exc:

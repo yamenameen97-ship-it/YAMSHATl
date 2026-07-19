@@ -144,167 +144,55 @@ export class PWAInitializer {
 
   /**
    * معالجة اكتشاف تحديث
+   *
+   * v88.11: بدلاً من حقن HTML خام (بانر أخضر متصفح)،
+   * نُطلق حدث window لكي يلتقطه مكوّن React الرسمي
+   * <AppUpdatePrompt /> الذي يعرض النافذة بأسلوب النظام الأصلي.
    */
   handleUpdateFound(registration) {
     const newWorker = registration.installing;
+    if (!newWorker) return;
 
     newWorker.addEventListener('statechange', () => {
       if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
         // تحديث متاح
         this.state.updateAvailable = true;
-        console.log('[PWA] Update available');
+        console.log('[PWA] Update available — dispatching yamshat:update-ready');
         this.emit('update-available');
 
-        // إظهار رسالة التحديث
-        this.showUpdatePrompt(newWorker);
+        // v88.11: نُطلق الحدث بدلاً من حقن HTML — يستقبله <AppUpdatePrompt />
+        try {
+          window.dispatchEvent(
+            new CustomEvent('yamshat:update-ready', {
+              detail: { registration, worker: newWorker },
+            })
+          );
+        } catch (err) {
+          console.warn('[PWA] Failed to dispatch update-ready event:', err);
+        }
       }
     });
   }
 
   /**
-   * عرض رسالة التحديث
+   * v88.11: تم إلغاء حقن HTML القديم لعرض بانر التحديث.
+   * صار العرض يتم عبر مكوّن React الرسمي <AppUpdatePrompt />
+   * الذي يستمع لحدث 'yamshat:update-ready'.
+   * نُبقي الدالة موجودة كـ no-op لضمان التوافق الرجعي إن استُدعيت من مكان آخر.
    */
   showUpdatePrompt(newWorker) {
-    // إنشاء عنصر الرسالة
-    const prompt = document.createElement('div');
-    prompt.id = 'pwa-update-prompt';
-    prompt.className = 'pwa-update-prompt';
-    prompt.dir = 'rtl';
-    prompt.lang = 'ar';
-
-    // الأنماط المضمنة
-    const style = document.createElement('style');
-    style.textContent = `
-      #pwa-update-prompt {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background: linear-gradient(135deg, #059669 0%, #047857 100%);
-        color: white;
-        padding: 16px;
-        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
-        z-index: 9998;
-        font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, sans-serif;
-        animation: slideUp 0.3s ease-out forwards;
-      }
-
-      @keyframes slideUp {
-        from {
-          transform: translateY(100%);
-          opacity: 0;
-        }
-        to {
-          transform: translateY(0);
-          opacity: 1;
-        }
-      }
-
-      .pwa-update-content {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-      }
-
-      .pwa-update-text {
-        flex: 1;
-      }
-
-      .pwa-update-text p {
-        margin: 0;
-        font-size: 14px;
-      }
-
-      .pwa-update-actions {
-        display: flex;
-        gap: 8px;
-      }
-
-      .pwa-update-btn {
-        padding: 8px 16px;
-        border: none;
-        border-radius: 6px;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        -webkit-user-select: none;
-        user-select: none;
-        min-height: 36px;
-      }
-
-      .pwa-update-btn-update {
-        background: white;
-        color: #059669;
-      }
-
-      .pwa-update-btn-update:active {
-        transform: scale(0.98);
-        opacity: 0.9;
-      }
-
-      .pwa-update-btn-later {
-        background: rgba(255, 255, 255, 0.2);
-        color: white;
-      }
-
-      .pwa-update-btn-later:active {
-        background: rgba(255, 255, 255, 0.3);
-      }
-
-      @media (max-width: 480px) {
-        .pwa-update-content {
-          flex-direction: column;
-          align-items: stretch;
-        }
-
-        .pwa-update-actions {
-          width: 100%;
-        }
-
-        .pwa-update-btn {
-          flex: 1;
-        }
-      }
-    `;
-    document.head.appendChild(style);
-
-    // محتوى الرسالة
-    prompt.innerHTML = `
-      <div class="pwa-update-content">
-        <div class="pwa-update-text">
-          <p>تحديث جديد متاح</p>
-        </div>
-        <div class="pwa-update-actions">
-          <button class="pwa-update-btn pwa-update-btn-update" id="pwa-update-btn">
-            تحديث الآن
-          </button>
-          <button class="pwa-update-btn pwa-update-btn-later" id="pwa-update-later-btn">
-            لاحقاً
-          </button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(prompt);
-
-    // إضافة مستمعي الأحداث
-    document.getElementById('pwa-update-btn').addEventListener('click', () => {
-      newWorker.postMessage({ type: 'SKIP_WAITING' });
-      window.location.reload();
-    });
-
-    document.getElementById('pwa-update-later-btn').addEventListener('click', () => {
-      prompt.remove();
-    });
-
-    // إزالة الرسالة تلقائياً بعد 10 ثواني
-    setTimeout(() => {
-      if (prompt.parentNode) {
-        prompt.remove();
-      }
-    }, 10000);
+    // Deprecated in v88.11 — النافذة تُعرض الآن عبر <AppUpdatePrompt /> بأسلوب نظام YAMSHAT.
+    // نُطلق الحدث فقط للتأكد من الظهور في حال تم استدعاء الدالة من مسار قديم.
+    try {
+      const registration = this.state.swRegistration;
+      window.dispatchEvent(
+        new CustomEvent('yamshat:update-ready', {
+          detail: { registration, worker: newWorker },
+        })
+      );
+    } catch (err) {
+      console.warn('[PWA] showUpdatePrompt legacy dispatch failed:', err);
+    }
   }
 
   /**

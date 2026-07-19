@@ -200,6 +200,14 @@ export default function ProfilePage() {
     loadProfile();
   }, [loadProfile]);
 
+  // ✅ v88.12 FIX: إعادة تحميل بيانات الملف الشخصي فور تحديث الأفاتار أو الغلاف
+  // من داخل ProfileHeader، حتى لا تختفي الصورة عند التنقل إلى الرئيسية والعودة.
+  useEffect(() => {
+    const handler = () => { loadProfile(); };
+    window.addEventListener('yamshat:profile-media-updated', handler);
+    return () => window.removeEventListener('yamshat:profile-media-updated', handler);
+  }, [loadProfile]);
+
   useEffect(() => {
     const allowedTabs = availableTabs.map((tab) => tab.key);
     if (allowedTabs.length === 0) return;

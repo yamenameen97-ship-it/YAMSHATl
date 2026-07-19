@@ -26,6 +26,8 @@ import CallExperience from '../components/chat/CallExperience.jsx';
 import VoiceMessagePlayer from '../components/ui/VoiceMessagePlayer.jsx';
 import GroupPinnedBar from '../components/groups/GroupPinnedBar.jsx';
 import GroupQuickLinks from '../components/groups/GroupQuickLinks.jsx';
+// ✅ v88.16: استيراد نفس مكوّن الميكروفون المستخدم في الدردشة الفرديّة (Press-to-Record بأسلوب واتساب)
+import PressToRecordMic from '../components/chat/PressToRecordMic.jsx';
 import '../styles/group-chat.css';
 /* v61: حذف chat-mobile-fixes.css (دمج في chat-redesign-v61.css) */
 import '../styles/groups-features.css';
@@ -76,6 +78,9 @@ const GroupChat = () => {
   const [notifPermission, setNotifPermission] = useState(
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
+  // ✅ v88.16: خطأ الميكروفون (يظهر شريط تحذير أعلى المؤلّف عند فشل الإذن/التسجيل)
+  const [voiceError, setVoiceError] = useState('');
+  const voiceErrorTimerRef = useRef(null);
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -788,6 +793,14 @@ const GroupChat = () => {
             aria-label="مكالمة فيديو"
             onClick={() => handleStartCall('video')}
           >🎥</button>
+          {/* v88.13: زر إنشاء غرفة صوتية مرتبطة بالمجموعة */}
+          <button
+            type="button"
+            className="yam-action-btn"
+            title="إنشاء غرفة صوتية للمجموعة"
+            aria-label="إنشاء غرفة صوتية للمجموعة"
+            onClick={() => navigate(`/voice?create=1&group_id=${encodeURIComponent(groupId)}`)}
+          >🎙️</button>
           <button
             type="button"
             className="yam-action-btn"
@@ -1043,6 +1056,32 @@ const GroupChat = () => {
         onChange={(e) => handleFileSelect(e, 'file')}
       />
 
+      {/* ✅ v88.16: شريط تنبيه غير حاجب لأخطاء الميكروفون (يظهر فوق مؤلّف المجموعة عند فشل الإذن/التسجيل) */}
+      {voiceError ? (
+        <div
+          role="alert"
+          style={{
+            position: 'sticky',
+            bottom: 'calc(74px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px))',
+            margin: '0 12px 8px',
+            padding: '10px 12px',
+            borderRadius: 12,
+            background: 'rgba(239,68,68,0.14)',
+            color: '#fca5a5',
+            fontSize: 13,
+            border: '1px solid rgba(239,68,68,0.32)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            zIndex: 121,
+            direction: 'rtl',
+          }}
+        >
+          <span aria-hidden="true">⚠️</span>
+          <span>{voiceError}</span>
+        </div>
+      ) : null}
+
       <footer className="yam-group-input-area" style={{ position: 'sticky', bottom: 0, insetInline: 0, display: 'grid', gridTemplateColumns: '42px minmax(0, 1fr) 42px', alignItems: 'center', gap: '10px', padding: '10px 12px calc(10px + env(safe-area-inset-bottom, 0px) + var(--yam-keyboard-offset, 0px))', background: 'linear-gradient(180deg, rgba(9, 13, 24, 0.92), rgba(9, 13, 24, 0.98))', borderTop: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 -16px 34px rgba(0,0,0,0.34)', zIndex: 120 }}>
         <button
           className="yam-group-plus-btn"
@@ -1084,7 +1123,45 @@ const GroupChat = () => {
             onFocus={() => window.setTimeout(scrollToBottom, 140)}
             style={{ minWidth: 0, width: '100%', height: '100%', background: 'transparent', border: 0, outline: 0, padding: '11px 0', fontSize: '16px', lineHeight: 1.5, color: '#fff', direction: 'rtl', textAlign: 'right' }}
           />
-          <span className="yam-group-input-icon" style={{ width: '28px', height: '28px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#94a3b8', fontSize: '18px' }}>😊</span>
+          {/*
+            ✅ v88.16 (GROUP MIC — WhatsApp-style Press-to-Record):
+            استُبدلت أيقونة الإيموجي 😊 داخل صندوق الدردشة بزر ميكروفون تسجيل صوتي
+            (نفس ميزة الشات الفردي — مكوّن PressToRecordMic).
+              • اضغط مطولاً ⇒ يبدأ التسجيل فوراً.
+              • اسحب للأعلى ⇒ قفل التسجيل (يظهر زر إرسال + إلغاء).
+              • اسحب للأسفل ⇒ إلغاء فوري.
+              • حرّر الإصبع بدون سحب ⇒ يوقف التسجيل ويُرسل تلقائياً.
+            الهدف: يسمح لمن لا يستطيع الكتابة أو لا يعرف الكتابة بالمراسلة الصوتيّة
+            داخل المجموعات — نفس تجربة الميكروفون في الدردشة الفرديّة.
+          */}
+          <span
+            className="yam-group-input-icon"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              alignSelf: 'center',
+            }}
+          >
+            <PressToRecordMic
+              disabled={uploading}
+              onStateChange={() => { /* لا حاجة لمزامنة إشارة الكتابة هنا داخل المجموعة */ }}
+              onError={(msg) => {
+                setVoiceError(msg || '');
+                if (voiceErrorTimerRef.current) window.clearTimeout(voiceErrorTimerRef.current);
+                voiceErrorTimerRef.current = window.setTimeout(() => setVoiceError(''), 5000);
+                pushToast?.({ type: 'error', title: 'الميكروفون', description: msg || 'تعذّر التسجيل الصوتي.' });
+              }}
+              onSend={(voicePayload) => {
+                // ✅ نمرّر الملف الصوتي إلى نفس مسار رفع الوسائط للمجموعة (mediaType='voice')
+                // uploadAndSendGroupFile يستخدم uploadGroupMedia ثم sendGroupMessage → نفس منطق الوسائط.
+                if (voicePayload?.file) {
+                  uploadAndSendGroupFile(voicePayload.file, 'voice', '');
+                }
+              }}
+            />
+          </span>
         </div>
         <button
           className="yam-group-send-btn"

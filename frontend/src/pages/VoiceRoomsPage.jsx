@@ -15,6 +15,8 @@ export default function VoiceRoomsPage() {
   const navigate = useNavigate();
   // v59.13: دعم ?create=1 لفتح وضع الإنشاء مباشرة (عند الدخول من صفحة المجموعات)
   const wantsCreate = searchParams.get('create') === '1';
+  // v88.13: التقاط group_id من الـquery لربط الغرفة بمجموعة عند الإنشاء
+  const groupIdFromQuery = searchParams.get('group_id') || null;
   const [mode, setMode] = useState(wantsCreate ? "create" : "list"); // list | create | room
   const [activeRoomId, setActiveRoomId] = useState(null);
   // ⚡ المشروع يستخدم Zustand وليس Redux
@@ -47,10 +49,11 @@ export default function VoiceRoomsPage() {
     return (
       <MainLayout>
         <CreateRoomInline
+          groupId={groupIdFromQuery}
           onCancel={() => {
             // v59.13: إذا أتى المستخدم من /groups عبر ?create=1، ارجع للمجموعات
             if (wantsCreate) {
-              navigate('/groups');
+              navigate(groupIdFromQuery ? `/groups/${groupIdFromQuery}` : '/groups');
               return;
             }
             setMode("list");
@@ -71,7 +74,7 @@ export default function VoiceRoomsPage() {
   );
 }
 
-function CreateRoomInline({ onCancel, onCreated }) {
+function CreateRoomInline({ onCancel, onCreated, groupId = null }) {
   const [form, setForm] = useState({
     title: "", description: "", category: "general",
     seats_count: 8, is_private: false, password: "",
@@ -89,6 +92,7 @@ function CreateRoomInline({ onCancel, onCreated }) {
     setBusy(true); setErr(null);
     try {
       // v88.3.5: تنظيف الحمولة قبل الإرسال — أمان مقابل backend Pydantic strict
+      // v88.13: تمرير group_id لربط الغرفة بمجموعة
       const payload = {
         title: form.title.trim(),
         description: form.description.trim() || null,
@@ -96,6 +100,7 @@ function CreateRoomInline({ onCancel, onCreated }) {
         seats_count: Number(form.seats_count) || 8,
         is_private: Boolean(form.is_private),
         password: form.is_private ? (form.password || null) : null,
+        group_id: groupId || null,
       };
       const r = await voiceRoomsApi.create(payload);
       if (!r || !r.id) throw new Error("السيرفر لم يرجع معرّف الغرفة");
@@ -111,17 +116,22 @@ function CreateRoomInline({ onCancel, onCreated }) {
       } else if (status === 403) {
         msg = (typeof detail === 'string' ? detail : null) || "ليس لديك صلاحية لإنشاء غرفة صوتية";
       } else if (status === 404) {
-        // تحقق من حالة الراوتر حتى نتأكد
-        try {
-          const p = await voiceRoomsApi.ping();
-          if (p?.available) {
-            // الراوتر موجود، لكن مسار الإنشاء فشل — غالباً مشكلة متصفح/كوكيز
-            msg = "تعذر إنشاء الغرفة — جرّب تحديث الصفحة وإعادة تسجيل الدخول";
-          } else {
+        // v88.13: 404 قد تعني أيضاً "المجموعة غير موجودة" — نميّز حسب detail
+        if (typeof detail === 'string' && detail.includes('المجموعة')) {
+          msg = detail;
+        } else {
+          // تحقق من حالة الراوتر حتى نتأكد
+          try {
+            const p = await voiceRoomsApi.ping();
+            if (p?.available) {
+              // الراوتر موجود، لكن مسار الإنشاء فشل — غالباً مشكلة متصفح/كوكيز
+              msg = "تعذر إنشاء الغرفة — جرّب تحديث الصفحة وإعادة تسجيل الدخول";
+            } else {
+              msg = "خدمة الغرف الصوتية غير متوفرة حالياً — حاول مجدداً بعد قليل";
+            }
+          } catch (_) {
             msg = "خدمة الغرف الصوتية غير متوفرة حالياً — حاول مجدداً بعد قليل";
           }
-        } catch (_) {
-          msg = "خدمة الغرف الصوتية غير متوفرة حالياً — حاول مجدداً بعد قليل";
         }
       } else if (status === 400 && detail) {
         msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
@@ -147,7 +157,10 @@ function CreateRoomInline({ onCancel, onCreated }) {
       fontFamily: "'Noto Sans Arabic', sans-serif",
       padding: 16, maxWidth: 520, margin: "0 auto", color: "#fff",
     }}>
-      <h2 style={{ fontWeight: 800 }}>➕ إنشاء غرفة صوتية</h2>
+      <h2 style={{ fontWeight: 800 }}>
+        ➕ إنشاء غرفة صوتية
+        {groupId && <span style={{ fontSize: 13, color: '#9CA3AF', marginRight: 8 }}> (داخل مجموعة)</span>}
+      </h2>
       <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
         <Field label="عنوان الغرفة">
           <input value={form.title}

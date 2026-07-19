@@ -68,6 +68,8 @@ class CreateRoomRequest(BaseModel):
     seats_count: int = 8
     is_private: bool = False
     password: Optional[str] = None
+    # v88.13: ربط الغرفة بمجموعة (اختياري)
+    group_id: Optional[str] = None
 
 
 class JoinSeatRequest(BaseModel):
@@ -94,9 +96,40 @@ def create_room(req: CreateRoomRequest,
     if req.is_private and (not req.password or not req.password.strip()):
         raise HTTPException(400, "الغرفة الخاصة تتطلب كلمة مرور")
 
+    # v88.13: تحقق من وجود المجموعة إذا تم تمرير group_id
+    group_id_value = None
+    if req.group_id:
+        try:
+            from app.models.group import Group, GroupMember  # type: ignore
+            group = db.get(Group, req.group_id)
+            if not group:
+                raise HTTPException(404, "المجموعة غير موجودة")
+            # تحقق أن المستخدم عضو في المجموعة (المالك أو عضو)
+            is_owner = group.owner_id == user.id
+            is_member = False
+            try:
+                member = db.execute(
+                    select(GroupMember).where(and_(
+                        GroupMember.group_id == req.group_id,
+                        GroupMember.user_id == user.id,
+                    ))
+                ).scalar_one_or_none()
+                is_member = member is not None
+            except Exception:
+                is_member = False
+            if not (is_owner or is_member):
+                raise HTTPException(403, "يجب أن تكون عضواً في المجموعة لإنشاء غرفة صوتية داخلها")
+            group_id_value = req.group_id
+        except HTTPException:
+            raise
+        except ImportError:
+            _log.warning("[voice_rooms.create] Group model not importable — skipping group binding")
+            group_id_value = None
+
     try:
         room = VoiceRoom(
             owner_id=user.id,
+            group_id=group_id_value,
             title=req.title.strip(),
             description=(req.description or "").strip() or None,
             cover_image=req.cover_image,
@@ -134,11 +167,15 @@ def create_room(req: CreateRoomRequest,
 @router.get("/rooms")
 @router.get("/rooms/")
 def list_rooms(category: Optional[str] = Query(None),
+               group_id: Optional[str] = Query(None),
                db: Session = Depends(get_db),
                user: User = Depends(get_current_user)):
     stmt = select(VoiceRoom).where(VoiceRoom.is_active.is_(True))
     if category:
         stmt = stmt.where(VoiceRoom.category == category)
+    # v88.13: دعم فلترة الغرف بحسب المجموعة
+    if group_id:
+        stmt = stmt.where(VoiceRoom.group_id == group_id)
     rooms = db.execute(stmt.order_by(VoiceRoom.current_listeners.desc()).limit(100)).scalars().all()
     return {
         "rooms": [
@@ -149,6 +186,7 @@ def list_rooms(category: Optional[str] = Query(None),
                 "current_listeners": r.current_listeners,
                 "is_private": r.is_private,
                 "owner_id": r.owner_id,
+                "group_id": getattr(r, 'group_id', None),
                 "started_at": r.started_at.isoformat(),
             } for r in rooms
         ]

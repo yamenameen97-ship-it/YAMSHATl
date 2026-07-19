@@ -217,6 +217,9 @@ class VoiceRoom(Base):
     __tablename__ = "voice_rooms"
     id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # v88.13: ربط الغرفة بمجموعة (اختياري) — إذا تم الإنشاء من داخل مجموعة
+    # نستخدم String(36) لتطابق groups.id (وهو UUID)
+    group_id = Column(String(36), ForeignKey("groups.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     cover_image = Column(String(500), nullable=True)

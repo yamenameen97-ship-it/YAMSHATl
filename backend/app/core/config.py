@@ -245,6 +245,10 @@ class Settings:
     PRIMARY_ADMIN_PASSWORD: str = env_str('PRIMARY_ADMIN_PASSWORD', 'yamen1234')
     DEMO_ACCOUNT_EMAIL: str = env_str('DEMO_ACCOUNT_EMAIL', env_str('DEV_SUBSCRIBER_EMAIL', 'yasryameen21@gmail.com')).lower()
     DEMO_ACCOUNT_PASSWORD: str = env_str('DEMO_ACCOUNT_PASSWORD', env_str('DEV_SUBSCRIBER_PASSWORD', '12345678'))
+    # v88.18: حساب تجريبي ثانٍ يمكّن المستخدم من تسجيل الدخول من جهاز ثانٍ
+    # لاختبار خدمات المكالمات والدردشة دون الحاجة لاستخدام حساب الأدمن.
+    SECONDARY_DEMO_ACCOUNT_EMAIL: str = env_str('SECONDARY_DEMO_ACCOUNT_EMAIL', 'ameenyamen9@gmail.com').lower()
+    SECONDARY_DEMO_ACCOUNT_PASSWORD: str = env_str('SECONDARY_DEMO_ACCOUNT_PASSWORD', '123456789')
     DEV_SUBSCRIBER_EMAIL: str = env_str('DEV_SUBSCRIBER_EMAIL', '')
     DEV_SUBSCRIBER_PASSWORD: str = env_str('DEV_SUBSCRIBER_PASSWORD', '')
     DEV_BYPASS_ADDITIONAL_VERIFICATION_EMAILS_RAW: str = env_str("DEV_BYPASS_ADDITIONAL_VERIFICATION_EMAILS", "")

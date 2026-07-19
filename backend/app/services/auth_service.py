@@ -19,6 +19,10 @@ VERIFICATION_REQUIRED_DETAIL = 'Email verification required'
 EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$', re.IGNORECASE)
 DEMO_ACCOUNT_EMAIL = (settings.DEMO_ACCOUNT_EMAIL or 'yasryameen21@gmail.com').strip().lower()
 DEMO_ACCOUNT_BASE_USERNAME = ((DEMO_ACCOUNT_EMAIL.split('@')[0] if '@' in DEMO_ACCOUNT_EMAIL else DEMO_ACCOUNT_EMAIL) or 'yasryameen21').strip().lower()
+# v88.18: حساب تجريبي ثانٍ (للاختبار من جهاز ثانٍ - مكالمات/دردشة)
+SECONDARY_DEMO_ACCOUNT_EMAIL = (getattr(settings, 'SECONDARY_DEMO_ACCOUNT_EMAIL', '') or 'ameenyamen9@gmail.com').strip().lower()
+SECONDARY_DEMO_ACCOUNT_BASE_USERNAME = ((SECONDARY_DEMO_ACCOUNT_EMAIL.split('@')[0] if '@' in SECONDARY_DEMO_ACCOUNT_EMAIL else SECONDARY_DEMO_ACCOUNT_EMAIL) or 'ameenyamen9').strip().lower()
+SECONDARY_DEMO_ACCOUNT_PASSWORD = (getattr(settings, 'SECONDARY_DEMO_ACCOUNT_PASSWORD', '') or '123456789').strip()
 
 
 def utcnow_naive() -> datetime:
@@ -103,8 +107,25 @@ def _is_reserved_demo_identifier(value: str | None) -> bool:
     return normalized in {DEMO_ACCOUNT_EMAIL, DEMO_ACCOUNT_BASE_USERNAME}
 
 
+# v88.18: مطابق لـ _is_reserved_demo_identifier لكن للحساب الثاني
+def _is_reserved_secondary_demo_identifier(value: str | None) -> bool:
+    normalized = (value or '').strip().lower()
+    return normalized in {SECONDARY_DEMO_ACCOUNT_EMAIL, SECONDARY_DEMO_ACCOUNT_BASE_USERNAME}
+
+
 def _allocate_demo_username(db: Session) -> str:
     base_username = DEMO_ACCOUNT_BASE_USERNAME
+    candidate = base_username
+    suffix = 1
+    while db.query(User).filter(func.lower(User.username) == candidate.lower()).first() is not None:
+        candidate = f'{base_username}_{suffix}'
+        suffix += 1
+    return candidate
+
+
+# v88.18: مطابق لـ _allocate_demo_username لكن للحساب الثاني
+def _allocate_secondary_demo_username(db: Session) -> str:
+    base_username = SECONDARY_DEMO_ACCOUNT_BASE_USERNAME
     candidate = base_username
     suffix = 1
     while db.query(User).filter(func.lower(User.username) == candidate.lower()).first() is not None:
@@ -150,6 +171,54 @@ def _provision_reserved_demo_user(db: Session, identifier: str, password: str) -
         username=_allocate_demo_username(db),
         email=DEMO_ACCOUNT_EMAIL,
         password=(password or '').strip() or settings.DEMO_ACCOUNT_PASSWORD or '12345678',
+    )
+    user.email_verified = True
+    user.is_active = True
+    user.email_verification_code = None
+    user.email_verification_expires_at = None
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+# v88.18: توفير تلقائي للحساب التجريبي الثاني
+def _provision_reserved_secondary_demo_user(db: Session, identifier: str, password: str) -> User | None:
+    if not _is_reserved_secondary_demo_identifier(identifier):
+        return None
+
+    existing = get_user_by_email(db, SECONDARY_DEMO_ACCOUNT_EMAIL)
+    if existing is None:
+        existing = db.query(User).filter(func.lower(User.username) == SECONDARY_DEMO_ACCOUNT_BASE_USERNAME.lower()).first()
+
+    if existing is not None:
+        changed = False
+        if not bool(existing.is_active):
+            existing.is_active = True
+            changed = True
+        if not bool(existing.email_verified):
+            existing.email_verified = True
+            changed = True
+        if getattr(existing, 'email_verification_code', None):
+            existing.email_verification_code = None
+            changed = True
+        if getattr(existing, 'email_verification_expires_at', None) is not None:
+            existing.email_verification_expires_at = None
+            changed = True
+        desired_password = SECONDARY_DEMO_ACCOUNT_PASSWORD
+        if desired_password and not _password_matches(desired_password, existing.hashed_password):
+            existing.hashed_password = hash_password(desired_password)
+            existing.password_changed_at = utcnow_naive()
+            changed = True
+        if changed:
+            db.commit()
+            db.refresh(existing)
+        return existing
+
+    user = register_user(
+        db,
+        username=_allocate_secondary_demo_username(db),
+        email=SECONDARY_DEMO_ACCOUNT_EMAIL,
+        password=(password or '').strip() or SECONDARY_DEMO_ACCOUNT_PASSWORD or '123456789',
     )
     user.email_verified = True
     user.is_active = True
@@ -211,6 +280,9 @@ def authenticate_user(db: Session, identifier: str, password: str, require_verif
 
     if user is None:
         user = _provision_reserved_demo_user(db, lowered_identifier, password or '')
+    # v88.18: توفير تلقائي للحساب التجريبي الثاني عند أول تسجيل دخول
+    if user is None:
+        user = _provision_reserved_secondary_demo_user(db, lowered_identifier, password or '')
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Email or username not found')
 

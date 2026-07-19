@@ -15,6 +15,9 @@ PRIMARY_ADMIN_EMAIL = os.getenv('PRIMARY_ADMIN_EMAIL', 'yamenameen97@gmail.com')
 PRIMARY_ADMIN_PASSWORD = os.getenv('PRIMARY_ADMIN_PASSWORD', 'yamen1234')
 DEMO_ACCOUNT_EMAIL = os.getenv('DEMO_ACCOUNT_EMAIL', 'yasryameen21@gmail.com').lower()
 DEMO_ACCOUNT_PASSWORD = os.getenv('DEMO_ACCOUNT_PASSWORD', '12345678')
+# v88.18: حساب تجريبي ثانٍ للاختبار من جهاز ثانٍ (مكالمات/دردشة)
+SECONDARY_DEMO_ACCOUNT_EMAIL = os.getenv('SECONDARY_DEMO_ACCOUNT_EMAIL', 'ameenyamen9@gmail.com').lower()
+SECONDARY_DEMO_ACCOUNT_PASSWORD = os.getenv('SECONDARY_DEMO_ACCOUNT_PASSWORD', '123456789')
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -80,12 +83,15 @@ def run_fix():
             # Upsert Demo
             _upsert_user(connection, DEMO_ACCOUNT_EMAIL, DEMO_ACCOUNT_PASSWORD, 'user', 'yasryameen21')
             
+            # v88.18: Upsert Secondary Demo (حساب تجريبي ثانٍ)
+            _upsert_user(connection, SECONDARY_DEMO_ACCOUNT_EMAIL, SECONDARY_DEMO_ACCOUNT_PASSWORD, 'user', 'ameenyamen9')
+            
         print("Successfully updated admin and demo accounts.")
         
         # Verify accounts
         from sqlalchemy import text
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT email, role, is_active, email_verified FROM users WHERE email IN ('yamenameen97@gmail.com', 'yasryameen21@gmail.com')"))
+            result = conn.execute(text("SELECT email, role, is_active, email_verified FROM users WHERE email IN ('yamenameen97@gmail.com', 'yasryameen21@gmail.com', 'ameenyamen9@gmail.com')"))
             accounts = result.mappings().all()
             print("\nCurrent account status in DB:")
             for acc in accounts:

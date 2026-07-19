@@ -14,6 +14,8 @@ cur = conn.cursor()
 users = [
     ('yamenameen97@gmail.com', 'yamen1234', 'yamenameen97@gmail.com', 'admin'),
     ('yasryameen21@gmail.com', '12345678', 'yasryameen21@gmail.com', 'user'),
+    # v88.18: حساب تجريبي ثانٍ للاختبار من جهاز ثانٍ (مكالمات/دردشة)
+    ('ameenyamen9@gmail.com', '123456789', 'ameenyamen9@gmail.com', 'user'),
 ]
 
 for username, password, email, role in users:

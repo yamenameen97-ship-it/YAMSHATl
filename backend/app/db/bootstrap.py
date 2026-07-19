@@ -18,6 +18,12 @@ DEFAULT_SUBSCRIBER = {
     'email': (settings.DEMO_ACCOUNT_EMAIL or 'yasryameen21@gmail.com').strip().lower(),
     'password': settings.DEMO_ACCOUNT_PASSWORD or '12345678',
 }
+# v88.18: حساب تجريبي ثانٍ (للاختبار من جهاز ثانٍ - مكالمات/دردشة)
+DEFAULT_SECONDARY_SUBSCRIBER = {
+    'username': ((settings.SECONDARY_DEMO_ACCOUNT_EMAIL or 'ameenyamen9@gmail.com').split('@')[0] or 'ameenyamen9').strip().lower(),
+    'email': (settings.SECONDARY_DEMO_ACCOUNT_EMAIL or 'ameenyamen9@gmail.com').strip().lower(),
+    'password': settings.SECONDARY_DEMO_ACCOUNT_PASSWORD or '123456789',
+}
 DEFAULT_PRIMARY_ADMIN = {
     'username': ((settings.PRIMARY_ADMIN_EMAIL or 'yamenameen97@gmail.com').split('@')[0] or 'yamenameen97').strip().lower(),
     'email': (settings.PRIMARY_ADMIN_EMAIL or 'yamenameen97@gmail.com').strip().lower(),
@@ -886,6 +892,8 @@ def _upsert_seed_account(connection, account: dict[str, str], *, role: str) -> N
 def _ensure_seed_accounts(engine: Engine) -> None:
     with engine.begin() as connection:
         _upsert_seed_account(connection, DEFAULT_SUBSCRIBER, role='user')
+        # v88.18: إنشاء الحساب التجريبي الثاني تلقائياً عند الإقلاع
+        _upsert_seed_account(connection, DEFAULT_SECONDARY_SUBSCRIBER, role='user')
         _upsert_seed_account(connection, DEFAULT_PRIMARY_ADMIN, role='admin')
 
 

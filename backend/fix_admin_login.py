@@ -31,6 +31,9 @@ PRIMARY_ADMIN_EMAIL = os.getenv('PRIMARY_ADMIN_EMAIL', 'yamenameen97@gmail.com')
 PRIMARY_ADMIN_PASSWORD = os.getenv('PRIMARY_ADMIN_PASSWORD', 'yamen1234')
 DEMO_ACCOUNT_EMAIL = os.getenv('DEMO_ACCOUNT_EMAIL', 'yasryameen21@gmail.com').lower()
 DEMO_ACCOUNT_PASSWORD = os.getenv('DEMO_ACCOUNT_PASSWORD', '12345678')
+# v88.18: حساب تجريبي ثانٍ لاختبار المكالمات/الدردشة من جهاز ثانٍ
+SECONDARY_DEMO_ACCOUNT_EMAIL = os.getenv('SECONDARY_DEMO_ACCOUNT_EMAIL', 'ameenyamen9@gmail.com').lower()
+SECONDARY_DEMO_ACCOUNT_PASSWORD = os.getenv('SECONDARY_DEMO_ACCOUNT_PASSWORD', '123456789')
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -161,7 +164,57 @@ def fix_admin_accounts():
                     }
                 )
                 print(f"   ✓ Created new demo account")
-        
+
+            # v88.18: Fix Secondary Demo Account (حساب تجريبي ثانٍ)
+            print(f"\n[2b] Fixing Secondary Demo Account: {SECONDARY_DEMO_ACCOUNT_EMAIL}")
+            sec_demo_exists = conn.execute(
+                text('SELECT id, role, is_active, email_verified FROM users WHERE lower(email) = :email'),
+                {'email': SECONDARY_DEMO_ACCOUNT_EMAIL}
+            ).first()
+
+            if sec_demo_exists:
+                sec_id, sec_role, sec_active, sec_verified = sec_demo_exists
+                print(f"   - Found existing secondary demo (ID: {sec_id}, Role: {sec_role}, Active: {sec_active}, Verified: {sec_verified})")
+                conn.execute(
+                    text('''
+                        UPDATE users
+                        SET role = :role,
+                            is_active = :is_active,
+                            email_verified = :email_verified,
+                            hashed_password = :hashed_password,
+                            password_changed_at = :now
+                        WHERE id = :id
+                    '''),
+                    {
+                        'id': sec_id,
+                        'role': 'user',
+                        'is_active': True,
+                        'email_verified': True,
+                        'hashed_password': hash_password(SECONDARY_DEMO_ACCOUNT_PASSWORD),
+                        'now': datetime.utcnow()
+                    }
+                )
+                print(f"   ✓ Updated secondary demo account to role=user, active=true, verified=true")
+            else:
+                print(f"   - Secondary demo account not found, creating new one...")
+                conn.execute(
+                    text('''
+                        INSERT INTO users
+                        (username, email, hashed_password, role, is_active, email_verified, created_at, password_changed_at)
+                        VALUES (:username, :email, :hashed_password, :role, :is_active, :email_verified, :now, :now)
+                    '''),
+                    {
+                        'username': SECONDARY_DEMO_ACCOUNT_EMAIL.split('@')[0],
+                        'email': SECONDARY_DEMO_ACCOUNT_EMAIL,
+                        'hashed_password': hash_password(SECONDARY_DEMO_ACCOUNT_PASSWORD),
+                        'role': 'user',
+                        'is_active': True,
+                        'email_verified': True,
+                        'now': datetime.utcnow()
+                    }
+                )
+                print(f"   ✓ Created new secondary demo account")
+
         # Verify the fixes
         print(f"\n[3] Verifying account status...")
         with engine.connect() as conn:
@@ -169,10 +222,10 @@ def fix_admin_accounts():
                 text('''
                     SELECT email, username, role, is_active, email_verified 
                     FROM users 
-                    WHERE email IN (:admin_email, :demo_email)
+                    WHERE email IN (:admin_email, :demo_email, :sec_demo_email)
                     ORDER BY email
                 '''),
-                {'admin_email': PRIMARY_ADMIN_EMAIL, 'demo_email': DEMO_ACCOUNT_EMAIL}
+                {'admin_email': PRIMARY_ADMIN_EMAIL, 'demo_email': DEMO_ACCOUNT_EMAIL, 'sec_demo_email': SECONDARY_DEMO_ACCOUNT_EMAIL}
             )
             accounts = result.mappings().all()
             
@@ -195,6 +248,8 @@ def fix_admin_accounts():
         print(f"  Admin Password: {PRIMARY_ADMIN_PASSWORD}")
         print(f"\n  Demo Email: {DEMO_ACCOUNT_EMAIL}")
         print(f"  Demo Password: {DEMO_ACCOUNT_PASSWORD}")
+        print(f"\n  Secondary Demo Email: {SECONDARY_DEMO_ACCOUNT_EMAIL}")
+        print(f"  Secondary Demo Password: {SECONDARY_DEMO_ACCOUNT_PASSWORD}")
         
         return True
         

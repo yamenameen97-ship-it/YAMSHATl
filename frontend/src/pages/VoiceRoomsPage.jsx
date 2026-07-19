@@ -1,5 +1,6 @@
 /**
  * صفحة الغرف الصوتية - VoiceRoomsPage
+ * v88.17 — إصلاح جذري نهائي لعرض رسائل الخطأ + retry تلقائي عند 503
  * RTL + Noto Sans Arabic. تتنقل بين القائمة وإنشاء غرفة وعرض غرفة inline (لا مدوالس).
  */
 import React, { useState, useEffect } from "react";
@@ -13,17 +14,12 @@ import { useAppStore } from "../store/appStore.js";
 export default function VoiceRoomsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  // v59.13: دعم ?create=1 لفتح وضع الإنشاء مباشرة (عند الدخول من صفحة المجموعات)
   const wantsCreate = searchParams.get('create') === '1';
-  // v88.13: التقاط group_id من الـquery لربط الغرفة بمجموعة عند الإنشاء
   const groupIdFromQuery = searchParams.get('group_id') || null;
-  const [mode, setMode] = useState(wantsCreate ? "create" : "list"); // list | create | room
+  const [mode, setMode] = useState(wantsCreate ? "create" : "list");
   const [activeRoomId, setActiveRoomId] = useState(null);
-  // ⚡ المشروع يستخدم Zustand وليس Redux
   const currentUserId = useAppStore((s) => s?.session?.id ?? s?.session?.user?.id ?? null);
 
-  // بعد فتح وضع الإنشاء تلقائيًا، ننظّف الـquery param لأن المستخدم إذا ضغط رجوع
-  // ثم فتح الصفحة مجددًا لا تفتح على وضع الإنشاء دون قصد.
   useEffect(() => {
     if (wantsCreate) {
       const next = new URLSearchParams(searchParams);
@@ -51,7 +47,6 @@ export default function VoiceRoomsPage() {
         <CreateRoomInline
           groupId={groupIdFromQuery}
           onCancel={() => {
-            // v59.13: إذا أتى المستخدم من /groups عبر ?create=1، ارجع للمجموعات
             if (wantsCreate) {
               navigate(groupIdFromQuery ? `/groups/${groupIdFromQuery}` : '/groups');
               return;
@@ -74,6 +69,9 @@ export default function VoiceRoomsPage() {
   );
 }
 
+// v88.17: helper — انتظار قبل إعادة المحاولة
+const _sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 function CreateRoomInline({ onCancel, onCreated, groupId = null }) {
   const [form, setForm] = useState({
     title: "", description: "", category: "general",
@@ -82,17 +80,29 @@ function CreateRoomInline({ onCancel, onCreated, groupId = null }) {
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  // v88.17: محاولة إنشاء مع retry ذكي عند 503 (الجداول قيد التهيئة)
+  const _tryCreate = async (payload, attempt = 1) => {
+    try {
+      return await voiceRoomsApi.create(payload);
+    } catch (e) {
+      const status = e?.response?.status;
+      // 503 = الجداول قيد التهيئة، ننتظر ونعيد المحاولة
+      if (status === 503 && attempt < 3) {
+        await _sleep(1500 * attempt);
+        return _tryCreate(payload, attempt + 1);
+      }
+      throw e;
+    }
+  };
+
   const submit = async () => {
     if (!form.title.trim()) { setErr("أدخل عنواناً للغرفة"); return; }
-    // v88.3.5: تحقق من كلمة المرور إذا كانت الغرفة خاصة
     if (form.is_private && !form.password.trim()) {
       setErr("الغرفة الخاصة تتطلب كلمة مرور");
       return;
     }
     setBusy(true); setErr(null);
     try {
-      // v88.3.5: تنظيف الحمولة قبل الإرسال — أمان مقابل backend Pydantic strict
-      // v88.13: تمرير group_id لربط الغرفة بمجموعة
       const payload = {
         title: form.title.trim(),
         description: form.description.trim() || null,
@@ -102,12 +112,10 @@ function CreateRoomInline({ onCancel, onCreated, groupId = null }) {
         password: form.is_private ? (form.password || null) : null,
         group_id: groupId || null,
       };
-      const r = await voiceRoomsApi.create(payload);
+      const r = await _tryCreate(payload);
       if (!r || !r.id) throw new Error("السيرفر لم يرجع معرّف الغرفة");
       onCreated(r.id);
     } catch (e) {
-      // v88.3.5: عند 404 نتحقّق إذا كان الراوتر محملاً فعلاً (ping)
-      // حتى نميّز بين "الخدمة غير متوفرة" و "مشكلة في طلبيك"
       const status = e?.response?.status;
       const detail = e?.response?.data?.detail;
       let msg;
@@ -116,16 +124,18 @@ function CreateRoomInline({ onCancel, onCreated, groupId = null }) {
       } else if (status === 403) {
         msg = (typeof detail === 'string' ? detail : null) || "ليس لديك صلاحية لإنشاء غرفة صوتية";
       } else if (status === 404) {
-        // v88.13: 404 قد تعني أيضاً "المجموعة غير موجودة" — نميّز حسب detail
         if (typeof detail === 'string' && detail.includes('المجموعة')) {
           msg = detail;
         } else {
-          // تحقق من حالة الراوتر حتى نتأكد
+          // v88.17: تشخيص أدقّ عبر ping
           try {
             const p = await voiceRoomsApi.ping();
             if (p?.available) {
-              // الراوتر موجود، لكن مسار الإنشاء فشل — غالباً مشكلة متصفح/كوكيز
-              msg = "تعذر إنشاء الغرفة — جرّب تحديث الصفحة وإعادة تسجيل الدخول";
+              if (p.tables_ready === false) {
+                msg = "الجداول قيد التهيئة على السيرفر — أعد المحاولة بعد ثوانٍ";
+              } else {
+                msg = "تعذر إنشاء الغرفة — جرّب تحديث الصفحة وإعادة تسجيل الدخول";
+              }
             } else {
               msg = "خدمة الغرف الصوتية غير متوفرة حالياً — حاول مجدداً بعد قليل";
             }
@@ -136,7 +146,6 @@ function CreateRoomInline({ onCancel, onCreated, groupId = null }) {
       } else if (status === 400 && detail) {
         msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
       } else if (status === 422 && detail) {
-        // Pydantic validation error
         msg = typeof detail === 'string' ? detail : "بعض الحقول غير صحيحة — تحقّق من العنوان وعدد المقاعد";
       } else if (status === 503) {
         msg = (typeof detail === 'string' ? detail : null) || "خدمة الغرف الصوتية تحت الصيانة — حاول لاحقاً";

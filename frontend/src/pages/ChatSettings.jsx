@@ -18,29 +18,19 @@ const URL_PATTERN = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
 
 const IMAGE_MEDIA_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|bmp|heic|heif)(?:$|\?)/i;
 const VIDEO_MEDIA_RE = /\.(mp4|webm|mov|m4v|mkv)(?:$|\?)/i;
-const AUDIO_MEDIA_RE = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|webm)(?:$|\?)/i;
-const FILE_MEDIA_RE = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|tar|gz|txt|csv|apk)(?:$|\?)/i;
 
 function getPrimaryAttachment(message = {}) {
   return Array.isArray(message?.attachments) && message.attachments.length ? (message.attachments[0] || {}) : {};
 }
 
-// ✅ v88.17: توسيع مصادر URL — دعم voice_url و audio_url و file_url و attachment_url
-// المشكلة السابقة: كان يفحص media_url فقط، فتفوت الملفات والصوتيات المرسلة عبر حقول مختلفة.
 function resolveMessageMediaUrl(message = {}) {
   const attachment = getPrimaryAttachment(message);
   return String(
     message?.media_url
     || message?.media_urls?.[0]
-    || message?.voice_url
-    || message?.audio_url
-    || message?.file_url
-    || message?.attachment_url
     || attachment?.url
     || attachment?.mediaUrl
     || attachment?.media_url
-    || attachment?.cdn_url
-    || attachment?.cdnUrl
     || ''
   ).trim();
 }
@@ -65,19 +55,10 @@ function resolveMediaType(message = {}) {
   const attachment = getPrimaryAttachment(message);
   const mediaUrl = resolveMessageMediaUrl(message).toLowerCase();
   const rawType = String(message?.type || message?.message_type || attachment?.kind || attachment?.type || '').trim().toLowerCase();
-  const mime = String(attachment?.mime_type || attachment?.mimeType || message?.mime_type || '').trim().toLowerCase();
+  const mime = String(attachment?.mime_type || attachment?.mimeType || '').trim().toLowerCase();
   if (['video', 'media_video'].includes(rawType) || mime.startsWith('video/') || VIDEO_MEDIA_RE.test(mediaUrl)) return 'video';
   if (mime.startsWith('image/') || IMAGE_MEDIA_RE.test(mediaUrl) || ['image', 'photo', 'media_image'].includes(rawType)) return 'image';
-  if (['voice', 'audio', 'media_voice', 'media_audio'].includes(rawType) || mime.startsWith('audio/') || AUDIO_MEDIA_RE.test(mediaUrl)) return 'voice';
   return 'file';
-}
-
-// ✅ v88.17: كاشف روابط النصوص — يستخدم في تصنيف الرسائل النصية التي تحوي روابط
-function messageContainsMedia(message = {}) {
-  const url = resolveMessageMediaUrl(message);
-  if (url) return true;
-  const hasAttachments = Array.isArray(message?.attachments) && message.attachments.length > 0;
-  return hasAttachments;
 }
 
 export default function ChatSettings() {
@@ -144,47 +125,30 @@ export default function ChatSettings() {
     };
   }, [peer, pushToast]);
 
-  // ✅ v88.17: تصنيف موحّد لكل رسالة — يتم مرة واحدة ثم يوزَّع على القوائم.
-  // هذا يمنع فقدان العناصر بسبب اختلاف حقول URL بين النسخ (media_url/voice_url/attachments).
-  const classifiedMessages = useMemo(() => messages.map((item) => {
-    const url = resolveMessageMediaUrl(item);
-    const type = resolveMediaType(item);
-    return { raw: item, url, type };
-  }), [messages]);
+  const mediaItems = useMemo(() => messages
+    .filter((item) => resolveMessageMediaUrl(item))
+    .map((item, index) => ({
+      id: String(item?.id || item?.client_id || index),
+      url: resolveMessageMediaUrl(item),
+      type: resolveMediaType(item),
+      caption: item.content || item.message || '',
+    })), [messages]);
 
-  const mediaItems = useMemo(() => classifiedMessages
-    .filter((entry) => entry.url && (entry.type === 'image' || entry.type === 'video'))
-    .map((entry, index) => ({
-      id: String(entry.raw?.id || entry.raw?.client_id || index),
-      url: entry.url,
-      type: entry.type,
-      caption: entry.raw?.content || entry.raw?.message || '',
-    })), [classifiedMessages]);
+  const fileItems = useMemo(() => messages.filter((item) => (
+    item?.type === 'file'
+    || item?.type === 'voice'
+    || (Array.isArray(item?.attachments) && item.attachments.length > 0)
+  )), [messages]);
 
-  // ✅ v88.17: قائمة الملفات والصوتيات — تشمل الآن ملفات المرفقات + رسائل الصوت
-  // + ملفات المستندات المرسلة عبر media_url. المشكلة السابقة: كان يعتمد على type==='file' فقط
-  // بينما الخادم يرسل message_type='file' أو mime_type=application/... .
-  const fileItems = useMemo(() => classifiedMessages
-    .filter((entry) => entry.url && (entry.type === 'file' || entry.type === 'voice'))
-    .map((entry) => entry.raw), [classifiedMessages]);
-
-  // ✅ v88.17: كشف الروابط من كل الحقول النصية الممكنة (content/message/text/caption)
-  // بعض إصدارات الخادم تحفظ نص الرسالة في message بينما أخرى في content — نغطي الاثنين + text/caption.
   const sharedLinks = useMemo(() => {
     const collected = [];
     messages.forEach((item, index) => {
-      const text = [
-        item?.content,
-        item?.message,
-        item?.text,
-        item?.caption,
-      ].filter(Boolean).join(' ');
-      URL_PATTERN.lastIndex = 0;
+      const text = `${item?.content || ''} ${item?.message || ''}`;
       const matches = text.match(URL_PATTERN) || [];
       matches.forEach((url, linkIndex) => {
         const normalized = url.startsWith('http') ? url : `https://${url}`;
         collected.push({
-          id: `${item?.id || item?.client_id || index}-${linkIndex}`,
+          id: `${item?.id || index}-${linkIndex}`,
           url: normalized,
           sender: item?.sender || 'غير معروف',
         });
@@ -639,19 +603,15 @@ export default function ChatSettings() {
             {!fileItems.length ? <div className="yam-settings-empty">لا توجد ملفات أو رسائل صوتية مشتركة حتى الآن.</div> : null}
             {fileItems.length ? (
               <div className="yam-file-list">
-                {fileItems.map((item, index) => {
-                  const fileUrl = resolveMessageMediaUrl(item);
-                  const fileType = resolveMediaType(item);
-                  return (
-                    <div key={String(item?.id || item?.client_id || index)} className="yam-file-item">
-                      <div className="yam-file-copy">
-                        <strong>{extractFileName(item)}</strong>
-                        <span>{fileType === 'voice' ? 'رسالة صوتية' : 'ملف مرفق'}</span>
-                      </div>
-                      {fileUrl ? <a className="yam-open-link" href={fileUrl} target="_blank" rel="noreferrer">فتح</a> : <span aria-hidden="true">📎</span>}
+                {fileItems.map((item, index) => (
+                  <div key={String(item?.id || item?.client_id || index)} className="yam-file-item">
+                    <div className="yam-file-copy">
+                      <strong>{extractFileName(item)}</strong>
+                      <span>{item?.type === 'voice' ? 'رسالة صوتية' : 'ملف مرفق'}</span>
                     </div>
-                  );
-                })}
+                    {resolveMessageMediaUrl(item) ? <a className="yam-open-link" href={resolveMessageMediaUrl(item)} target="_blank" rel="noreferrer">فتح</a> : <span aria-hidden="true">📎</span>}
+                  </div>
+                ))}
               </div>
             ) : null}
           </section>

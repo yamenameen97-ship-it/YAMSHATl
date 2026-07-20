@@ -938,26 +938,37 @@ export default function Reels() {
             <button type="button" className="ym-reel-menu-backdrop" onClick={closeReelMenu} aria-label="إغلاق الخيارات" />
             <div className="ym-reel-menu-sheet">
               <div className="ym-reel-menu-head"><strong>خيارات الريل</strong><button type="button" onClick={closeReelMenu} disabled={reelActionLoading} aria-label="إغلاق">✕</button></div>
+              {/* ✅ v88.25: زر البحث في الريلز — يظهر دائماً لجميع المستخدمين */}
+              <button type="button" className="ym-reel-menu-search" onClick={openSearch} disabled={reelActionLoading} aria-label="البحث في الريلز">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                البحث
+              </button>
+              {/* ✅ v88.25: خياري "حذف الريلز" و"تعديل الوصف" يظهران دائماً بجوار البحث (كما كان قبل v88.21).
+                  ملاحظة: الخيارات ستنفذ الإجراء الفعلي فقط لصاحب الريل، وسيظهر تنبيه للآخرين. */}
               {String(menuReel.username || '').toLowerCase() === String(currentUsername || '').toLowerCase() ? (
                 <>
-                  <label className="ym-reel-edit-label">تعديل وصف الريل</label>
+                  <button type="button" className="ym-reel-menu-delete" onClick={removeReel} disabled={reelActionLoading}>حذف الريلز</button>
+                  <label className="ym-reel-edit-label">تعديل الوصف</label>
                   <textarea className="ym-reel-edit-input" value={editCaption} onChange={(e) => setEditCaption(e.target.value)} maxLength={2000} placeholder="اكتب وصف الريل" />
                   <button type="button" className="ym-reel-menu-save" onClick={saveReelCaption} disabled={reelActionLoading}>{reelActionLoading ? 'جارٍ الحفظ...' : 'حفظ الوصف'}</button>
-                  <button type="button" className="ym-reel-menu-delete" onClick={removeReel} disabled={reelActionLoading}>حذف الريل</button>
-                  {/* ✅ v88.21: زر البحث داخل قائمة الثلاث نقاط */}
-                  <button type="button" className="ym-reel-menu-search" onClick={openSearch} disabled={reelActionLoading} aria-label="البحث في الريلز">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-                    البحث في الريلز
-                  </button>
                 </>
               ) : (
                 <>
-                  <div className="ym-reel-menu-note">خيارات التعديل والحذف تظهر لصاحب الريل فقط.</div>
-                  {/* ✅ v88.21: زر البحث متاح لكل المستخدمين */}
-                  <button type="button" className="ym-reel-menu-search" onClick={openSearch} aria-label="البحث في الريلز">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-                    البحث في الريلز
+                  <button
+                    type="button"
+                    className="ym-reel-menu-delete"
+                    onClick={() => pushToast?.({ type: 'error', title: 'غير مسموح', description: 'حذف الريلز متاح لصاحب الريل فقط.' })}
+                  >
+                    حذف الريلز
                   </button>
+                  <button
+                    type="button"
+                    className="ym-reel-menu-save"
+                    onClick={() => pushToast?.({ type: 'error', title: 'غير مسموح', description: 'تعديل الوصف متاح لصاحب الريل فقط.' })}
+                  >
+                    تعديل الوصف
+                  </button>
+                  <div className="ym-reel-menu-note">تعديل الوصف والحذف يُنفَّذان لصاحب الريل فقط.</div>
                 </>
               )}
             </div>
@@ -1555,41 +1566,57 @@ export default function Reels() {
             font-size: 22px;
             line-height: 1;
           }
-          /* ✅ v88.20: زر المتابعة الآن TikTok-style — صغير جداً ومُلصق في
-             أسفل الأفاتار من الخارج (لا يغطي الصورة الشخصية أبداً).
-             حجم 18px، ومركزه على حدّ الأفاتار السفلي مع إزاحة للأسفل. */
-          .ym-author-follow-plus {
-            position: absolute;
-            /* بروز الزر بالكامل تحت الأفاتار (نصفه فقط داخل، الباقي خارج) */
-            bottom: -9px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 18px;
-            height: 18px;
-            border-radius: 999px;
-            background: #ff3b5c;
-            color: #fff;
-            font-weight: 900;
-            font-size: 12px;
-            line-height: 1;
-            display: grid;
-            place-items: center;
-            border: 1.5px solid #fff;
+          /* ✅ v88.25: زر المتابعة (+) — TikTok-style مضغوط.
+             صغير جداً (16px) ومُلصق أسفل الأفاتار من الخارج تماماً
+             بحيث لا يغطي الصورة الشخصية أبداً — مطابق لسلوك تيك توك.
+             تم إضافة !important + max-width/max-height + box-sizing لضمان عدم
+             تضخّم الزر لأي سبب (تعارض CSS خارجي، ::before/::after، إلخ). */
+          .ym-author-follow-plus,
+          button.ym-author-follow-plus {
+            position: absolute !important;
+            /* بروز الزر بالكامل تحت الأفاتار — لا يغطي الصورة أبداً */
+            bottom: -8px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            width: 16px !important;
+            height: 16px !important;
+            min-width: 16px !important;
+            min-height: 16px !important;
+            max-width: 16px !important;
+            max-height: 16px !important;
+            box-sizing: border-box !important;
+            border-radius: 999px !important;
+            background: #ff3b5c !important;
+            color: #fff !important;
+            font-weight: 900 !important;
+            font-size: 11px !important;
+            line-height: 1 !important;
+            display: grid !important;
+            place-items: center !important;
+            border: 1.5px solid #fff !important;
             cursor: pointer;
-            padding: 0;
+            padding: 0 !important;
+            margin: 0 !important;
             box-shadow: 0 2px 5px rgba(0,0,0,.35);
             touch-action: manipulation;
             -webkit-tap-highlight-color: transparent;
             transition: transform .15s ease, background .2s ease, opacity .2s ease;
-            /* منع تأثير الزر على تخطيط العناصر المجاورة */
-            z-index: 2;
+            /* الزر فوق الأفاتار لكن لا يتوسع خارج حدوده */
+            z-index: 3 !important;
+            overflow: hidden !important;
           }
-          .ym-author-follow-plus:active { transform: translateX(-50%) scale(0.85); }
+          /* منع أي pseudo-elements من رسم فقاعة حول الزر */
+          .ym-author-follow-plus::before,
+          .ym-author-follow-plus::after {
+            content: none !important;
+            display: none !important;
+          }
+          .ym-author-follow-plus:active { transform: translateX(-50%) scale(0.85) !important; }
           .ym-author-follow-plus.is-following {
             /* بعد المتابعة نُخفي الزر تماماً — سلوك TikTok */
-            opacity: 0;
+            opacity: 0 !important;
             pointer-events: none;
-            transform: translateX(-50%) scale(0.6);
+            transform: translateX(-50%) scale(0.6) !important;
           }
           .ym-action-label {
             color: #fff;

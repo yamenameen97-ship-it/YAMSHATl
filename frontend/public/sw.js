@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260720-media-cache-fix-1';
+const VERSION = 'yamshat-v20260720-232456-1784589896950';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,

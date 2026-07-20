@@ -15,6 +15,19 @@ const NON_RETRYABLE_PATH_PATTERNS = [
   /\/auth\/(login|register|captcha|verify-email|verify-2fa-login|forgot-password|verify-reset-code|reset-password|resend-verification|social-login|dev-login)(\/|$)/i,
 ];
 
+// These endpoints establish or recover authentication themselves. A 401 from
+// /auth/login is a login result (for example, incorrect credentials), not an
+// expired session; attempting /auth/refresh here breaks first-time sign-in by
+// replacing the real error with "no saved session".
+const AUTH_BOOTSTRAP_PATH_PATTERNS = [
+  /\/auth\/(login|register|captcha|verify-email|verify-2fa-login|forgot-password|verify-reset-code|reset-password|resend-verification|social-login|dev-login)(\/|$)/i,
+];
+
+function isAuthBootstrapRequest(config = {}) {
+  const url = String(config.url || '');
+  return AUTH_BOOTSTRAP_PATH_PATTERNS.some((pattern) => pattern.test(url));
+}
+
 function shouldRetryRequest(config = {}, responseStatus) {
   if (!RETRYABLE_STATUSES.has(responseStatus)) return false;
   if (config.retry === false) return false;
@@ -151,7 +164,10 @@ API.interceptors.response.use(
     }
 
     // Token Refresh Logic
-    if (response?.status === 401 && config && !config._retry) {
+    // Never refresh while the user is trying to create the very first session.
+    // The login endpoint must return its own response directly on a clean
+    // browser/device, even when there is no localStorage or refresh cookie yet.
+    if (response?.status === 401 && config && !config._retry && !isAuthBootstrapRequest(config)) {
       config._retry = true;
       try {
         const { data } = await sessionManager.refreshSession();

@@ -21,7 +21,10 @@ class _ClientContext:
                 pass
 
         fastapi_app.dependency_overrides[get_db] = override_get_db
-        self.monkeypatch.setattr(main_module, 'initialize_database', lambda _engine: None)
+        # Some application versions initialize through a lifespan hook and do
+        # not expose initialize_database on app.main.  Keep this test helper
+        # compatible with both startup arrangements.
+        self.monkeypatch.setattr(main_module, 'initialize_database', lambda _engine: None, raising=False)
 
         import app.api.routes.auth as auth_module
 
@@ -153,3 +156,34 @@ def test_auth_frontend_flows_are_available(db_session, monkeypatch):
         )
         assert final_login_response.status_code == 200
         assert final_login_response.json()['email'] == email
+
+
+def test_secondary_demo_account_creates_a_first_device_session_without_existing_cookie(db_session, monkeypatch):
+    """A clean browser can create the secondary demo account's first session."""
+    from app.core.config import settings
+
+    with _ClientContext(db_session, monkeypatch) as client:
+        # This client starts with no local stored session and no refresh cookie.
+        assert settings.REFRESH_COOKIE_NAME not in client.cookies
+
+        captcha_response = client.get('/api/auth/captcha')
+        assert captcha_response.status_code == 200
+        captcha = captcha_response.json()
+
+        login_response = client.post(
+            '/api/auth/login',
+            json={
+                'identifier': settings.SECONDARY_DEMO_ACCOUNT_EMAIL,
+                'password': settings.SECONDARY_DEMO_ACCOUNT_PASSWORD,
+                'remember_me': True,
+                'captcha_id': captcha['captcha_id'],
+                'captcha_answer': _captcha_answer(captcha),
+            },
+        )
+
+        assert login_response.status_code == 200
+        login_data = login_response.json()
+        assert login_data['email'] == settings.SECONDARY_DEMO_ACCOUNT_EMAIL
+        assert login_data['access_token']
+        assert login_data['session_id']
+        assert settings.REFRESH_COOKIE_NAME in login_response.headers.get('set-cookie', '')

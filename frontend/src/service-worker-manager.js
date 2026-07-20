@@ -284,6 +284,18 @@ export function sendMessageToSW(message) {
 }
 
 /**
+ * ✅ v88.24 FIX: تدفئة كاش الوسائط بعد رفع منشور جديد
+ * يرسل قائمة روابط للـ SW الذي يقوم بتحميلها في CacheStorage محلياً،
+ * فيصبح أول عرض للمنشور في الـ feed فورياً من الكاش (بلا شبكة).
+ */
+export function warmMediaCache(urls = []) {
+  const list = (Array.isArray(urls) ? urls : [urls])
+    .filter((u) => typeof u === 'string' && u.trim().length > 0);
+  if (!list.length) return;
+  sendMessageToSW({ type: 'yamshat:warm-media', urls: list });
+}
+
+/**
  * إجبار تحديث فوري
  */
 export async function forceUpdate() {
@@ -340,6 +352,7 @@ export function getServiceWorkerInfo() {
 export default {
   registerServiceWorker,
   sendMessageToSW,
+  warmMediaCache,
   forceUpdate,
   clearCache,
   stopUpdateCheck,

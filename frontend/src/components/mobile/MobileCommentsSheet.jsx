@@ -7,6 +7,20 @@ import { resolveMediaUrl } from '../../config/mediaConfig.js';
 /**
  * MobileCommentsSheet — bottom sheet لعرض/إضافة التعليقات على منشور.
  * يستخدم getComments + addComment الحقيقيين من backend.
+ *
+ * ✅ v88.19 FIX (ROOT CAUSE):
+ *  المشكلة: صندوق كتابة التعليق (composer) كان يختفي جزئياً خلف أزرار نظام
+ *  الهاتف السفلية (home indicator / gesture bar) لأن التصميم القديم استخدم
+ *   position: absolute; bottom: var(--ym-kb-inset, 0px);
+ *  وبدون لوحة مفاتيح مفتوحة، ‎--ym-kb-inset = 0‎، فيلتصق الـ composer بحافة
+ *  الشاشة تماماً ويصادر مساحة الـ safe-area-inset-bottom.
+ *
+ *  الحل الجذري (مستوحى من درج تعليقات الريلز الذي يعمل بشكل مثالي):
+ *  1) الـ overlay يحمل padding-bottom بمقدار (safe-area + kb-inset) لرفع
+ *     البانل بأكمله فوق أزرار النظام ولوحة المفاتيح.
+ *  2) الـ sheet عضو flex-column طبيعي بدون position:absolute متضارب.
+ *  3) الـ composer الآن flex-item عادي (flex-shrink:0) يبقى مرئياً دائماً
+ *     في نهاية عمود الـ sheet — نفس منطق ym-reels-drawer-input بالضبط.
  */
 function MobileCommentsSheet({ open, postId, onClose }) {
   const [comments, setComments] = useState([]);
@@ -74,7 +88,7 @@ function MobileCommentsSheet({ open, postId, onClose }) {
     // وبالتالي تظهر منطقة كتابة التعليق بالكامل ولا تفقد خلف شريط التنقل
     document.body.setAttribute('data-ym-sheet', 'open');
 
-    // ✅ v88.12 FIX: مواكبة visualViewport (لوحة المفاتيح على الجوال)
+    // ✅ v88.19 FIX: مواكبة visualViewport (لوحة المفاتيح على الجوال)
     // كي يبقى صندوق كتابة التعليق فوق لوحة المفاتيح دائماً بدلاً من الاختفاء أسفل الشاشة.
     // نضبط متغير CSS ‎--ym-kb-inset‎ إلى ارتفاع لوحة المفاتيح المرئية.
     const updateKbInset = () => {
@@ -160,76 +174,177 @@ function MobileCommentsSheet({ open, postId, onClose }) {
   return (
     <div className="ym-sheet-overlay" data-yam-comments-sheet="true" role="dialog" aria-modal="true" aria-label="التعليقات" dir="rtl" onClick={onClose}>
       <style>{`
+        /* ═════════════════════════════════════════════════════════════════
+           v88.19 ROOT-CAUSE FIX: صندوق تعليقات المنشور مطابق لصندوق تعليقات
+           الريلز — لن يختفي composer خلف أزرار نظام الهاتف السفلية أو خلف
+           BottomNav أو خلف لوحة المفاتيح. نفس منطق ym-reels-drawer.
+           ═════════════════════════════════════════════════════════════════ */
+
+        /* 1) الـ overlay = حاوية fixed تحتضن الشيت في الأسفل.
+              padding-bottom يرفع البانل بأكمله فوق أزرار النظام + لوحة المفاتيح. */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] {
-          align-items: stretch !important;
-          justify-content: center !important;
-          padding: 0 !important;
-          z-index: 2147483000 !important; /* v88.12: أعلى من BottomNav / MobileTopBar بأمان */
           position: fixed !important;
           inset: 0 !important;
-        }
-        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet {
-          width: 100% !important;
-          max-width: 100% !important;
-          /* v88.12: نستخدم 100dvh مع padding سفلي = لوحة المفاتيح + safe-area
-             لضمان بقاء الـ composer دائماً مرئياً فوق لوحة المفاتيح، ولن يختفي خلف BottomNav. */
-          height: 100dvh !important;
-          max-height: 100dvh !important;
+          z-index: 2147483000 !important;
+          background: rgba(0,0,0,0.55) !important;
+          display: flex !important;
+          align-items: flex-end !important;
+          justify-content: center !important;
+          /* ⭐ المفتاح: نفس padding درج الريلز — safe-area + كيبورد إن وُجد.
+             هذا يرفع كامل البانل (بما فيه الـ composer) فوق أزرار الهاتف. */
+          padding: 0 0 calc(env(safe-area-inset-bottom, 0px) + var(--ym-kb-inset, 0px)) !important;
           margin: 0 !important;
-          border-radius: 24px 24px 0 0 !important;
+          box-sizing: border-box !important;
+          pointer-events: auto !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+        }
+
+        /* 2) الـ sheet نفسه = flex-column طبيعي، بدون position:absolute متضارب.
+              الارتفاع يستخدم dvh لكي يتقلص تلقائياً عند فتح الكيبورد. */
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet {
+          position: relative !important;
+          width: 100% !important;
+          max-width: 640px !important;
+          /* ارتفاع البانل الفعلي — dvh يتقلص مع الكيبورد */
+          height: min(82dvh, 720px) !important;
+          max-height: 82dvh !important;
+          min-height: 320px !important;
+          margin: 0 !important;
+          background: #0f1420 !important;
+          border-radius: 22px 22px 0 0 !important;
+          border-top: 1px solid rgba(139,92,246,0.35) !important;
+          box-shadow: 0 -20px 60px rgba(0,0,0,0.55) !important;
           display: flex !important;
           flex-direction: column !important;
           overflow: hidden !important;
           transform: none !important;
-          position: absolute !important;
-          inset-inline: 0 !important;
-          bottom: 0 !important;
-          /* الارتفاع الفعلي للمحتوى = 82vh بحد أقصى؛ الباقي شفاف فوقه لإغلاق بالنقر */
+          pointer-events: auto !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          /* إلغاء أي تثبيت مطلق قديم كان يُلصق الشيت بأسفل الشاشة */
+          inset: auto !important;
           top: auto !important;
-          max-block-size: min(100dvh, 760px) !important;
+          bottom: auto !important;
+          left: auto !important;
+          right: auto !important;
         }
+
+        /* 3) مقبض السحب (handle) */
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-handle {
+          width: 44px !important;
+          height: 4px !important;
+          background: rgba(255,255,255,0.28) !important;
+          border-radius: 2px !important;
+          margin: 8px auto 0 !important;
+          flex-shrink: 0 !important;
+        }
+
+        /* 4) الهيدر — flex item عادي */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-head {
           flex-shrink: 0 !important;
-          padding-top: 10px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: space-between !important;
+          padding: 12px 16px 12px !important;
+          border-bottom: 1px solid rgba(255,255,255,0.06) !important;
         }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-head h3 {
+          margin: 0 !important;
+          color: #fff !important;
+          font-size: 16px !important;
+          font-weight: 700 !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-close {
+          background: transparent !important;
+          border: 0 !important;
+          color: #fff !important;
+          cursor: pointer !important;
+          padding: 6px !important;
+          border-radius: 8px !important;
+        }
+
+        /* 5) الجسم = flex:1 يستهلك المساحة المتبقية، قابل للتمرير.
+              لا نحتاج padding-bottom اصطناعي لأن الـ composer الآن flex-item
+              حقيقي في نفس العمود (نفس مبدأ الريلز). */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-body {
           flex: 1 1 auto !important;
           min-height: 0 !important;
           overflow-y: auto !important;
-          /* v88.12: مساحة أسفل قائمة التعليقات = ارتفاع الـ composer التقريبي + لوحة المفاتيح */
-          padding-bottom: calc(80px + var(--ym-kb-inset, 0px)) !important;
+          overflow-x: hidden !important;
           -webkit-overflow-scrolling: touch !important;
+          overscroll-behavior: contain !important;
+          padding: 12px 16px !important;
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          pointer-events: auto !important;
         }
+
+        /* 6) الـ COMPOSER = flex item راسخ في نهاية العمود.
+              ⭐ لا position:absolute — لا bottom:0 — تماماً كـ ym-reels-drawer-input
+              يبقى دائماً مرئياً فوق أزرار الهاتف لأن الـ overlay هو من يرفعه. */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-composer {
-          /* v88.12 FIX: تثبيت مطلق داخل الـ sheet مع رفعه بمقدار لوحة المفاتيح المرئية.
-             هذا يضمن أن صندوق الكتابة دائماً مرئي ويستقبل النقر، ولن يختفي
-             خلف BottomNav أو أسفل الشاشة عند فتح لوحة المفاتيح. */
-          position: absolute !important;
-          left: 0 !important;
-          right: 0 !important;
-          bottom: calc(var(--ym-kb-inset, 0px)) !important;
-          margin-top: 0 !important;
+          position: relative !important;
+          left: auto !important;
+          right: auto !important;
+          bottom: auto !important;
+          top: auto !important;
+          inset: auto !important;
+          transform: none !important;
+          margin: 0 !important;
+          flex-shrink: 0 !important;
           display: flex !important;
           align-items: center !important;
           gap: 10px !important;
-          padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px)) !important;
-          background: rgba(9, 12, 26, 0.98) !important;
+          padding: 12px 14px !important;
+          background: rgba(15, 20, 32, 0.98) !important;
           backdrop-filter: blur(10px) !important;
           -webkit-backdrop-filter: blur(10px) !important;
           border-top: 1px solid rgba(255,255,255,0.08) !important;
           z-index: 5 !important;
-          transform: none !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          pointer-events: auto !important;
         }
+
+        /* 7) حقل الإدخال */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-input {
           flex: 1 1 auto !important;
-          min-height: 46px !important;
-          font-size: 16px !important; /* v88.12: يمنع Safari/iOS من التكبير التلقائي */
+          min-width: 0 !important;
+          min-height: 44px !important;
+          background: rgba(255,255,255,0.06) !important;
+          border: 1px solid rgba(255,255,255,0.08) !important;
+          border-radius: 22px !important;
+          padding: 10px 16px !important;
+          color: #fff !important;
+          font-family: inherit !important;
+          font-size: 16px !important; /* يمنع Safari/iOS من التكبير التلقائي */
+          outline: 0 !important;
         }
+
+        /* 8) زر الإرسال */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-send {
+          width: 44px !important;
+          height: 44px !important;
           flex-shrink: 0 !important;
+          border-radius: 50% !important;
+          border: 0 !important;
+          background: linear-gradient(135deg, #8b5cf6, #6d28d9) !important;
+          color: #fff !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          cursor: pointer !important;
+          box-shadow: 0 6px 18px rgba(139,92,246,0.45) !important;
         }
-        /* v88.12 FIX: إخفاء نهائي لأي BottomNav محتمل أثناء فتح ورقة التعليقات
-           (تكرار الحماية على مستوى المكوّن حتى لو لم يُحمَّل CSS القديم) */
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-send:disabled {
+          opacity: 0.5 !important;
+          cursor: not-allowed !important;
+        }
+
+        /* 9) إخفاء نهائي لأي BottomNav محتمل أثناء فتح ورقة التعليقات
+              (تكرار الحماية على مستوى المكوّن حتى لو لم يُحمَّل CSS القديم) */
         html body[data-ym-sheet="open"] .mobile-bottom-nav,
         html body[data-ym-sheet="open"] .yam-bottom-nav,
         html body[data-ym-sheet="open"] .ym-bottomnav,

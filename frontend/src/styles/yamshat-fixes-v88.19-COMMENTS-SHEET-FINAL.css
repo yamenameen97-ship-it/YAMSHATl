@@ -1,0 +1,215 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   YAMSHAT — v88.19 FINAL FIX
+   ─────────────────────────────────────────────────────────────────────────
+   إصلاح جذري نهائي لصندوق تعليقات المنشور على الجوال (MobileCommentsSheet).
+
+   المشكلة المُبلَّغ عنها (صورة المستخدم الثانية):
+     صندوق كتابة التعليق أسفل شيت تعليقات المنشور كان يختفي جزئياً خلف أزرار
+     نظام الهاتف السفلية (home indicator / gesture nav bar) — بينما شيت
+     تعليقات الريلز (الصورة الأولى) يظهر بشكل مثالي.
+
+   السبب الجذري:
+     التصميم القديم كان يستخدم على الـ composer:
+        position: absolute;
+        bottom: calc(var(--ym-kb-inset, 0px));
+     عندما لا تكون لوحة المفاتيح مفتوحة، ‎--ym-kb-inset = 0‎ فيلتصق الـ
+     composer بالحافة السفلية للـ overlay تماماً، ويصادر مساحة الـ
+     safe-area-inset-bottom → يختفي خلف أزرار الهاتف.
+
+   الحل (مطابق تماماً لدرج تعليقات الريلز ym-reels-drawer):
+     1) الـ overlay ذاته يحمل padding-bottom بمقدار (safe-area + كيبورد)،
+        يرفع كامل البانل فوق أزرار النظام دائماً.
+     2) الـ sheet = flex-column طبيعي بلا position:absolute.
+     3) الـ composer = flex-item راسخ (flex-shrink:0) في نهاية العمود،
+        بلا أي تثبيت مطلق. يبقى مرئياً دائماً — مطابقاً بالضبط لسلوك
+        ym-reels-drawer-input.
+
+   يُستورد هذا الملف آخر شيء في main.jsx كي يفوز على كل CSS سابق.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+
+/* ───── (1) الـ OVERLAY ───────────────────────────────────────────────────── */
+/* حاوية fixed تحتضن الشيت في الأسفل + ترفعه بمقدار safe-area + kb-inset. */
+html body .ym-sheet-overlay[data-yam-comments-sheet="true"],
+html body .ym-sheet-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483000 !important;
+  background: rgba(0, 0, 0, 0.55) !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  /* ⭐ المفتاح الحاسم: نفس فلسفة درج الريلز — الـ overlay هو من يرفع البانل. */
+  padding: 0 0 calc(env(safe-area-inset-bottom, 0px) + var(--ym-kb-inset, 0px)) !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  overflow: hidden !important;
+}
+
+
+/* ───── (2) الـ SHEET نفسه ────────────────────────────────────────────────── */
+/* flex-column طبيعي بلا تثبيت مطلق. dvh يتقلص تلقائياً مع فتح الكيبورد. */
+html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet,
+html body .ym-sheet-overlay .ym-sheet {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  margin: 0 !important;
+  width: 100% !important;
+  max-width: 640px !important;
+  height: min(82dvh, 720px) !important;
+  max-height: 82dvh !important;
+  min-height: 320px !important;
+  background: #0f1420 !important;
+  border-radius: 22px 22px 0 0 !important;
+  border-top: 1px solid rgba(139, 92, 246, 0.35) !important;
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.55) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  touch-action: pan-y !important;
+}
+
+
+/* ───── (3) الهيدر و مقبض السحب ───────────────────────────────────────────── */
+html body .ym-sheet-overlay .ym-sheet-handle {
+  width: 44px !important;
+  height: 4px !important;
+  background: rgba(255, 255, 255, 0.28) !important;
+  border-radius: 2px !important;
+  margin: 8px auto 0 !important;
+  flex-shrink: 0 !important;
+}
+
+html body .ym-sheet-overlay .ym-sheet-head {
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 12px 16px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+
+/* ───── (4) جسم القائمة ──────────────────────────────────────────────────── */
+/* يستهلك المساحة المتبقية ويقبل التمرير — بلا padding-bottom اصطناعي. */
+html body .ym-sheet-overlay .ym-sheet-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  padding: 12px 16px !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+
+/* ───── (5) الـ COMPOSER ─────────────────────────────────────────────────── */
+/* ⭐ العنصر الأهم في هذا الإصلاح:
+   flex-item عادي راسخ في نهاية العمود — بلا position:absolute — بلا bottom
+   بلا left/right — بلا transform. مطابق تماماً لـ ym-reels-drawer-input.
+   يبقى مرئياً دائماً لأن الـ overlay أعلاه هو من يرفع البانل بأكمله. */
+html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-composer,
+html body .ym-sheet-overlay .ym-sheet-composer,
+html body .ym-sheet .ym-sheet-composer {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+  margin: 0 !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 12px 14px !important;
+  background: rgba(15, 20, 32, 0.98) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  z-index: 5 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+
+/* ───── (6) حقل الإدخال ─────────────────────────────────────────────────── */
+html body .ym-sheet-overlay .ym-sheet-input {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 44px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 22px !important;
+  padding: 10px 16px !important;
+  color: #fff !important;
+  font-family: inherit !important;
+  font-size: 16px !important; /* يمنع Safari/iOS من التكبير التلقائي */
+  outline: 0 !important;
+}
+html body .ym-sheet-overlay .ym-sheet-input:focus {
+  border-color: rgba(139, 92, 246, 0.6) !important;
+}
+
+
+/* ───── (7) زر الإرسال ──────────────────────────────────────────────────── */
+html body .ym-sheet-overlay .ym-sheet-send {
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  flex-shrink: 0 !important;
+  border-radius: 50% !important;
+  border: 0 !important;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9) !important;
+  color: #fff !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.45) !important;
+  padding: 0 !important;
+}
+html body .ym-sheet-overlay .ym-sheet-send:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+
+/* ───── (8) إخفاء BottomNav وقت فتح الشيت ──────────────────────────────── */
+html body[data-ym-sheet="open"] .mobile-bottom-nav,
+html body[data-ym-sheet="open"] .yam-bottom-nav,
+html body[data-ym-sheet="open"] .ym-bottomnav,
+html body[data-ym-sheet="open"] nav.bottom-nav,
+html body[data-ym-sheet="open"] [class*="BottomNav"],
+html body[data-ym-sheet="open"] [class*="bottomnav"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+
+/* ───── (9) تعطيل صريح لأي قواعد قديمة قد تُثبّت الـ composer مطلقاً ─────── */
+/* حتى لو حاول ملف CSS legacy إعادة الـ position:absolute، هذه القواعد
+   بخصوصية أعلى (data-attribute + hierarchy طويل) ستفوز في cascade. */
+html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet .ym-sheet-composer {
+  position: relative !important;
+  bottom: auto !important;
+}

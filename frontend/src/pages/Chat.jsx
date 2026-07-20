@@ -252,6 +252,12 @@ export default function Chat() {
   const [flyingHearts, setFlyingHearts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
+  // ✅ v88.22 — قائمة النقاط الثلاث (Popup) + فقاعة البحث + فقاعة حذف الدردشة
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [showSearchBubble, setShowSearchBubble] = useState(false);
+  const [showDeleteBubble, setShowDeleteBubble] = useState(false);
+  const [deleteSelectedIds, setDeleteSelectedIds] = useState(() => new Set());
+  const [deleteForEveryone, setDeleteForEveryone] = useState(false);
   const [showChatSettingsPanel, setShowChatSettingsPanel] = useState(false);
   const [settingsPanelData, setSettingsPanelData] = useState({ loading: true, mediaItems: [], sharedLinks: [], fileItems: [], blockStatus: { can_chat: true, blocked_by_me: false, blocked_me: false } });
   const [mediaViewerState, setMediaViewerState] = useState({ open: false, index: 0 });
@@ -1281,6 +1287,285 @@ export default function Chat() {
           .yam-block-banner.blocked {
             background: rgba(239,68,68,0.14);
             border-color: rgba(248,113,113,0.24);
+          }
+
+          /* ✅ v88.22 — قائمة (Popup) خيارات الدردشة من النقاط الثلاث */
+          .yam-header-menu-backdrop {
+            position: fixed;
+            inset: 0;
+            background: transparent;
+            z-index: 60;
+          }
+          .yam-header-menu-popup {
+            position: absolute;
+            top: calc(100% + 8px);
+            inset-inline-start: 0;
+            z-index: 70;
+            min-width: 220px;
+            background: rgba(15,18,32,0.98);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 14px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            backdrop-filter: blur(14px);
+            animation: yamMenuFadeIn 0.16s ease-out both;
+          }
+          @keyframes yamMenuFadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+          .yam-header-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: none;
+            background: transparent;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            text-align: right;
+            transition: background 0.15s ease;
+          }
+          .yam-header-menu-item:hover {
+            background: rgba(124,58,237,0.16);
+          }
+          .yam-header-menu-item.danger {
+            color: #f87171;
+          }
+          .yam-header-menu-item.danger:hover {
+            background: rgba(239,68,68,0.14);
+          }
+          .yam-header-menu-icon {
+            width: 22px;
+            text-align: center;
+            font-size: 16px;
+          }
+          .yam-header-menu-sep {
+            height: 1px;
+            background: rgba(255,255,255,0.08);
+            margin: 4px 6px;
+          }
+
+          /* ✅ v88.22 — فقاعات (Modal) البحث والحذف */
+          .yam-chat-modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 9998;
+            background: rgba(0,0,0,0.62);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            backdrop-filter: blur(6px);
+            animation: yamOverlayFade 0.18s ease-out both;
+          }
+          @keyframes yamOverlayFade {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+          }
+          .yam-chat-modal {
+            width: min(560px, 100%);
+            max-height: min(80vh, 720px);
+            background: radial-gradient(circle at top right, rgba(124,58,237,0.16), transparent 30%), #0b0f1e;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 20px;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.65);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            color: #f5f7ff;
+            font-family: 'Noto Sans Arabic','Cairo','Tahoma',sans-serif;
+            animation: yamModalPop 0.22s cubic-bezier(0.22,1,0.36,1) both;
+          }
+          @keyframes yamModalPop {
+            from { opacity: 0; transform: scale(0.94); }
+            to   { opacity: 1; transform: scale(1); }
+          }
+          .yam-chat-modal-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+            background: rgba(255,255,255,0.03);
+          }
+          .yam-chat-modal-head strong { font-size: 15.5px; font-weight: 900; }
+          .yam-chat-modal-close {
+            width: 34px; height: 34px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            font-size: 18px; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center;
+          }
+          .yam-chat-modal-close:hover { background: rgba(239,68,68,0.18); border-color: rgba(248,113,113,0.3); }
+          .yam-chat-modal-body {
+            flex: 1;
+            padding: 14px 18px 18px;
+            display: flex; flex-direction: column; gap: 12px;
+            overflow-y: auto;
+          }
+
+          /* — فقاعة البحث — */
+          .yam-chat-search-inputwrap {
+            display: flex; align-items: center; gap: 8px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 10px 14px;
+          }
+          .yam-chat-search-inputwrap span { opacity: 0.55; font-size: 16px; }
+          .yam-chat-search-inputwrap input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-size: 14.5px;
+            font-family: inherit;
+            text-align: right;
+          }
+          .yam-chat-search-clear {
+            width: 26px; height: 26px;
+            border-radius: 8px;
+            border: none; background: rgba(255,255,255,0.08);
+            color: #fff; cursor: pointer;
+            font-size: 14px;
+          }
+          .yam-chat-search-summary {
+            font-size: 12.5px; opacity: 0.65;
+            padding: 0 4px;
+          }
+          .yam-chat-search-results {
+            display: flex; flex-direction: column; gap: 6px;
+            max-height: 46vh; overflow-y: auto;
+            padding-inline-end: 4px;
+          }
+          .yam-chat-search-empty {
+            text-align: center; padding: 22px 8px;
+            font-size: 13px; opacity: 0.6;
+          }
+          .yam-chat-search-item {
+            display: flex; flex-direction: column; gap: 3px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.06);
+            background: rgba(255,255,255,0.03);
+            color: #fff;
+            font-family: inherit;
+            text-align: right;
+            cursor: pointer;
+            transition: background 0.15s ease;
+          }
+          .yam-chat-search-item:hover { background: rgba(124,58,237,0.14); }
+          .yam-chat-search-item-sender { font-size: 11.5px; opacity: 0.6; font-weight: 700; }
+          .yam-chat-search-item-text { font-size: 13.5px; line-height: 1.5; }
+
+          /* — فقاعة الحذف — */
+          .yam-chat-delete-hint {
+            font-size: 13px; opacity: 0.75; line-height: 1.6;
+            padding: 8px 12px;
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(248,113,113,0.18);
+            border-radius: 12px;
+          }
+          .yam-chat-delete-toolbar {
+            display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+            padding: 4px 2px;
+          }
+          .yam-chat-delete-checkbox {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 13px; font-weight: 700; cursor: pointer;
+            user-select: none;
+          }
+          .yam-chat-delete-checkbox input { width: 16px; height: 16px; accent-color: #a78bfa; cursor: pointer; }
+          .yam-chat-delete-list {
+            display: flex; flex-direction: column; gap: 4px;
+            max-height: 40vh; overflow-y: auto;
+            padding: 4px;
+            background: rgba(0,0,0,0.22);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+          }
+          .yam-chat-delete-empty {
+            text-align: center; padding: 22px 8px;
+            font-size: 13px; opacity: 0.6;
+          }
+          .yam-chat-delete-item {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 9px 10px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: background 0.14s ease, border-color 0.14s ease;
+          }
+          .yam-chat-delete-item:hover { background: rgba(255,255,255,0.04); }
+          .yam-chat-delete-item.checked {
+            background: rgba(239,68,68,0.10);
+            border-color: rgba(248,113,113,0.24);
+          }
+          .yam-chat-delete-item input { margin-top: 3px; width: 16px; height: 16px; accent-color: #f87171; cursor: pointer; flex-shrink: 0; }
+          .yam-chat-delete-item-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+          .yam-chat-delete-item-copy strong { font-size: 12px; opacity: 0.75; font-weight: 800; }
+          .yam-chat-delete-item-copy span {
+            font-size: 13px; line-height: 1.5;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden;
+          }
+          .yam-chat-delete-actions {
+            display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
+            padding-top: 6px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+          }
+          .yam-chat-delete-btn {
+            min-height: 40px;
+            padding: 0 16px;
+            border-radius: 12px;
+            font-size: 13.5px; font-weight: 800;
+            cursor: pointer;
+            font-family: inherit;
+            border: 1px solid transparent;
+            transition: transform 0.12s ease, background 0.14s ease;
+          }
+          .yam-chat-delete-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+          .yam-chat-delete-btn.ghost {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+            color: #fff;
+          }
+          .yam-chat-delete-btn.primary {
+            background: linear-gradient(135deg, #7c3aed, #4f46e5);
+            color: #fff;
+          }
+          .yam-chat-delete-btn.primary:not(:disabled):hover { transform: translateY(-1px); }
+          .yam-chat-delete-btn.danger {
+            background: linear-gradient(135deg, #ef4444, #b91c1c);
+            color: #fff;
+          }
+          .yam-chat-delete-btn.danger:not(:disabled):hover { transform: translateY(-1px); }
+
+          /* — تأثير تمييز الرسالة عند القفز إليها من البحث — */
+          .yam-flash-highlight {
+            animation: yamFlashHL 1.6s ease-out both;
+          }
+          @keyframes yamFlashHL {
+            0%   { box-shadow: 0 0 0 0 rgba(124,58,237,0.0); background-color: rgba(124,58,237,0.0); }
+            30%  { box-shadow: 0 0 0 6px rgba(124,58,237,0.35); background-color: rgba(124,58,237,0.18); }
+            100% { box-shadow: 0 0 0 0 rgba(124,58,237,0.0); background-color: rgba(124,58,237,0.0); }
+          }
+
+          @media (max-width: 640px) {
+            .yam-chat-modal { max-height: 88vh; border-radius: 16px; }
+            .yam-chat-modal-body { padding: 12px 14px 16px; }
+            .yam-chat-search-results { max-height: 52vh; }
+            .yam-chat-delete-list { max-height: 44vh; }
+            .yam-header-menu-popup { min-width: 200px; }
           }
           .yam-block-banner,
           .yam-search-summary {
@@ -2357,13 +2642,261 @@ export default function Chat() {
               </button>
             </div>
 
-            <div className="yam-chat-stage-actions">
+            <div className="yam-chat-stage-actions" style={{ position: 'relative' }}>
               <button type="button" className="yam-stage-icon" onClick={() => setCallMode('voice')} aria-label="اتصال صوتي">📞</button>
               <button type="button" className="yam-stage-icon" onClick={() => setCallMode('video')} aria-label="اتصال فيديو">🎥</button>
-              <button type="button" className="yam-stage-icon" onClick={() => searchInputRef.current?.focus()} aria-label="بحث">⌕</button>
-              <button type="button" className="yam-stage-icon" onClick={() => setShowDetailsDrawer((prev) => !prev)} aria-label="المزيد">⋮</button>
+              <button type="button" className="yam-stage-icon" onClick={() => setShowHeaderMenu((prev) => !prev)} aria-label="خيارات الدردشة" aria-haspopup="menu" aria-expanded={showHeaderMenu}>⋮</button>
+
+              {/* ✅ v88.22 — قائمة (Popup / فقاعة) خيارات الدردشة عند الضغط على النقاط الثلاث */}
+              {showHeaderMenu ? (
+                <>
+                  <div className="yam-header-menu-backdrop" onClick={() => setShowHeaderMenu(false)} />
+                  <div className="yam-header-menu-popup" role="menu" dir="rtl">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="yam-header-menu-item"
+                      onClick={() => {
+                        setShowHeaderMenu(false);
+                        setShowSearchBubble(true);
+                        setTimeout(() => { try { searchInputRef.current?.focus(); } catch { /* noop */ } }, 40);
+                      }}
+                    >
+                      <span className="yam-header-menu-icon" aria-hidden="true">🔍</span>
+                      <span>البحث</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="yam-header-menu-item danger"
+                      onClick={() => {
+                        setShowHeaderMenu(false);
+                        setDeleteSelectedIds(new Set());
+                        setDeleteForEveryone(false);
+                        setShowDeleteBubble(true);
+                      }}
+                    >
+                      <span className="yam-header-menu-icon" aria-hidden="true">🗑</span>
+                      <span>حذف الدردشة</span>
+                    </button>
+                    <div className="yam-header-menu-sep" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="yam-header-menu-item"
+                      onClick={() => { setShowHeaderMenu(false); setShowDetailsDrawer((prev) => !prev); }}
+                    >
+                      <span className="yam-header-menu-icon" aria-hidden="true">⚙</span>
+                      <span>المزيد من الخيارات</span>
+                    </button>
+                  </div>
+                </>
+              ) : null}
             </div>
           </header>
+
+          {/* ✅ v88.22 — فقاعة (Modal) البحث داخل الدردشة عن رسالة/كلمة معينة */}
+          {showSearchBubble ? (
+            <div
+              className="yam-chat-modal-overlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label="البحث داخل الدردشة"
+              onClick={(e) => { if (e.target === e.currentTarget) setShowSearchBubble(false); }}
+            >
+              <div className="yam-chat-modal yam-chat-search-modal" dir="rtl">
+                <header className="yam-chat-modal-head">
+                  <strong>🔍 البحث داخل الدردشة</strong>
+                  <button type="button" className="yam-chat-modal-close" onClick={() => setShowSearchBubble(false)} aria-label="إغلاق">×</button>
+                </header>
+                <div className="yam-chat-modal-body">
+                  <div className="yam-chat-search-inputwrap">
+                    <span aria-hidden="true">⌕</span>
+                    <input
+                      ref={searchInputRef}
+                      type="search"
+                      autoFocus
+                      placeholder="ابحث عن كلمة أو رسالة معينة..."
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                    />
+                    {searchQuery ? (
+                      <button type="button" className="yam-chat-search-clear" onClick={() => setSearchQuery('')} aria-label="مسح">×</button>
+                    ) : null}
+                  </div>
+                  <div className="yam-chat-search-summary">
+                    {searchQuery.trim()
+                      ? `عدد النتائج: ${visibleMessages.length}`
+                      : 'اكتب كلمة أو جزءاً من الرسالة لعرض النتائج مباشرة داخل الدردشة.'}
+                  </div>
+                  <div className="yam-chat-search-results">
+                    {searchQuery.trim() && visibleMessages.length === 0 ? (
+                      <div className="yam-chat-search-empty">لا توجد رسائل مطابقة لعبارة البحث.</div>
+                    ) : null}
+                    {searchQuery.trim() && visibleMessages.length > 0 ? (
+                      visibleMessages.slice(0, 40).map((m) => {
+                        const mid = String(m.id || m.client_id || '');
+                        const text = String(m.content || m.message || extractFileName(m) || '').slice(0, 160);
+                        return (
+                          <button
+                            key={mid}
+                            type="button"
+                            className="yam-chat-search-item"
+                            onClick={() => {
+                              setShowSearchBubble(false);
+                              try {
+                                const node = messageNodesRef.current[mid];
+                                if (node && node.scrollIntoView) {
+                                  node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                  node.classList?.add('yam-flash-highlight');
+                                  setTimeout(() => node.classList?.remove('yam-flash-highlight'), 1600);
+                                }
+                              } catch { /* noop */ }
+                            }}
+                          >
+                            <span className="yam-chat-search-item-sender">@{m.sender || m.author || peer}</span>
+                            <span className="yam-chat-search-item-text">{text || '— (رسالة بدون نص)'}</span>
+                          </button>
+                        );
+                      })
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* ✅ v88.22 — فقاعة (Modal) حذف الدردشة: تحديد رسائل معينة أو حذف الكل */}
+          {showDeleteBubble ? (
+            <div
+              className="yam-chat-modal-overlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label="حذف الدردشة"
+              onClick={(e) => { if (e.target === e.currentTarget) setShowDeleteBubble(false); }}
+            >
+              <div className="yam-chat-modal yam-chat-delete-modal" dir="rtl">
+                <header className="yam-chat-modal-head">
+                  <strong>🗑 حذف الدردشة</strong>
+                  <button type="button" className="yam-chat-modal-close" onClick={() => setShowDeleteBubble(false)} aria-label="إغلاق">×</button>
+                </header>
+                <div className="yam-chat-modal-body">
+                  <div className="yam-chat-delete-hint">
+                    حدد الرسائل التي تريد حذفها، أو اضغط "حذف الكل" لمسح كامل الدردشة.
+                  </div>
+
+                  <div className="yam-chat-delete-toolbar">
+                    <label className="yam-chat-delete-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={messages.length > 0 && deleteSelectedIds.size === messages.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setDeleteSelectedIds(new Set(messages.map((m) => String(m.id || m.client_id))));
+                          } else {
+                            setDeleteSelectedIds(new Set());
+                          }
+                        }}
+                      />
+                      <span>تحديد الكل ({messages.length})</span>
+                    </label>
+                    <label className="yam-chat-delete-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={deleteForEveryone}
+                        onChange={(e) => setDeleteForEveryone(e.target.checked)}
+                      />
+                      <span>حذف للجميع</span>
+                    </label>
+                  </div>
+
+                  <div className="yam-chat-delete-list">
+                    {messages.length === 0 ? (
+                      <div className="yam-chat-delete-empty">لا توجد رسائل لحذفها.</div>
+                    ) : (
+                      messages.map((m) => {
+                        const mid = String(m.id || m.client_id || '');
+                        const checked = deleteSelectedIds.has(mid);
+                        const text = String(m.content || m.message || extractFileName(m) || '(بدون نص)').slice(0, 120);
+                        return (
+                          <label key={mid} className={`yam-chat-delete-item${checked ? ' checked' : ''}`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setDeleteSelectedIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked) next.add(mid); else next.delete(mid);
+                                  return next;
+                                });
+                              }}
+                            />
+                            <div className="yam-chat-delete-item-copy">
+                              <strong>@{m.sender || m.author || peer}</strong>
+                              <span>{text}</span>
+                            </div>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="yam-chat-delete-actions">
+                    <button
+                      type="button"
+                      className="yam-chat-delete-btn ghost"
+                      onClick={() => setShowDeleteBubble(false)}
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="button"
+                      className="yam-chat-delete-btn primary"
+                      disabled={deleteSelectedIds.size === 0}
+                      onClick={async () => {
+                        const ids = Array.from(deleteSelectedIds);
+                        if (!ids.length) return;
+                        try {
+                          for (const id of ids) {
+                            // eslint-disable-next-line no-await-in-loop
+                            await handleDelete(id, deleteForEveryone);
+                          }
+                          pushToast({ type: 'success', title: `تم حذف ${ids.length} رسالة`, description: deleteForEveryone ? 'حُذفت للجميع' : 'حُذفت عندك' });
+                        } catch { /* handleDelete already toasts */ }
+                        setDeleteSelectedIds(new Set());
+                        setShowDeleteBubble(false);
+                      }}
+                    >
+                      حذف المحدد ({deleteSelectedIds.size})
+                    </button>
+                    <button
+                      type="button"
+                      className="yam-chat-delete-btn danger"
+                      disabled={messages.length === 0}
+                      onClick={async () => {
+                        if (!messages.length) return;
+                        // eslint-disable-next-line no-alert
+                        const ok = window.confirm(`سيتم حذف كل رسائل هذه الدردشة (${messages.length})${deleteForEveryone ? ' للجميع' : ''}. متابعة؟`);
+                        if (!ok) return;
+                        const ids = messages.map((m) => String(m.id || m.client_id));
+                        try {
+                          for (const id of ids) {
+                            // eslint-disable-next-line no-await-in-loop
+                            await handleDelete(id, deleteForEveryone);
+                          }
+                          pushToast({ type: 'success', title: 'تم حذف الدردشة بالكامل' });
+                        } catch { /* handleDelete already toasts */ }
+                        setDeleteSelectedIds(new Set());
+                        setShowDeleteBubble(false);
+                      }}
+                    >
+                      حذف الكل
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {showDetailsDrawer ? (
             <div className="yam-chat-details-drawer">

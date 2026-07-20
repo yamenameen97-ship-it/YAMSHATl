@@ -6,6 +6,8 @@ import { createPost } from '../../api/posts.js';
 import mediaUploadService from '../../services/media/mediaUploadService.js';
 import { useToast } from '../admin/ToastProvider.jsx';
 import { clearLocalFeedCaches, injectPostIntoFeedCache } from '../../utils/feedCache.js';
+// ✅ v88.24 FIX: تدفئة كاش الوسائط في Service Worker بعد الرفع
+import { warmMediaCache } from '../../service-worker-manager.js';
 
 const DRAFT_KEY = 'yamshat_post_draft';
 const QUOTE_KEY = 'yamshat_quote_draft';
@@ -200,6 +202,11 @@ export default function PostComposer() {
         if (!mediaUrl) {
           throw new Error('فشل الحصول على رابط الفيديو بعد الرفع. حاول مرة أخرى.');
         }
+        // ✅ v88.24 FIX: بمجرد نجاح الرفع، دفّئ كاش الوسائط محلياً
+        // حتى يأتي أول عرض في الفيد فوراً من CacheStorage بلا طلب شبكة.
+        try {
+          warmMediaCache([mediaUrl, thumbnailUrl].filter(Boolean));
+        } catch { /* ignore SW warm-up failure */ }
       }
 
       const { hashtags, mentions } = extractTags(content);
@@ -242,6 +249,18 @@ export default function PostComposer() {
       //    لكن نتجنّب setState و toast المحلي.
       if (status === 'published' && createdPost) {
         injectPostIntoFeedCache(queryClient, createdPost);
+        // ✅ v88.24 FIX: دفّئ أي روابط وسائط جديدة أعادها الباكيند
+        // (قد يكون Cloudinary أعاد رابطاً مختلفاً عن mediaUrl المحلي).
+        try {
+          const extraUrls = [
+            createdPost.media_url,
+            createdPost.image_url,
+            createdPost.video_url,
+            createdPost.thumbnail_url,
+            ...(Array.isArray(createdPost.media_urls) ? createdPost.media_urls : []),
+          ].filter(Boolean);
+          if (extraUrls.length) warmMediaCache(extraUrls);
+        } catch { /* ignore */ }
       } else {
         clearLocalFeedCaches();
       }

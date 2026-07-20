@@ -392,6 +392,23 @@ import './styles/yamshat-fixes-v88.8-IMAGE-VIEWER-FIX.css';
 // v88.17: must stay last — preserves full post media on the mobile feed.
 import './styles/yamshat-fixes-v88.17-MOBILE-FEED-UPDATE-STABILITY.css';
 
+// ✅ v88.19: FINAL FIX — صندوق تعليقات المنشور على الجوال (MobileCommentsSheet)
+// المشكلة: صندوق كتابة التعليق كان يختفي جزئياً خلف أزرار نظام الهاتف السفلية
+// (home indicator / gesture bar) لأن التصميم القديم استخدم position:absolute
+// مع bottom:var(--ym-kb-inset) الذي يساوي 0 بدون كيبورد → التصاق بحافة الشاشة.
+// الحل: مطابقة سلوك درج تعليقات الريلز — الـ overlay يرفع البانل عبر
+// padding-bottom: safe-area + kb-inset، والـ composer flex-item عادي بلا تثبيت.
+// يجب أن يبقى هذا آخر import CSS ليفوز في Cascade على كل الطبقات السابقة.
+import './styles/yamshat-fixes-v88.19-COMMENTS-SHEET-FINAL.css';
+
+// ✅ v88.23: FINAL FIX — سحب صفحتَي معالج إنشاء المجموعة وإعدادات إشعارات المجموعة
+// المشكلة: كلا الصفحتين (.yamg-page) لم تستجيبا للسحب باللمس للأعلى والأسفل
+// على الجوال، ما يمنع الوصول إلى زر "التالي" في المعالج وإلى بقية إعدادات
+// الإشعارات. الحل: تطبيق بصمة .yam-home-mobile-page 1:1 على .yamg-page —
+// نفس النهج الذي نجح في v87.17 مع .settings-wrap / .settings-shell.
+// يجب أن يبقى هذا آخر import CSS ليفوز في Cascade على كل الطبقات السابقة.
+import './styles/yamshat-fixes-v88.23-GROUP-WIZARD-NOTIF-SCROLL.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

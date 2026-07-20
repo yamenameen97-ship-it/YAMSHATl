@@ -137,6 +137,14 @@ export default function Reels() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [topTab, setTopTab] = useState('reels'); // reels | following | explore
   const [muted, setMuted] = useState(true);
+  // ✅ v88.21: حالة تاب اكتشف — نوع الفرز + الفتح الكامل من الشبكة
+  const [exploreSort, setExploreSort] = useState('newest'); // newest | views | likes
+  const [exploreOpen, setExploreOpen] = useState(false); // فتح ريل من الشبكة → يعرض الفيديو بالشاشة الكاملة
+  // ✅ v88.21: فقاعة البحث داخل قائمة الثلاث نقاط
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
   // ✅ v59.13.34 FIX: progress يبدأ من 0 (لا قيمة تجريبية 0.42)
   const [progress, setProgress] = useState(0);
   const [showComments, setShowComments] = useState(false);
@@ -159,6 +167,106 @@ export default function Reels() {
   const openReelMenu = (reel) => {
     setMenuReel(reel);
     setEditCaption(reel.content || '');
+  };
+
+  // ✅ v88.21: فتح/إغلاق فقاعة البحث + تنفيذ البحث
+  const openSearch = () => {
+    setMenuReel(null); // نغلق قائمة النقاط الثلاث
+    setSearchOpen(true);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    setSearchLoading(false);
+  };
+  const runSearch = useCallback(async (rawQ) => {
+    const q = String(rawQ || '').trim();
+    if (!q) { setSearchResults([]); return; }
+    setSearchLoading(true);
+    try {
+      // محاولة endpoint مخصص للبحث في الريلز
+      let items = [];
+      try {
+        const { data } = await API.get('/reels/search', { params: { q, limit: 40 } });
+        items = Array.isArray(data?.items) ? data.items
+              : Array.isArray(data?.reels) ? data.reels
+              : Array.isArray(data?.results) ? data.results
+              : Array.isArray(data) ? data : [];
+      } catch {
+        // Fallback: نفلتر محليا من قائمة الريلز الحالية + الترندنق
+        try {
+          const { data } = await API.get('/reels/trending', { params: { limit: 60 } });
+          const trend = Array.isArray(data?.items) ? data.items
+                      : Array.isArray(data?.reels) ? data.reels : [];
+          items = [...trend, ...reels];
+        } catch {
+          items = [...reels];
+        }
+      }
+      const normalized = items.map((it) => normalizeReel(it)).filter((it) => it.media_url);
+      const lowered = q.toLowerCase();
+      const filtered = normalized.filter((r) => {
+        const hay = `${r.username || ''} ${r.content || ''} ${(r.hashtags || []).join(' ')}`.toLowerCase();
+        return hay.includes(lowered);
+      });
+      // إزالة التكرار
+      const seen = new Set();
+      const unique = [];
+      for (const r of filtered) {
+        const k = reelIdentity(r);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        unique.push(r);
+      }
+      setSearchResults(unique);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, [reels]);
+
+  // ✅ v88.21: قائمة تاب اكتشف مفروزة حسب الاختيار
+  const exploreItems = useMemo(() => {
+    const arr = [...reels].filter((r) => r.media_url);
+    if (exploreSort === 'views') {
+      arr.sort((a, b) => Number(b.views_count || 0) - Number(a.views_count || 0));
+    } else if (exploreSort === 'likes') {
+      arr.sort((a, b) => Number(b.likes_count || 0) - Number(a.likes_count || 0));
+    } else {
+      arr.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    }
+    return arr;
+  }, [reels, exploreSort]);
+
+  // ✅ v88.21: فتح ريل من الشبكة أو من نتائج البحث → تشغيل بالشاشة الكاملة
+  const openReelFromGrid = (reelObj) => {
+    if (!reelObj) return;
+    const idx = reels.findIndex((r) => String(r.id) === String(reelObj.id));
+    if (idx >= 0) {
+      setActiveIndex(idx);
+    } else {
+      // إذا لم يكن ضمن feed الحالي، نضيفه في المقدمة ونعرضه
+      setReels((prev) => {
+        const exists = prev.some((r) => String(r.id) === String(reelObj.id));
+        return exists ? prev : [reelObj, ...prev];
+      });
+      setActiveIndex(0);
+    }
+    setTopTab('reels');
+    setExploreOpen(true);
+    setSearchOpen(false);
+    // تمرير الحاوي لموضع الريل
+    setTimeout(() => {
+      const container = containerRef.current;
+      if (container) {
+        const targetIdx = Math.max(0, reels.findIndex((r) => String(r.id) === String(reelObj.id)));
+        container.scrollTo({ top: (targetIdx < 0 ? 0 : targetIdx) * container.clientHeight, behavior: 'auto' });
+      }
+    }, 60);
   };
 
   const closeReelMenu = () => {
@@ -486,8 +594,52 @@ export default function Reels() {
           </div>
         </div>
 
+        {/* ===== ✅ v88.21: شبكة تاب اكتشف — مطابقة لتيك توك ===== */}
+        {topTab === 'explore' && !exploreOpen && (
+          <div className="ym-explore-wrap" dir="rtl">
+            <div className="ym-explore-sort" role="tablist" aria-label="فرز اكتشف">
+              <button type="button" className={`ym-explore-sort-btn ${exploreSort === 'newest' ? 'is-active' : ''}`} onClick={() => setExploreSort('newest')}>الأحدث</button>
+              <button type="button" className={`ym-explore-sort-btn ${exploreSort === 'views' ? 'is-active' : ''}`} onClick={() => setExploreSort('views')}>الأكثر مشاهدة</button>
+              <button type="button" className={`ym-explore-sort-btn ${exploreSort === 'likes' ? 'is-active' : ''}`} onClick={() => setExploreSort('likes')}>الأكثر إعجاباً</button>
+            </div>
+            {isLoading ? (
+              <div className="ym-explore-loader">جاري التحميل…</div>
+            ) : exploreItems.length === 0 ? (
+              <div className="ym-explore-empty">لا توجد ريلز للعرض حتى الآن.</div>
+            ) : (
+              <div className="ym-explore-grid" role="grid">
+                {exploreItems.map((r) => (
+                  <button
+                    type="button"
+                    key={r.id}
+                    className="ym-explore-cell"
+                    onClick={() => openReelFromGrid(r)}
+                    aria-label={`فتح ريل ${r.username || ''}`}
+                  >
+                    {r.poster ? (
+                      <img src={r.poster} alt="" className="ym-explore-thumb" loading="lazy" draggable="false" />
+                    ) : r.media_url ? (
+                      <video className="ym-explore-thumb" src={r.media_url} muted playsInline preload="metadata" />
+                    ) : (
+                      <div className="ym-explore-thumb ym-explore-thumb-fallback" aria-hidden>Y+</div>
+                    )}
+                    <div className="ym-explore-cell-overlay" />
+                    <div className="ym-explore-cell-meta">
+                      <span className="ym-explore-cell-play" aria-hidden>
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
+                        {fmtCount(exploreSort === 'likes' ? r.likes_count : r.views_count)}
+                      </span>
+                      <span className="ym-explore-cell-user">@{r.username || 'مستخدم'}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ===== Feed (snap) ===== */}
-        <div className="ym-reels-feed" ref={containerRef} dir="rtl">
+        <div className="ym-reels-feed" ref={containerRef} dir="rtl" style={topTab === 'explore' && !exploreOpen ? { display: 'none' } : undefined}>
           {isLoading && (
             <div className="ym-reels-loader">جاري التحميل…</div>
           )}
@@ -792,10 +944,84 @@ export default function Reels() {
                   <textarea className="ym-reel-edit-input" value={editCaption} onChange={(e) => setEditCaption(e.target.value)} maxLength={2000} placeholder="اكتب وصف الريل" />
                   <button type="button" className="ym-reel-menu-save" onClick={saveReelCaption} disabled={reelActionLoading}>{reelActionLoading ? 'جارٍ الحفظ...' : 'حفظ الوصف'}</button>
                   <button type="button" className="ym-reel-menu-delete" onClick={removeReel} disabled={reelActionLoading}>حذف الريل</button>
+                  {/* ✅ v88.21: زر البحث داخل قائمة الثلاث نقاط */}
+                  <button type="button" className="ym-reel-menu-search" onClick={openSearch} disabled={reelActionLoading} aria-label="البحث في الريلز">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                    البحث في الريلز
+                  </button>
                 </>
               ) : (
-                <div className="ym-reel-menu-note">خيارات التعديل والحذف تظهر لصاحب الريل فقط.</div>
+                <>
+                  <div className="ym-reel-menu-note">خيارات التعديل والحذف تظهر لصاحب الريل فقط.</div>
+                  {/* ✅ v88.21: زر البحث متاح لكل المستخدمين */}
+                  <button type="button" className="ym-reel-menu-search" onClick={openSearch} aria-label="البحث في الريلز">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                    البحث في الريلز
+                  </button>
+                </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ===== ✅ v88.21: فقاعة البحث في الريلز ===== */}
+        {searchOpen && (
+          <div className="ym-search-layer" dir="rtl" role="dialog" aria-modal="true" aria-label="البحث في الريلز">
+            <button type="button" className="ym-search-backdrop" onClick={closeSearch} aria-label="إغلاق البحث" />
+            <div className="ym-search-sheet">
+              <div className="ym-search-head">
+                <div className="ym-search-input-wrap">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                  <input
+                    type="search"
+                    className="ym-search-input"
+                    value={searchQuery}
+                    onChange={(e) => { setSearchQuery(e.target.value); runSearch(e.target.value); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') runSearch(searchQuery); }}
+                    placeholder="ابحث عن ريلز، مستخدم، أو هاشتاق…"
+                    autoFocus
+                    dir="rtl"
+                  />
+                </div>
+                <button type="button" className="ym-search-close" onClick={closeSearch} aria-label="إغلاق">✕</button>
+              </div>
+              <div className="ym-search-body">
+                {searchLoading ? (
+                  <div className="ym-search-status">جاري البحث…</div>
+                ) : !searchQuery.trim() ? (
+                  <div className="ym-search-status">اكتب كلمة للبحث في الريلز (بالاسم، الوصف، أو الهاشتاق).</div>
+                ) : searchResults.length === 0 ? (
+                  <div className="ym-search-status">لا توجد نتائج مطابقة.</div>
+                ) : (
+                  <div className="ym-search-grid">
+                    {searchResults.map((r) => (
+                      <button
+                        type="button"
+                        key={r.id}
+                        className="ym-explore-cell"
+                        onClick={() => { closeSearch(); openReelFromGrid(r); }}
+                        aria-label={`فتح ريل ${r.username || ''}`}
+                      >
+                        {r.poster ? (
+                          <img src={r.poster} alt="" className="ym-explore-thumb" loading="lazy" draggable="false" />
+                        ) : r.media_url ? (
+                          <video className="ym-explore-thumb" src={r.media_url} muted playsInline preload="metadata" />
+                        ) : (
+                          <div className="ym-explore-thumb ym-explore-thumb-fallback" aria-hidden>Y+</div>
+                        )}
+                        <div className="ym-explore-cell-overlay" />
+                        <div className="ym-explore-cell-meta">
+                          <span className="ym-explore-cell-play" aria-hidden>
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
+                            {fmtCount(r.views_count)}
+                          </span>
+                          <span className="ym-explore-cell-user">@{r.username || 'مستخدم'}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1024,11 +1250,238 @@ export default function Reels() {
           .ym-reel-menu-head button { border:0; background:transparent; color:#fff; font-size:20px; cursor:pointer; }
           .ym-reel-edit-label { display:block; margin-bottom:8px; font-weight:700; }
           .ym-reel-edit-input { width:100%; min-height:96px; box-sizing:border-box; resize:vertical; border:1px solid rgba(255,255,255,.18); border-radius:13px; padding:12px; background:#202036; color:#fff; font:inherit; }
-          .ym-reel-menu-save,.ym-reel-menu-delete { width:100%; border:0; border-radius:13px; padding:13px; margin-top:10px; color:#fff; font:inherit; font-weight:800; cursor:pointer; }
+          .ym-reel-menu-save,.ym-reel-menu-delete,.ym-reel-menu-search { width:100%; border:0; border-radius:13px; padding:13px; margin-top:10px; color:#fff; font:inherit; font-weight:800; cursor:pointer; }
           .ym-reel-menu-save { background:linear-gradient(135deg,#7c3aed,#a855f7); }
           .ym-reel-menu-delete { background:rgba(239,68,68,.18); color:#ff8585; }
-          .ym-reel-menu-save:disabled,.ym-reel-menu-delete:disabled { opacity:.6; cursor:wait; }
+          /* ✅ v88.21: زر البحث داخل قائمة النقاط الثلاث */
+          .ym-reel-menu-search { background:linear-gradient(135deg, #1f2937, #374151); display:flex; align-items:center; justify-content:center; gap:8px; }
+          .ym-reel-menu-search:hover { background:linear-gradient(135deg, #374151, #4b5563); }
+          .ym-reel-menu-save:disabled,.ym-reel-menu-delete:disabled,.ym-reel-menu-search:disabled { opacity:.6; cursor:wait; }
           .ym-reel-menu-note { color:rgba(255,255,255,.72); line-height:1.7; padding:8px 0; }
+
+          /* ===== ✅ v88.21: شبكة تاب اكتشف مطابقة لتيك توك ===== */
+          .ym-explore-wrap {
+            position: absolute;
+            inset: 0;
+            top: calc(env(safe-area-inset-top, 0px) + 60px);
+            bottom: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            background: #0a0612;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 90px;
+            z-index: 4;
+          }
+          .ym-explore-wrap::-webkit-scrollbar { display: none; }
+          .ym-explore-sort {
+            position: sticky;
+            top: 0;
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 12px;
+            background: linear-gradient(180deg, rgba(10,6,18,.98), rgba(10,6,18,.85));
+            backdrop-filter: blur(10px);
+            z-index: 3;
+          }
+          .ym-explore-sort-btn {
+            background: rgba(255,255,255,.08);
+            border: 1px solid rgba(255,255,255,.12);
+            color: rgba(255,255,255,.85);
+            font: inherit;
+            font-size: 12.5px;
+            font-weight: 700;
+            padding: 7px 14px;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: all .2s ease;
+          }
+          .ym-explore-sort-btn:hover { background: rgba(255,255,255,.14); }
+          .ym-explore-sort-btn.is-active {
+            background: linear-gradient(135deg, #7c3aed, #a855f7);
+            color: #fff;
+            border-color: transparent;
+            box-shadow: 0 4px 14px rgba(139,92,246,.45);
+          }
+          .ym-explore-loader, .ym-explore-empty {
+            padding: 40px 20px;
+            text-align: center;
+            color: rgba(255,255,255,.7);
+            font-weight: 600;
+          }
+          .ym-explore-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2px;
+            padding: 2px;
+          }
+          .ym-explore-cell {
+            position: relative;
+            aspect-ratio: 9 / 16;
+            border: 0;
+            padding: 0;
+            overflow: hidden;
+            cursor: pointer;
+            background: #1a1330;
+            border-radius: 4px;
+            transition: transform .12s ease;
+          }
+          .ym-explore-cell:active { transform: scale(.97); }
+          .ym-explore-thumb {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+          }
+          .ym-explore-thumb-fallback {
+            display: grid;
+            place-items: center;
+            color: #c4b5fd;
+            font-weight: 900;
+            font-size: 28px;
+            background: linear-gradient(180deg, #1a1330, #0a0612);
+          }
+          .ym-explore-cell-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.75) 100%);
+            pointer-events: none;
+          }
+          .ym-explore-cell-meta {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 4px;
+            padding: 0 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 4px;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            text-shadow: 0 1px 3px rgba(0,0,0,.8);
+          }
+          .ym-explore-cell-play {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+          }
+          .ym-explore-cell-user {
+            max-width: 60%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            direction: ltr;
+          }
+          @media (min-width: 640px) {
+            .ym-explore-grid { grid-template-columns: repeat(4, 1fr); }
+          }
+          @media (min-width: 900px) {
+            .ym-explore-grid { grid-template-columns: repeat(5, 1fr); }
+          }
+          @media (min-width: 1280px) {
+            .ym-explore-grid { grid-template-columns: repeat(6, 1fr); }
+          }
+
+          /* ===== ✅ v88.21: فقاعة البحث ===== */
+          .ym-search-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 120;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 40px;
+          }
+          .ym-search-backdrop {
+            position: absolute;
+            inset: 0;
+            border: 0;
+            background: rgba(0,0,0,.72);
+            backdrop-filter: blur(4px);
+          }
+          .ym-search-sheet {
+            position: relative;
+            width: min(100%, 560px);
+            margin: 0 12px;
+            background: #121222;
+            color: #fff;
+            border-radius: 22px;
+            box-shadow: 0 20px 60px rgba(0,0,0,.7);
+            max-height: calc(100vh - 80px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+          }
+          .ym-search-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255,255,255,.08);
+          }
+          .ym-search-input-wrap {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            background: #1e1e33;
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 999px;
+            padding: 0 12px;
+            height: 40px;
+          }
+          .ym-search-input-wrap svg { flex-shrink: 0; color: rgba(255,255,255,.5); }
+          .ym-search-input {
+            flex: 1;
+            background: transparent;
+            border: 0;
+            outline: 0;
+            color: #fff;
+            font: inherit;
+            font-size: 14.5px;
+            padding: 0 8px;
+            direction: rtl;
+          }
+          .ym-search-input::placeholder { color: rgba(255,255,255,.42); }
+          .ym-search-close {
+            border: 0;
+            background: transparent;
+            color: #fff;
+            font-size: 22px;
+            cursor: pointer;
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            display: grid;
+            place-items: center;
+          }
+          .ym-search-close:hover { background: rgba(255,255,255,.1); }
+          .ym-search-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+            min-height: 120px;
+          }
+          .ym-search-body::-webkit-scrollbar { width: 6px; }
+          .ym-search-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 999px; }
+          .ym-search-status {
+            padding: 30px 20px;
+            text-align: center;
+            color: rgba(255,255,255,.65);
+            font-weight: 600;
+          }
+          .ym-search-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+          }
+          @media (min-width: 480px) {
+            .ym-search-grid { grid-template-columns: repeat(4, 1fr); }
+          }
 
           .ym-reels-actions {
             position: absolute;
@@ -1063,10 +1516,11 @@ export default function Reels() {
             50% { transform: scale(1.25); }
             100% { transform: scale(1); }
           }
-          /* v58: أفاتار المؤلف الدائري + زر متابعة (+) تحته — مطابق لتيكتوك/انستغرام */
+          /* v88.20: أفاتار المؤلف الدائري + زر متابعة (+) ملصق تحته — مطابق TikTok */
           .ym-action-author {
             position: relative;
-            padding-bottom: 10px;
+            /* مساحة إضافية تحت الأفاتار حتى لا يقطع الزر الملصق من الأسفل */
+            padding-bottom: 14px;
           }
           .ym-author-avatar-btn {
             position: relative;
@@ -1101,36 +1555,41 @@ export default function Reels() {
             font-size: 22px;
             line-height: 1;
           }
-          /* ✅ v85.8: تصغير زر المتابعة — لم يعد يغطي صورة الملف الشخصي.
-             من 22px → 15px مع إزاحة خفيفة تحت الأفاتار لتجنب تغطية الوجه */
+          /* ✅ v88.20: زر المتابعة الآن TikTok-style — صغير جداً ومُلصق في
+             أسفل الأفاتار من الخارج (لا يغطي الصورة الشخصية أبداً).
+             حجم 18px، ومركزه على حدّ الأفاتار السفلي مع إزاحة للأسفل. */
           .ym-author-follow-plus {
             position: absolute;
-            bottom: -6px;
+            /* بروز الزر بالكامل تحت الأفاتار (نصفه فقط داخل، الباقي خارج) */
+            bottom: -9px;
             left: 50%;
             transform: translateX(-50%);
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
             border-radius: 999px;
-            background: #ff3b6b;
+            background: #ff3b5c;
             color: #fff;
             font-weight: 900;
-            font-size: 10px;
+            font-size: 12px;
             line-height: 1;
             display: grid;
             place-items: center;
-            border: 1.5px solid #0a0612;
+            border: 1.5px solid #fff;
             cursor: pointer;
             padding: 0;
-            box-shadow: 0 2px 6px rgba(255,59,107,.55);
+            box-shadow: 0 2px 5px rgba(0,0,0,.35);
             touch-action: manipulation;
             -webkit-tap-highlight-color: transparent;
-            transition: transform .15s ease, background .2s ease;
+            transition: transform .15s ease, background .2s ease, opacity .2s ease;
+            /* منع تأثير الزر على تخطيط العناصر المجاورة */
+            z-index: 2;
           }
           .ym-author-follow-plus:active { transform: translateX(-50%) scale(0.85); }
           .ym-author-follow-plus.is-following {
-            background: #8b5cf6;
-            box-shadow: 0 2px 6px rgba(139,92,246,.55);
-            font-size: 9px;
+            /* بعد المتابعة نُخفي الزر تماماً — سلوك TikTok */
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(-50%) scale(0.6);
           }
           .ym-action-label {
             color: #fff;

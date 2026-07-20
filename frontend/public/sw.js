@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260719-025651-1784429811479';
+const VERSION = 'yamshat-v20260720-media-cache-fix-1';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -210,18 +210,57 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (/\.(?:png|jpg|jpeg|svg|webp|gif|avif)$/i.test(url.pathname)) {
+  // ✅ v88.24 FIX: كاش وسائط المنشورات يشمل الآن:
+  //   1) الملفات ذات الامتداد الصريح (png/jpg/mp4/...)
+  //   2) روابط Cloudinary بدون امتداد (مثل /image/upload/v123/abc)
+  //   3) روابط /uploads/* المحلية بدون امتداد
+  //   4) request.destination === 'image' | 'video' | 'audio' (يغطي أي رابط تولّده الـ<img>/<video>)
+  const isImageAsset = /\.(?:png|jpg|jpeg|svg|webp|gif|avif|heic|heif)$/i.test(url.pathname)
+    || request.destination === 'image'
+    || /\/image\/upload\//i.test(url.pathname);
+
+  const isVideoOrAudioAsset = /\.(?:mp4|webm|mp3|wav|m3u8|mov|m4v|mkv|ogg|opus|m4a|aac)$/i.test(url.pathname)
+    || request.destination === 'video'
+    || request.destination === 'audio'
+    || /\/video\/upload\//i.test(url.pathname);
+
+  const isUploadedMedia = /^\/uploads?\//i.test(url.pathname);
+
+  if (isImageAsset || (isUploadedMedia && !isVideoOrAudioAsset)) {
     event.respondWith(staleWhileRevalidate(request, CACHE_NAMES.MEDIA));
     return;
   }
 
-  if (/\.(?:mp4|webm|mp3|wav|m3u8)$/i.test(url.pathname)) {
+  if (isVideoOrAudioAsset) {
     event.respondWith(isSignedMedia(url) ? networkFirst(request, CACHE_NAMES.MEDIA) : cacheFirst(request, CACHE_NAMES.MEDIA));
     return;
   }
 
   event.respondWith(networkFirst(request, CACHE_NAMES.OFFLINE));
 });
+
+// ✅ v88.24 FIX: استقبال أمر warm-up للوسائط بعد الرفع مباشرة
+// عند الانتهاء من نشر منشور جديد، الفرونت يرسل رسالة WARM_MEDIA
+// فيقوم الـSW بتحميل الرابط مسبقاً وإضافته إلى كاش MEDIA — بحيث
+// أول عرض للمنشور في الـfeed يأتي فوراً من الكاش المحلي بلا شبكة.
+async function warmMediaUrls(urls = []) {
+  const cache = await caches.open(CACHE_NAMES.MEDIA);
+  await Promise.all(
+    urls
+      .filter((u) => typeof u === 'string' && u.trim())
+      .map(async (u) => {
+        try {
+          const req = new Request(u, { mode: 'no-cors', credentials: 'include' });
+          const cached = await cache.match(req);
+          if (cached) return;
+          const res = await fetch(req);
+          if (res && (res.status === 200 || res.type === 'opaque')) {
+            await cache.put(req, res.clone()).catch(() => null);
+          }
+        } catch { /* ignore individual failures */ }
+      })
+  );
+}
 
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
@@ -231,6 +270,12 @@ self.addEventListener('message', (event) => {
 
   if (event.data?.type === 'yamshat:queue-sync') {
     event.waitUntil(broadcastMessage({ type: 'yamshat:sync-now' }));
+  }
+
+  // ✅ v88.24 FIX: warm-up كاش الوسائط بعد الرفع الناجح
+  if (event.data?.type === 'yamshat:warm-media') {
+    const urls = Array.isArray(event.data.urls) ? event.data.urls : [];
+    event.waitUntil(warmMediaUrls(urls));
   }
 });
 

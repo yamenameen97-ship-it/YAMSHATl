@@ -173,37 +173,89 @@ export default function ProfilePage() {
     return items;
   }, [profile, pinnedPosts, isOwnProfile]);
 
-  const loadProfile = useCallback(async () => {
+  // ✅ v88.20 FIX: تسريع ظهور صفحة الملف الشخصي على ويب الموبايل
+  //  المشكلة السابقة: كنا نمرر forceRefresh:true في كل مرة → الطلب يتجاوز الكاش دائماً
+  //  وينتظر رد الخادم (قد يصل لـ 3-5 ثواني على 3G/4G أو cold start لـ Render).
+  //  الحل: SWR-style → (1) إظهار أي نسخة مخزّنة فوراً (localStorage + memory cache)
+  //  (2) إخفاء مؤشر التحميل إذا وجدت بيانات (3) إعادة التحقق في الخلفية.
+  const PROFILE_CACHE_KEY = username ? `yamshat:profile-bundle:${username}` : '';
+
+  const readCachedProfile = useCallback(() => {
+    if (!PROFILE_CACHE_KEY) return null;
     try {
-      setLoading(true);
-      setError('');
-      const { data } = await getProfileBundle(username, { forceRefresh: true });
-      setProfile(data);
-      setPinnedPosts(Array.isArray(data.pinned_posts) ? data.pinned_posts : []);
-      setAnalyticsData(data.analytics || {});
-      setFollowersData(data.followers_insights || {});
-      setTheme(
-        data?.user?.profile?.profile_theme
-        || data?.user?.profile?.theme
-        || data?.profile_theme
-        || 'midnight'
+      const raw = window.localStorage.getItem(PROFILE_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      // صلاحية 24 ساعة للنسخة المخزّنة — مجرد إظهار فوري ثم يتم التحديث خلفياً
+      if (Date.now() - Number(parsed?._ts || 0) > 24 * 60 * 60 * 1000) return null;
+      return parsed?.data || null;
+    } catch { return null; }
+  }, [PROFILE_CACHE_KEY]);
+
+  const writeCachedProfile = useCallback((data) => {
+    if (!PROFILE_CACHE_KEY || !data) return;
+    try {
+      window.localStorage.setItem(
+        PROFILE_CACHE_KEY,
+        JSON.stringify({ _ts: Date.now(), data })
       );
+    } catch { /* ignore quota errors */ }
+  }, [PROFILE_CACHE_KEY]);
+
+  const applyProfileData = useCallback((data) => {
+    if (!data) return;
+    setProfile(data);
+    setPinnedPosts(Array.isArray(data.pinned_posts) ? data.pinned_posts : []);
+    setAnalyticsData(data.analytics || {});
+    setFollowersData(data.followers_insights || {});
+    setTheme(
+      data?.user?.profile?.profile_theme
+      || data?.user?.profile?.theme
+      || data?.profile_theme
+      || 'midnight'
+    );
+  }, []);
+
+  const loadProfile = useCallback(async ({ background = false } = {}) => {
+    try {
+      if (!background) setError('');
+      // ✅ الأهم: لا نمرر forceRefresh دائماً → نسمح للميموري-كاش (30ث) بالعمل
+      const { data } = await getProfileBundle(username, { forceRefresh: background });
+      applyProfileData(data);
+      writeCachedProfile(data);
     } catch (err) {
-      setError('فشل تحميل الملف الشخصي');
+      if (!background) {
+        // إذا لم تكن لدينا أي نسخة مخزّنة نسجل خطأ مرئياً
+        setError('فشل تحميل الملف الشخصي');
+      }
       console.error('Failed to load profile:', err);
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
-  }, [username]);
+  }, [username, applyProfileData, writeCachedProfile]);
 
+  // ✅ المرحلة الأولى: إظهار فوري من الكاش ثم تحديث في الخلفية (SWR pattern)
   useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
+    let cancelled = false;
+    const cached = readCachedProfile();
+    if (cached) {
+      applyProfileData(cached);
+      setLoading(false); // لا نعرض مؤشر التحميل — المحتوى جاهز فوراً
+      // تحديث خلفي صامت من الخادم (stale-while-revalidate)
+      loadProfile({ background: true });
+    } else {
+      setLoading(true);
+      loadProfile({ background: false });
+    }
+    return () => { cancelled = true; void cancelled; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username]);
 
   // ✅ v88.12 FIX: إعادة تحميل بيانات الملف الشخصي فور تحديث الأفاتار أو الغلاف
   // من داخل ProfileHeader، حتى لا تختفي الصورة عند التنقل إلى الرئيسية والعودة.
+  // v88.20: تحديث إجباري من الخادم (ليس من الكاش) لأن الميديا تغيرت للتو.
   useEffect(() => {
-    const handler = () => { loadProfile(); };
+    const handler = () => { loadProfile({ background: true }); };
     window.addEventListener('yamshat:profile-media-updated', handler);
     return () => window.removeEventListener('yamshat:profile-media-updated', handler);
   }, [loadProfile]);
@@ -413,17 +465,30 @@ export default function ProfilePage() {
           paddingBottom: 'calc(140px + env(safe-area-inset-bottom, 0px))',
         }}
       >
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <div className="page-loader-spinner" />
-            <p>جارٍ التحميل...</p>
+        {loading && !profile ? (
+          /* ✅ v88.20: skeleton خفيف بدلاً من spinner فارغ — يقلّل إحساس التأخير */
+          <div className="ymp-skeleton-wrap" aria-busy="true" aria-live="polite">
+            <div className="ymp-sk-cover" />
+            <div className="ymp-sk-avatar" />
+            <div className="ymp-sk-line ymp-sk-line--name" />
+            <div className="ymp-sk-line ymp-sk-line--bio" />
+            <div className="ymp-sk-stats">
+              <div className="ymp-sk-stat" />
+              <div className="ymp-sk-stat" />
+              <div className="ymp-sk-stat" />
+            </div>
+            <div className="ymp-sk-grid">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <div key={i} className="ymp-sk-tile" />
+              ))}
+            </div>
           </div>
-        ) : (error || !profile) ? (
+        ) : (error && !profile) ? (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
             <p style={{ color: '#ff6b6b' }}>{error || 'حدث خطأ'}</p>
-            <Button onClick={loadProfile}>إعادة محاولة</Button>
+            <Button onClick={() => loadProfile()}>إعادة محاولة</Button>
           </div>
-        ) : (
+        ) : profile ? (
           <div
             className="profile-page-wrap"
             style={{
@@ -516,7 +581,7 @@ export default function ProfilePage() {
               )}
             </div>
           </div>
-        )}
+        ) : null}
       </main>
 
       {/* ============================================================
@@ -985,6 +1050,86 @@ export default function ProfilePage() {
            (لم نعد نستخدمها — الصفحة الآن في portal مباشرة على body). */
         body > .ymp-portal-shell {
           isolation: isolate;
+        }
+
+        /* ✅ v88.20 — Skeleton Screen للملف الشخصي أثناء التحميل الأولي.
+           يقلّل إحساس التأخر على ويب الموبايل ويُظهر هيكل الصفحة مباشرة. */
+        .ymp-portal-shell .ymp-skeleton-wrap {
+          max-width: 1000px;
+          margin: 0 auto;
+          padding: 20px;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .ymp-portal-shell .ymp-sk-cover,
+        .ymp-portal-shell .ymp-sk-avatar,
+        .ymp-portal-shell .ymp-sk-line,
+        .ymp-portal-shell .ymp-sk-stat,
+        .ymp-portal-shell .ymp-sk-tile {
+          background: linear-gradient(
+            90deg,
+            rgba(255,255,255,0.04) 0%,
+            rgba(255,255,255,0.09) 50%,
+            rgba(255,255,255,0.04) 100%
+          );
+          background-size: 200% 100%;
+          animation: ymp-shimmer 1.4s ease-in-out infinite;
+          border-radius: 12px;
+        }
+        .ymp-portal-shell .ymp-sk-cover {
+          height: clamp(120px, 28vw, 180px);
+          border-radius: 16px;
+          margin-bottom: 12px;
+        }
+        .ymp-portal-shell .ymp-sk-avatar {
+          width: 96px;
+          height: 96px;
+          border-radius: 50%;
+          margin: -60px auto 12px;
+          border: 4px solid #0A0A0F;
+        }
+        .ymp-portal-shell .ymp-sk-line {
+          height: 14px;
+          margin: 10px auto;
+        }
+        .ymp-portal-shell .ymp-sk-line--name {
+          width: 40%;
+          height: 18px;
+        }
+        .ymp-portal-shell .ymp-sk-line--bio {
+          width: 70%;
+          height: 12px;
+        }
+        .ymp-portal-shell .ymp-sk-stats {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 10px;
+          margin: 18px 0 22px;
+        }
+        .ymp-portal-shell .ymp-sk-stat {
+          height: 58px;
+        }
+        .ymp-portal-shell .ymp-sk-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: clamp(4px, 1.2vw, 8px);
+        }
+        .ymp-portal-shell .ymp-sk-tile {
+          aspect-ratio: 1 / 1;
+          border-radius: clamp(6px, 1.8vw, 10px);
+        }
+        @keyframes ymp-shimmer {
+          0%   { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ymp-portal-shell .ymp-sk-cover,
+          .ymp-portal-shell .ymp-sk-avatar,
+          .ymp-portal-shell .ymp-sk-line,
+          .ymp-portal-shell .ymp-sk-stat,
+          .ymp-portal-shell .ymp-sk-tile {
+            animation: none;
+          }
         }
       `}</style>
     </div>

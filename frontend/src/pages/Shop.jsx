@@ -1,20 +1,24 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { getCurrentUsername } from '../utils/auth.js';
+import { sendMessage as bridgeSend, listThreadsFor } from '../utils/shopChatBridge.js';
+import shopNotify from '../utils/shopNotify.js';
 
 /**
- * Shop — v88.27 صفحة السوق (Marketplace)
- * -------------------------------------
- * صفحة تسوق كاملة لنشر المنتجات: صورة + اسم + سعر + وصف + عنوان.
- * تتضمن على كل بطاقة منتج:
- *   • زر "إرسال طلب" — يفتح مودال يسمح للمشتري بإرسال طلب شراء
- *     مع اسم/رقم الاتصال/رسالة، ويُظهر للبائع الطلبات ويرد عليها.
- *   • زر "استفسار" — يفتح مودال محادثة استفسار سريعة.
- *   • أزرار التفاعل السفلية (إعجاب / تعليق / حفظ / مشاركة) — تظل
- *     في الأسفل كما هي في المنشور العادي.
- *
- * التخزين محلياً في localStorage تحت المفتاح yamshat_shop_v1
- * (products, orders, inquiries) — قابل للتحويل لاحقاً إلى API خلفية.
+ * Shop — v88.35 (Marketplace + Private Chat + Notifications)
+ * ---------------------------------------------------------
+ * التغييرات مقارنة بـ v88.27:
+ *  ① إرسال الطلب: بدلاً من مجرد تخزينه، يُرسَل أيضاً كرسالة خاصة إلى صاحب
+ *    المنتج داخل قناة /shop/chat/:productId/:buyer، ويُطلَق له إشعار.
+ *  ② الاستفسار: لم يعد "تعليقاً عاماً" — بل رسالة خاصة تفتح دردشة
+ *    /shop/chat/:productId/:buyer فوراً، ويصل إشعار للبائع.
+ *  ③ زر "تعليق" في شريط الإجراءات السفلي أُعيدت تسميته وتوجيهه إلى نفس
+ *    الدردشة الخاصة (كان يفتح مودال الاستفسار العام).
+ *  ④ الإعجاب: يرسل إشعاراً للبائع (بدون فتح دردشة).
+ *  ⑤ عدّاد الطلبات على بطاقة البائع يعرض فقط الطلبات النشطة
+ *    (pending / accepted) — ليس المرفوضة أو المسلَّمة (كانت تتراكم بلا داعٍ).
+ *  ⑥ زر جديد "📨 دردشتي مع البائع" للمشتري يفتح الخيط مباشرة إذا كان لديه واحد.
  */
 
 const STORAGE_KEY = 'yamshat_shop_v1';
@@ -46,7 +50,6 @@ function saveState(state) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (err) {
-    // Storage may be full - ignore silently
     console.warn('shop storage error', err);
   }
 }
@@ -91,8 +94,15 @@ const seedProducts = () => ([
   },
 ]);
 
+// ✅ Fix #5: عد الطلبات النشطة فقط (استبعد المرفوضة والمسلَّمة)
+function activeOrdersCount(list) {
+  if (!Array.isArray(list)) return 0;
+  return list.filter((o) => o.status !== 'rejected' && o.status !== 'delivered').length;
+}
+
 export default function Shop() {
   const me = getCurrentUsername() || 'guest';
+  const navigate = useNavigate();
 
   const [state, setState] = useState(() => {
     const s = loadState();
@@ -105,7 +115,6 @@ export default function Shop() {
 
   const [composerOpen, setComposerOpen] = useState(false);
   const [orderModal, setOrderModal] = useState(null); // productId
-  const [inquiryModal, setInquiryModal] = useState(null); // productId
   const [ordersPanelProduct, setOrdersPanelProduct] = useState(null); // seller view
 
   const persist = useCallback((next) => {
@@ -138,6 +147,10 @@ export default function Shop() {
   };
 
   const toggleLike = (id) => {
+    const product = state.products.find((p) => p.id === id);
+    if (!product) return;
+    const wasLiked = (product.likedBy || []).includes(me);
+
     const next = { ...state, products: state.products.map((p) => {
       if (p.id !== id) return p;
       const likedBy = new Set(p.likedBy || []);
@@ -149,6 +162,18 @@ export default function Shop() {
       return { ...p, likes: (p.likes || 0) + 1, likedBy: Array.from(likedBy) };
     }) };
     persist(next);
+
+    // ④ إشعار للبائع فقط عند الإعجاب (لا نُشعِر لصاحبه أو عند فك الإعجاب)
+    if (!wasLiked && product.seller !== me) {
+      shopNotify.push({
+        to: product.seller,
+        from: me,
+        kind: 'like',
+        product,
+        text: 'أعجبه منتجك',
+        path: '/shop',
+      });
+    }
   };
 
   const toggleSave = (id) => {
@@ -181,24 +206,68 @@ export default function Shop() {
     }
   };
 
+  // ① إرسال الطلب = تخزين + رسالة خاصة + إشعار
   const submitOrder = (productId, payload) => {
+    const product = state.products.find((p) => p.id === productId);
+    if (!product) return;
+
     const next = { ...state };
     const list = Array.isArray(next.orders[productId]) ? [...next.orders[productId]] : [];
-    list.push({
+    const order = {
       id: `o-${Date.now()}`,
       buyer: me,
       createdAt: Date.now(),
       status: 'pending',
       replies: [],
       ...payload,
-    });
+    };
+    list.push(order);
     next.orders = { ...next.orders, [productId]: list };
     persist(next);
     setOrderModal(null);
-    window.dispatchEvent(new CustomEvent('yamshat:toast', { detail: { type: 'success', title: 'تم إرسال طلبك بنجاح' } }));
+
+    // رسالة خاصة في دردشة المنتج
+    const orderText = [
+      `📦 طلب شراء جديد`,
+      `الاسم: ${payload.buyerName}`,
+      `التواصل: ${payload.contact}`,
+      `الكمية: ${payload.quantity}`,
+      payload.message ? `الرسالة: ${payload.message}` : '',
+    ].filter(Boolean).join('\n');
+
+    bridgeSend({
+      product,
+      buyer: me,
+      seller: product.seller,
+      from: me,
+      text: orderText,
+      kind: 'order',
+      meta: { orderId: order.id },
+    });
+
+    // إشعار للبائع
+    if (product.seller !== me) {
+      shopNotify.push({
+        to: product.seller,
+        from: me,
+        kind: 'order',
+        product,
+        text: `طلب شراء (${payload.quantity} × ${product.name})`,
+        path: `/shop/chat/${product.id}/${me}`,
+      });
+    }
+
+    window.dispatchEvent(new CustomEvent('yamshat:toast', {
+      detail: { type: 'success', title: 'تم إرسال طلبك ووصلت رسالتك للبائع.' }
+    }));
+
+    // فتح الدردشة الخاصة للمشتري ليتابع الرد
+    navigate(`/shop/chat/${product.id}/${me}`);
   };
 
   const replyToOrder = (productId, orderId, message) => {
+    const product = state.products.find((p) => p.id === productId);
+    if (!product) return;
     const next = { ...state };
     const list = (next.orders[productId] || []).map((o) => {
       if (o.id !== orderId) return o;
@@ -207,44 +276,92 @@ export default function Shop() {
     });
     next.orders = { ...next.orders, [productId]: list };
     persist(next);
+
+    // ابعث الرد أيضاً كرسالة خاصة داخل الخيط الصحيح
+    const order = list.find((o) => o.id === orderId);
+    if (order) {
+      bridgeSend({
+        product,
+        buyer: order.buyer,
+        seller: product.seller,
+        from: me,
+        text: message,
+        kind: 'reply',
+      });
+      if (order.buyer !== me) {
+        shopNotify.push({
+          to: order.buyer,
+          from: me,
+          kind: 'inquiry',
+          product,
+          text: `ردٌ من البائع: ${message}`,
+          path: `/shop/chat/${product.id}/${order.buyer}`,
+        });
+      }
+    }
   };
 
   const setOrderStatus = (productId, orderId, status) => {
+    const product = state.products.find((p) => p.id === productId);
     const next = { ...state };
     const list = (next.orders[productId] || []).map((o) => (o.id === orderId ? { ...o, status } : o));
     next.orders = { ...next.orders, [productId]: list };
     persist(next);
+
+    const order = list.find((o) => o.id === orderId);
+    if (order && product) {
+      const label = status === 'accepted' ? 'تم قبول طلبك ✅'
+        : status === 'rejected' ? 'تم رفض طلبك ✖'
+        : status === 'delivered' ? 'تم تسليم طلبك 📦'
+        : 'تحديث حالة طلبك';
+      bridgeSend({
+        product,
+        buyer: order.buyer,
+        seller: product.seller,
+        from: me,
+        text: label,
+        kind: 'reply',
+      });
+      if (order.buyer !== me) {
+        shopNotify.push({
+          to: order.buyer,
+          from: me,
+          kind: 'order',
+          product,
+          text: label,
+          path: `/shop/chat/${product.id}/${order.buyer}`,
+        });
+      }
+    }
   };
 
-  const submitInquiry = (productId, message) => {
-    const next = { ...state };
-    const list = Array.isArray(next.inquiries[productId]) ? [...next.inquiries[productId]] : [];
-    list.push({ id: `q-${Date.now()}`, author: me, message, at: Date.now(), replies: [] });
-    next.inquiries = { ...next.inquiries, [productId]: list };
-    persist(next);
-  };
-
-  const replyToInquiry = (productId, qid, message) => {
-    const next = { ...state };
-    const list = (next.inquiries[productId] || []).map((q) => (
-      q.id === qid ? { ...q, replies: [...(q.replies || []), { author: me, message, at: Date.now() }] } : q
-    ));
-    next.inquiries = { ...next.inquiries, [productId]: list };
-    persist(next);
+  // ② الاستفسار = فتح دردشة خاصة مباشرة (بدون مودال عام)
+  const openInquiryChat = (product) => {
+    // المشتري (أنا) يفتح خيطه مع البائع
+    // إذا كنت أنا البائع، افتح رابط سوق لأنه لا يوجد خيط ذاتي
+    if (product.seller === me) {
+      window.dispatchEvent(new CustomEvent('yamshat:toast', {
+        detail: { type: 'info', title: 'هذا منتجك — افتح "الطلبات" لرؤية استفسارات المشترين.' }
+      }));
+      setOrdersPanelProduct(product.id);
+      return;
+    }
+    // أول مرة يفتح فيها المشتري الدردشة، أضف رسالة ترحيب لجعل البائع
+    // على علم بوجود اهتمام (ولن يتم إرسال إشعار طلب — سيصل حين يكتب أولى رسائله).
+    navigate(`/shop/chat/${product.id}/${me}`);
   };
 
   const productBeingOrdered = useMemo(
     () => state.products.find((p) => p.id === orderModal) || null,
     [state.products, orderModal],
   );
-  const productBeingAsked = useMemo(
-    () => state.products.find((p) => p.id === inquiryModal) || null,
-    [state.products, inquiryModal],
-  );
   const productForOrdersPanel = useMemo(
     () => state.products.find((p) => p.id === ordersPanelProduct) || null,
     [state.products, ordersPanelProduct],
   );
+
+  // خيوطي لعرض شارة على البطاقة إن كنت المشتري
+  const myThreads = useMemo(() => listThreadsFor(me), [me, state]);
 
   return (
     <MainLayout>
@@ -265,24 +382,27 @@ export default function Shop() {
           {state.products.length === 0 && (
             <div className="shop-empty">لا توجد إعلانات بعد. كن أول من ينشر منتجاً!</div>
           )}
-          {state.products.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              me={me}
-              orders={state.orders[product.id] || []}
-              inquiries={state.inquiries[product.id] || []}
-              onLike={() => toggleLike(product.id)}
-              onSave={() => toggleSave(product.id)}
-              onShare={() => sharePost(product)}
-              onReact={(key) => react(product.id, key)}
-              onOrder={() => setOrderModal(product.id)}
-              onInquire={() => setInquiryModal(product.id)}
-              onManageOrders={() => setOrdersPanelProduct(product.id)}
-              onDelete={() => removeProduct(product.id)}
-              onInquiryReply={(qid, msg) => replyToInquiry(product.id, qid, msg)}
-            />
-          ))}
+          {state.products.map((product) => {
+            const mineWithSeller = myThreads.find((t) => t.productId === product.id && t.buyer === me);
+            return (
+              <ProductCard
+                key={product.id}
+                product={product}
+                me={me}
+                orders={state.orders[product.id] || []}
+                hasOpenThread={Boolean(mineWithSeller)}
+                onLike={() => toggleLike(product.id)}
+                onSave={() => toggleSave(product.id)}
+                onShare={() => sharePost(product)}
+                onReact={(key) => react(product.id, key)}
+                onOrder={() => setOrderModal(product.id)}
+                onInquire={() => openInquiryChat(product)}
+                onManageOrders={() => setOrdersPanelProduct(product.id)}
+                onDelete={() => removeProduct(product.id)}
+                onOpenChat={() => navigate(`/shop/chat/${product.id}/${me}`)}
+              />
+            );
+          })}
         </main>
 
         {composerOpen && (
@@ -300,17 +420,6 @@ export default function Shop() {
           />
         )}
 
-        {productBeingAsked && (
-          <InquiryModal
-            product={productBeingAsked}
-            inquiries={state.inquiries[productBeingAsked.id] || []}
-            me={me}
-            onClose={() => setInquiryModal(null)}
-            onSubmit={(msg) => submitInquiry(productBeingAsked.id, msg)}
-            onReply={(qid, msg) => replyToInquiry(productBeingAsked.id, qid, msg)}
-          />
-        )}
-
         {productForOrdersPanel && (
           <OrdersPanel
             product={productForOrdersPanel}
@@ -319,6 +428,7 @@ export default function Shop() {
             onClose={() => setOrdersPanelProduct(null)}
             onReply={(orderId, msg) => replyToOrder(productForOrdersPanel.id, orderId, msg)}
             onStatus={(orderId, status) => setOrderStatus(productForOrdersPanel.id, orderId, status)}
+            onOpenBuyerChat={(buyer) => navigate(`/shop/chat/${productForOrdersPanel.id}/${buyer}`)}
           />
         )}
       </div>
@@ -376,14 +486,15 @@ export default function Shop() {
 
 /* --------------------- Product Card --------------------- */
 function ProductCard({
-  product, me, orders, inquiries,
+  product, me, orders, hasOpenThread,
   onLike, onSave, onShare, onReact, onOrder, onInquire,
-  onManageOrders, onDelete,
+  onManageOrders, onDelete, onOpenChat,
 }) {
   const [showReactions, setShowReactions] = useState(false);
   const isOwner = product.seller === me;
   const liked = (product.likedBy || []).includes(me);
   const totalReactions = Object.values(product.reactions || {}).reduce((a, b) => a + b, 0);
+  const activeOrders = activeOrdersCount(orders); // ✅ Fix #5
 
   return (
     <article className="pc-card">
@@ -396,7 +507,7 @@ function ProductCard({
         {isOwner && (
           <div className="pc-owner-actions">
             <button type="button" onClick={onManageOrders} title="طلبات هذا المنتج">
-              📥 {orders.length}
+              📥 {activeOrders}
             </button>
             <button type="button" onClick={onDelete} title="حذف">🗑</button>
           </div>
@@ -418,12 +529,17 @@ function ProductCard({
       </div>
 
       <div className="pc-cta">
-        <button type="button" className="pc-btn primary" onClick={onOrder}>
+        <button type="button" className="pc-btn primary" onClick={onOrder} disabled={isOwner}>
           📦 إرسال طلب
         </button>
         <button type="button" className="pc-btn secondary" onClick={onInquire}>
-          💬 استفسار {inquiries.length > 0 && <span className="pc-badge">{inquiries.length}</span>}
+          💬 استفسار (خاص)
         </button>
+        {!isOwner && hasOpenThread && (
+          <button type="button" className="pc-btn tertiary" onClick={onOpenChat} title="فتح دردشتك الخاصة بهذا المنتج">
+            📨 دردشتي مع البائع
+          </button>
+        )}
       </div>
 
       <footer className="pc-footer">
@@ -447,8 +563,9 @@ function ProductCard({
             )}
           </button>
 
-          <button type="button" className="pc-act" onClick={onInquire}>
-            💬 تعليق
+          {/* ✅ Fix #3: زر "تعليق" لم يعد يفتح استفساراً عاماً — يوجّه لدردشة خاصة */}
+          <button type="button" className="pc-act" onClick={onInquire} title="محادثة خاصة مع البائع">
+            💬 راسل البائع
           </button>
 
           <button type="button" className={`pc-act ${product.saved ? 'saved' : ''}`} onClick={onSave}>
@@ -510,14 +627,15 @@ function ProductCard({
         .pc-price small { color: #94a3b8; font-weight: 600; font-size: 0.75rem; margin-right: 4px; }
         .pc-desc { color: #cbd5e1; font-size: 0.9rem; line-height: 1.55; margin: 0; white-space: pre-wrap; }
         .pc-cta {
-          display: flex; gap: 8px; padding: 10px 14px;
+          display: flex; gap: 8px; padding: 10px 14px; flex-wrap: wrap;
           border-top: 1px solid rgba(148,163,184,0.08);
         }
         .pc-btn {
-          flex: 1; padding: 11px 12px; border-radius: 12px; border: 0;
+          flex: 1; min-width: 130px; padding: 11px 12px; border-radius: 12px; border: 0;
           font-weight: 700; cursor: pointer; font-family: inherit; font-size: 0.9rem;
           display: inline-flex; align-items: center; justify-content: center; gap: 6px;
         }
+        .pc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .pc-btn.primary {
           background: linear-gradient(180deg, #7c3aed, #4c1d95); color: #fff;
           box-shadow: 0 4px 14px rgba(124,58,237,0.35);
@@ -526,9 +644,9 @@ function ProductCard({
           background: rgba(20,184,166,0.18); color: #5eead4;
           border: 1px solid rgba(20,184,166,0.35);
         }
-        .pc-badge {
-          background: #f43f5e; color: #fff; border-radius: 999px;
-          padding: 1px 7px; font-size: 0.7rem; margin-right: 4px;
+        .pc-btn.tertiary {
+          background: rgba(59,130,246,0.18); color: #93c5fd;
+          border: 1px solid rgba(59,130,246,0.35);
         }
         .pc-footer {
           padding: 8px 12px 12px;
@@ -649,6 +767,9 @@ function OrderModal({ product, onClose, onSubmit }) {
   return (
     <ModalShell title={`إرسال طلب — ${product.name}`} onClose={onClose}>
       <div className="ml-info">💰 السعر: {product.price} {product.currency} — 📍 {product.address}</div>
+      <div className="ml-info" style={{ background: 'rgba(124,58,237,0.14)', color: '#c4b5fd', borderColor: 'rgba(167,139,250,0.32)' }}>
+        سيصل طلبك كرسالة خاصة إلى صاحب المنتج، وستُفتح دردشتك معه تلقائياً.
+      </div>
       <label className="ml-lbl">اسمك
         <input value={form.buyerName} onChange={(e) => setForm({ ...form, buyerName: e.target.value })} />
       </label>
@@ -678,55 +799,8 @@ function OrderModal({ product, onClose, onSubmit }) {
   );
 }
 
-/* --------------------- Inquiry Modal --------------------- */
-function InquiryModal({ product, inquiries, me, onClose, onSubmit, onReply }) {
-  const [text, setText] = useState('');
-  const [replyFor, setReplyFor] = useState(null);
-  const [replyText, setReplyText] = useState('');
-
-  return (
-    <ModalShell title={`استفسارات — ${product.name}`} onClose={onClose}>
-      <div className="ml-thread">
-        {inquiries.length === 0 && <div className="ml-empty">لا توجد استفسارات بعد.</div>}
-        {inquiries.map((q) => (
-          <div key={q.id} className="ml-msg">
-            <div className="ml-msg-head">
-              <strong>{q.author}</strong>
-              <span>{timeAgo(q.at)}</span>
-            </div>
-            <p>{q.message}</p>
-            {(q.replies || []).map((r, i) => (
-              <div key={i} className="ml-reply">
-                <strong>{r.author}:</strong> {r.message}
-              </div>
-            ))}
-            {product.seller === me && (
-              <div className="ml-reply-row">
-                {replyFor === q.id ? (
-                  <>
-                    <input value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="ردّك…" />
-                    <button type="button" onClick={() => { if (replyText.trim()) { onReply(q.id, replyText.trim()); setReplyText(''); setReplyFor(null); } }}>إرسال</button>
-                  </>
-                ) : (
-                  <button type="button" className="ml-reply-btn" onClick={() => setReplyFor(q.id)}>ردّ</button>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-      <div className="ml-compose">
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder="اكتب استفسارك…" />
-        <button type="button" className="ml-btn primary" onClick={() => { if (text.trim()) { onSubmit(text.trim()); setText(''); } }}>
-          إرسال
-        </button>
-      </div>
-    </ModalShell>
-  );
-}
-
 /* --------------------- Orders Panel (seller) --------------------- */
-function OrdersPanel({ product, orders, me, onClose, onReply, onStatus }) {
+function OrdersPanel({ product, orders, me, onClose, onReply, onStatus, onOpenBuyerChat }) {
   const [replyFor, setReplyFor] = useState(null);
   const [replyText, setReplyText] = useState('');
 
@@ -758,6 +832,7 @@ function OrdersPanel({ product, orders, me, onClose, onReply, onStatus }) {
                 <button type="button" onClick={() => onStatus(o.id, 'accepted')}>✅ قبول</button>
                 <button type="button" onClick={() => onStatus(o.id, 'delivered')}>📦 تسليم</button>
                 <button type="button" onClick={() => onStatus(o.id, 'rejected')}>✖ رفض</button>
+                <button type="button" onClick={() => onOpenBuyerChat && onOpenBuyerChat(o.buyer)}>💬 فتح المحادثة</button>
               </div>
               <div className="ml-reply-row">
                 {replyFor === o.id ? (
@@ -766,7 +841,7 @@ function OrdersPanel({ product, orders, me, onClose, onReply, onStatus }) {
                     <button type="button" onClick={() => { if (replyText.trim()) { onReply(o.id, replyText.trim()); setReplyText(''); setReplyFor(null); } }}>إرسال</button>
                   </>
                 ) : (
-                  <button type="button" className="ml-reply-btn" onClick={() => setReplyFor(o.id)}>💬 ردّ</button>
+                  <button type="button" className="ml-reply-btn" onClick={() => setReplyFor(o.id)}>💬 ردّ سريع</button>
                 )}
               </div>
             </>
@@ -852,15 +927,7 @@ function ModalShell({ title, children, onClose }) {
         .ml-btn { padding: 10px 18px; border-radius: 10px; border: 0; font-weight: 700; cursor: pointer; font-family: inherit; }
         .ml-btn.primary { background: linear-gradient(180deg, #7c3aed, #4c1d95); color: #fff; }
         .ml-btn.cancel { background: rgba(30,41,59,0.7); color: #e2e8f0; border: 1px solid rgba(148,163,184,0.18); }
-        .ml-thread { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .ml-empty { text-align: center; color: #94a3b8; padding: 14px; }
-        .ml-msg {
-          background: rgba(15,23,42,0.7); border: 1px solid rgba(148,163,184,0.12);
-          border-radius: 12px; padding: 10px 12px;
-        }
-        .ml-msg-head { display: flex; justify-content: space-between; font-size: 0.8rem; color: #94a3b8; }
-        .ml-msg-head strong { color: #f1f5f9; }
-        .ml-msg p { margin: 6px 0 0; color: #e2e8f0; font-size: 0.9rem; }
         .ml-reply {
           margin-top: 6px; padding: 6px 10px; background: rgba(124,58,237,0.14);
           border-right: 3px solid rgba(167,139,250,0.5); border-radius: 8px;
@@ -878,14 +945,6 @@ function ModalShell({ title, children, onClose }) {
         .ml-reply-btn {
           background: transparent; color: #a78bfa; border: 1px solid rgba(167,139,250,0.3);
           border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 0.82rem;
-        }
-        .ml-compose {
-          display: flex; gap: 6px; margin-top: 8px;
-          border-top: 1px solid rgba(148,163,184,0.1); padding-top: 10px;
-        }
-        .ml-compose input {
-          flex: 1; background: rgba(2,6,23,0.7); color: #f1f5f9;
-          border: 1px solid rgba(148,163,184,0.18); border-radius: 10px; padding: 10px 12px; font: inherit;
         }
         .ml-order {
           background: rgba(15,23,42,0.75); border: 1px solid rgba(148,163,184,0.14);

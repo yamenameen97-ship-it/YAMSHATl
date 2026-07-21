@@ -67,6 +67,7 @@ const Chat = lazy(() => import('./features/chat/index.js').then((mod) => ({ defa
 const Notifications = lazy(() => import('./features/notifications/index.js').then((mod) => ({ default: mod.Notifications })));
 const Search = lazy(() => import('./pages/Search.jsx'));
 const Shop = lazy(() => import('./pages/Shop.jsx'));
+const ShopChat = lazy(() => import('./pages/ShopChat.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const ChatSettings = lazy(() => import('./pages/ChatSettings.jsx'));
 const GroupSettings = lazy(() => import('./pages/GroupSettings.jsx'));
@@ -263,6 +264,7 @@ export default function App() {
             <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
             <Route path="/shop" element={<ProtectedRoute><Shop /></ProtectedRoute>} />
             <Route path="/market" element={<ProtectedRoute><Shop /></ProtectedRoute>} />
+            <Route path="/shop/chat/:productId/:peer" element={<ProtectedRoute><ShopChat /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/settings/profile" element={<ProtectedRoute><ProfileSettingsPage /></ProtectedRoute>} />
             <Route path="/settings/reels" element={<ProtectedRoute><ReelsSettingsPage /></ProtectedRoute>} />

@@ -275,11 +275,21 @@ export default function ProfilePage() {
     });
   }, [availableTabs, requestedTab]);
 
+  // ✅ v88.38 ROOT FIX: نافذة تعديل الملف تفوز دائماً على نافذة الثيم.
+  // - إذا كانت نافذة تعديل الملف مفتوحة، لا نفتح الثيم بأي حال ولو كان panel=themes موجود.
+  // - نفتح الثيم فقط إذا لم يكن هناك تعديل ملف مفتوح.
+  // هذا يحل الـ race condition الذي كان يجعل الثيم يعاود الفتح فوق EditProfileModal.
   useEffect(() => {
+    if (showEditProfile) {
+      setShowCustomization(false);
+      return;
+    }
     if (requestedPanel === 'themes' && isOwnProfile) {
       setShowCustomization(true);
+    } else if (requestedPanel !== 'themes') {
+      setShowCustomization(false);
     }
-  }, [requestedPanel, isOwnProfile]);
+  }, [requestedPanel, isOwnProfile, showEditProfile]);
 
   // ✅ v88.4: عنوان الصفحة
   useEffect(() => {
@@ -338,17 +348,25 @@ export default function ProfilePage() {
     }
   }, [searchParams, setSearchParams]);
 
-  // ✅ v88.36: زر "تعديل الملف" يفتح EditProfileModal فقط، ولا يمس بأي حال نافذة الثيم
+  // ✅ v88.38 ROOT FIX: زر "تعديل الملف" يفتح EditProfileModal حصرياً
+  // - يُغلق نافذة الثيم فوراً بشكل متزامن.
+  // - يمسح panel=themes من الـ URL في نفس الدفعة قبل أي إعادة render.
+  // - يستخدم panel=edit كعلامة صريحة لمنع أي مكوّن آخر من إعادة فتح الثيم.
   const openEditProfile = useCallback(() => {
-    setShowCustomization(false); // احتياطياً: أغلق أي نافذة تخصيص ثيم مفتوحة
+    setShowCustomization(false);
     setShowEditProfile(true);
-    // أزل أي panel=themes من الـ URL لمنع إعادة فتح نافذة الثيم بعد التنقل
     try {
       const nextParams = new URLSearchParams(searchParams);
+      let changed = false;
       if (nextParams.get('panel') === 'themes') {
         nextParams.delete('panel');
-        setSearchParams(nextParams, { replace: true });
+        changed = true;
       }
+      if (nextParams.get('panel') !== 'edit') {
+        nextParams.set('panel', 'edit');
+        changed = true;
+      }
+      if (changed) setSearchParams(nextParams, { replace: true });
     } catch { /* noop */ }
   }, [searchParams, setSearchParams]);
 

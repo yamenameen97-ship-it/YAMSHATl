@@ -434,8 +434,19 @@ import './styles/yamshat-fixes-v88.31-CHAT-HEADER-DOTS-VOICE-OVERFLOW.css';
 //   + نافذة "إضافة إعلان") لا يعمل فيها السحب للأعلى والأسفل.
 //   يطبّق نفس نمط الإصلاح المُثبت في v81 (Profile) و v87.17/v87.18
 //   (Settings) على .shop-page + .yam-shop-page + .ml-panel / .ml-body.
-// ⚠️ يجب أن يبقى هذا آخر CSS import — يفوز على v88.31 وكل طبقات legacy.
 import './styles/yamshat-fixes-v88.33-SHOP-SCROLL-FINAL.css';
+
+// ✅ v88.37 — GROUP NOTIFICATION SETTINGS SCROLL — ROOT FIX
+//   شكوى المستخدم: صفحة إعدادات إشعارات المجموعة تظهر غير قابلة
+//   للسحب للأعلى والأسفل — إصلاح جذري مطابق لبصمة v81/v87.17/v88.30.
+//   يأتي بعد v88.33 ليفوز في cascade على قواعد .page-content الأعمّ.
+import './styles/yamshat-fixes-v88.37-GROUP-NOTIF-SCROLL-ROOT.css';
+
+// ✅ v88.38 — EDIT PROFILE MODAL — ROOT FIX
+//   شكوى المستخدم: زر التعديل لا يفتح محرر بيانات الحساب ويفتح الثيم.
+//   يضمن تفوّق EditProfileModal على أي مودال ثيم عالق (z-index + visibility).
+// ⚠️ يجب أن يبقى هذا آخر CSS import — يفوز في cascade على كل ما قبله.
+import './styles/yamshat-fixes-v88.38-EDIT-PROFILE-ROOT.css';
 
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
@@ -445,7 +456,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v88.33-SHOP-SCROLL-FINAL';
+const BUILD_ID = 'yamshat-v88.38-EDIT-PROFILE-ROOT';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

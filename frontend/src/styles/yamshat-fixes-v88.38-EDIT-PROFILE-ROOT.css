@@ -1,0 +1,68 @@
+/* =====================================================================
+ * YAMSHAT v88.38 — EDIT PROFILE MODAL ROOT FIX
+ * =====================================================================
+ * الغرض: ضمان أن نافذة "تعديل الملف" (EditProfileModal) تظهر دائماً فوق
+ *        كل شيء (بما فيها نافذة تخصيص الثيم إن كانت عالقة)، وأن نافذة
+ *        الثيم تختفي بصرياً عندما تكون نافذة تعديل الملف مفتوحة.
+ * =====================================================================
+ */
+
+/* [1] نافذة تعديل الملف تفوز في stacking دائماً */
+[data-yamshat-modal="edit-profile"] {
+  z-index: 99999 !important;
+  position: relative !important;
+}
+
+/* الحاوية الجذرية للمودال الذي يحوي form data-yamshat-modal="edit-profile" */
+.modal-overlay:has([data-yamshat-modal="edit-profile"]),
+.ui-modal-overlay:has([data-yamshat-modal="edit-profile"]),
+[class*="modal"]:has([data-yamshat-modal="edit-profile"]),
+[role="dialog"]:has([data-yamshat-modal="edit-profile"]) {
+  z-index: 99998 !important;
+}
+
+/* [2] إذا كانت نافذة تعديل الملف مفتوحة، لا يجب أن تظهر نافذة الثيم بأي حال */
+body:has([data-yamshat-modal="edit-profile"]) .modal-overlay:not(:has([data-yamshat-modal="edit-profile"])),
+body:has([data-yamshat-modal="edit-profile"]) [role="dialog"]:not(:has([data-yamshat-modal="edit-profile"])) {
+  /* نُخفي أي مودالات ثيم أخرى قد تكون فتحت في نفس اللحظة */
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* [3] السحب داخل النافذة يعمل بسلاسة على الموبايل */
+[data-yamshat-modal="edit-profile"] {
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+}
+
+/* [4] الحقول تستقبل النقر والكيبورد بدون ابتلاع السحب */
+[data-yamshat-modal="edit-profile"] input,
+[data-yamshat-modal="edit-profile"] textarea,
+[data-yamshat-modal="edit-profile"] select,
+[data-yamshat-modal="edit-profile"] button {
+  touch-action: manipulation !important;
+}
+
+/* [5] iOS Safari — تحسين ظهور لوحة المفاتيح والتمرير */
+@supports (-webkit-touch-callout: none) {
+  [data-yamshat-modal="edit-profile"] {
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0)) !important;
+  }
+}
+
+/* [6] Focus visible — إمكانية الوصول */
+[data-yamshat-modal="edit-profile"] input:focus-visible,
+[data-yamshat-modal="edit-profile"] textarea:focus-visible,
+[data-yamshat-modal="edit-profile"] select:focus-visible {
+  outline: 2px solid rgba(139, 92, 246, 0.85) !important;
+  outline-offset: 2px !important;
+  border-color: #8b5cf6 !important;
+}
+
+/* [7] header التدرّج البنفسجي (الاسم الكامل) — لا يُقصّ بواسطة overflow الأب */
+[data-yamshat-modal="edit-profile"] > div[style*="linear-gradient"] {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 5 !important;
+}

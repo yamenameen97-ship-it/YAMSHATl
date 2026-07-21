@@ -10,16 +10,15 @@ import {
 } from '../../api/users.js';
 
 /**
- * EditProfileModal — v88.36 (Full Account Editor)
+ * EditProfileModal — v88.38 (Full Account Editor — ROOT-FIX FINAL)
  * =================================================
- * نافذة تعديل بيانات الحساب الكاملة (بديلاً عن نافذة تخصيص الثيم).
- * تدعم:
- *  - الاسم الأول / اسم الأب / اللقب / اسم المستخدم
- *  - النبذة التعريفية (حتى 800 حرف)
- *  - تاريخ الميلاد
- *  - البريد الإلكتروني + إعادة إرسال رمز التحقق
- *  - رقم الهاتف + إرسال رمز SMS + توثيق
- *  - منطقة خطرة: حذف الحساب بكتابة DELETE
+ * تعديلات v88.38 مقارنة بـ v88.36:
+ *  - لا نُرسل حقول لم تتغيّر (diff payload) → يمنع الـ backend من إعادة ضبط
+ *    email_verified/phone_verified أو رفض التحديث لبريد مطابق لمستخدم آخر مسبقاً.
+ *  - dataset attribute (data-yamshat-modal="edit-profile") لكشف النافذة برمجياً.
+ *  - z-index عالي (99999) لضمان تفوّقها على أي مودال ثيم عالق.
+ *  - normalize موحّد للبريد/الهاتف قبل المقارنة.
+ *  - "الاسم الكامل" في header مباشرة لأول ظهور بصري.
  */
 
 const fieldStyle = {
@@ -76,9 +75,27 @@ function normalizeUser(user) {
   };
 }
 
+// v88.38: يعيد فقط الحقول التي فعلاً تغيّرت
+function diffPayload(initial, current) {
+  const keys = ['username', 'first_name', 'father_name', 'last_name', 'bio', 'date_of_birth', 'email', 'phone_number'];
+  const out = {};
+  for (const k of keys) {
+    const a = (initial?.[k] ?? '').toString();
+    const b = (current?.[k] ?? '').toString();
+    // normalization خاص للبريد
+    const aNorm = k === 'email' ? a.trim().toLowerCase() : a.trim();
+    const bNorm = k === 'email' ? b.trim().toLowerCase() : b.trim();
+    if (aNorm !== bNorm) {
+      out[k] = k === 'email' ? bNorm : b.trim();
+    }
+  }
+  return out;
+}
+
 export default function EditProfileModal({ open, onClose, user, onSaved, onDeleted }) {
   const initial = useMemo(() => normalizeUser(user), [user]);
   const [form, setForm] = useState(initial);
+  const [snapshot, setSnapshot] = useState(initial); // v88.38: نسخة أساس لمقارنة الديف
   const [phoneCode, setPhoneCode] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -93,7 +110,9 @@ export default function EditProfileModal({ open, onClose, user, onSaved, onDelet
   // إعادة تعبئة النموذج عند فتح النافذة أو تغيّر المستخدم
   useEffect(() => {
     if (!open) return;
-    setForm(normalizeUser(user));
+    const norm = normalizeUser(user);
+    setForm(norm);
+    setSnapshot(norm);
     setPhoneCode('');
     setStatus('');
     setError('');
@@ -112,26 +131,31 @@ export default function EditProfileModal({ open, onClose, user, onSaved, onDelet
     setStatus('');
     setSaving(true);
     try {
-      const payload = {
-        username: form.username?.trim(),
-        first_name: form.first_name?.trim() || '',
-        father_name: form.father_name?.trim() || '',
-        last_name: form.last_name?.trim() || '',
-        bio: form.bio || '',
-        date_of_birth: form.date_of_birth || '',
-        email: form.email?.trim().toLowerCase(),
-        phone_number: form.phone_number?.trim() || '',
-      };
+      // v88.38: فقط الحقول المتغيّرة → منع 400/409 عند إرسال بريد لم يتغيّر
+      const payload = diffPayload(snapshot, form);
+      if (Object.keys(payload).length === 0) {
+        setStatus('لا توجد تعديلات لحفظها.');
+        setSaving(false);
+        return;
+      }
       const { data } = await updateMyProfile(payload);
       setStatus('تم حفظ بيانات الحساب بنجاح.');
+      // حدّث الـ snapshot ليصير هو الأساس الجديد
+      setSnapshot((prev) => ({ ...prev, ...form }));
       onSaved?.(data);
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : 'تعذر حفظ التعديلات. حاول مجدداً.');
+      setError(
+        typeof detail === 'string'
+          ? detail
+          : Array.isArray(detail)
+          ? detail.map((d) => d?.msg || String(d)).join(' — ')
+          : 'تعذر حفظ التعديلات. حاول مجدداً.'
+      );
     } finally {
       setSaving(false);
     }
-  }, [form, onSaved]);
+  }, [form, snapshot, onSaved]);
 
   const sendEmail = useCallback(async () => {
     setError('');
@@ -152,9 +176,11 @@ export default function EditProfileModal({ open, onClose, user, onSaved, onDelet
     setStatus('');
     setSendingPhone(true);
     try {
-      // حفظ الهاتف أولاً حتى يعتمده الـ backend قبل الإرسال
-      if (form.phone_number?.trim()) {
-        await updateMyProfile({ phone_number: form.phone_number.trim() });
+      // احفظ الهاتف أولاً إذا تغيّر
+      const trimmed = (form.phone_number || '').trim();
+      if (trimmed && trimmed !== (snapshot.phone_number || '').trim()) {
+        await updateMyProfile({ phone_number: trimmed });
+        setSnapshot((prev) => ({ ...prev, phone_number: trimmed }));
       }
       await sendPhoneVerification();
       setStatus('أرسلنا رمز التحقق إلى رقم الهاتف عبر SMS.');
@@ -163,7 +189,7 @@ export default function EditProfileModal({ open, onClose, user, onSaved, onDelet
     } finally {
       setSendingPhone(false);
     }
-  }, [form.phone_number]);
+  }, [form.phone_number, snapshot.phone_number]);
 
   const verifyPhone = useCallback(async () => {
     setError('');
@@ -172,6 +198,7 @@ export default function EditProfileModal({ open, onClose, user, onSaved, onDelet
     try {
       await verifyPhoneVerification((phoneCode || '').trim());
       setStatus('تم توثيق رقم الهاتف بنجاح.');
+      setForm((prev) => ({ ...prev, phone_verified: true }));
       onSaved?.({ ...(user || {}), phone_verified: true, phone_number: form.phone_number });
       setPhoneCode('');
     } catch (err) {
@@ -201,23 +228,41 @@ export default function EditProfileModal({ open, onClose, user, onSaved, onDelet
 
   const bioLength = (form.bio || '').length;
   const todayIso = new Date().toISOString().slice(0, 10);
+  const fullNamePreview = [form.first_name, form.father_name, form.last_name].filter(Boolean).join(' ') || '—';
 
   return (
     <Modal open={open} onClose={onClose} title="تعديل الملف الشخصي" size="large">
       <form
         onSubmit={save}
         dir="rtl"
+        data-yamshat-modal="edit-profile"
+        data-build="v88.38"
         style={{
           padding: 18,
           display: 'grid',
           gap: 14,
-          maxHeight: '76vh',
+          maxHeight: '78vh',
           overflowY: 'auto',
+          position: 'relative',
+          zIndex: 99999,
         }}
       >
         <p style={{ margin: 0, color: '#aaa8bb', fontSize: 13, lineHeight: 1.7 }}>
           عدّل بيانات حسابك ومعلومات التوثيق. البريد الإلكتروني ورقم الهاتف لن يظهرا للآخرين.
         </p>
+
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #4c1d95 0%, #6d28d9 100%)',
+            color: '#fff',
+            padding: '10px 14px',
+            borderRadius: 10,
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          الاسم الكامل: <span style={{ opacity: 0.9 }}>{fullNamePreview}</span>
+        </div>
 
         {error ? (
           <div role="alert" style={{ color: '#fecaca', background: '#4a1820', padding: 10, borderRadius: 9, fontSize: 13 }}>

@@ -628,7 +628,17 @@ export default function ProfileHeader({
       <div className="ymp-actions">
         {isOwnProfile ? (
           <>
-            <button type="button" className="ymp-btn ymp-btn-primary" onClick={onEditProfileClick}>
+            <button
+              type="button"
+              className="ymp-btn ymp-btn-primary"
+              data-yamshat-action="open-edit-profile"
+              data-build="v88.38"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof onEditProfileClick === 'function') onEditProfileClick(e);
+              }}
+            >
               ✏️ تعديل الملف
             </button>
             <button type="button" className="ymp-btn ymp-btn-secondary" onClick={onAnalyticsClick}>

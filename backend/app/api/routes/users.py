@@ -652,16 +652,23 @@ def update_preferences(payload: dict = Body(...), db: Session = Depends(get_db),
 
 @router.patch('/me')
 def update_me(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Update account and profile fields shown in EditProfileModal."""
-    requested_username = str(payload.get('username') or current_user.username).strip().replace(' ', '_')[:50]
-    if not requested_username:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username is required')
-    if not re.fullmatch(r'[A-Za-z0-9_.-]+', requested_username):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username contains invalid characters')
-    existing = db.query(User).filter(User.username == requested_username, User.id != current_user.id).first()
-    if existing is not None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username already exists')
-    current_user.username = requested_username
+    """Update account and profile fields shown in EditProfileModal.
+
+    v88.38: username is only re-validated when the payload actually contains it.
+    This lets the frontend send a diff-only PATCH (only changed fields) without
+    tripping the username uniqueness check on every save.
+    """
+    if 'username' in payload:
+        requested_username = str(payload.get('username') or current_user.username).strip().replace(' ', '_')[:50]
+        if not requested_username:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username is required')
+        if not re.fullmatch(r'[A-Za-z0-9_.-]+', requested_username):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username contains invalid characters')
+        if requested_username != current_user.username:
+            existing = db.query(User).filter(User.username == requested_username, User.id != current_user.id).first()
+            if existing is not None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username already exists')
+            current_user.username = requested_username
 
     # Email changes require the account to be verified again. The standard resend endpoint sends the code.
     if 'email' in payload:

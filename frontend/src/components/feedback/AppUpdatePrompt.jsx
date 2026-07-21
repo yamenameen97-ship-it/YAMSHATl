@@ -2,11 +2,11 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 
 /**
  * ═══════════════════════════════════════════════════════════════════
- * AppUpdatePrompt — v88.11 NATIVE SYSTEM-STYLE UPDATE SHEET
+ * AppUpdatePrompt — v88.37 NATIVE SYSTEM-STYLE UPDATE SHEET (PURPLE)
  * ═══════════════════════════════════════════════════════════════════
  *
  * تصميم مطابق لأسلوب نوافذ النظام (Android / PWA System Sheet):
- *   - خلفية خضراء داكنة بلمعة أنيقة (مطابقة لهوية YAMSHAT + شكل نظام)
+ *   - خلفية بنفسجية داكنة بتدرج (مطابقة لهوية YAMSHAT البنفسجية)
  *   - عنوان: "تحديث جديد متاح"
  *   - زر رئيسي (أبيض بارز): "تحديث الآن"
  *   - زر ثانوي (شفاف): "لاحقاً"
@@ -251,8 +251,9 @@ export default function AppUpdatePrompt() {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   أنماط النافذة الكاملة — مطابقة لأسلوب نظام WhatsApp/Android update sheet
-   خلفية خضراء داكنة، زر أبيض بارز، زر ثانوي شفاف
+   أنماط النافذة الكاملة — مطابقة لهوية YAMSHAT البنفسجية
+   خلفية بنفسجية داكنة، زر أبيض بارز، زر ثانوي شفاف
+   يعتمد على متغيرات النظام: #8b5cf6 / #7c3aed / #6d28d9 / #a855f7
    ══════════════════════════════════════════════════════════════════ */
 const sheetStyles = `
   .yam-native-update-overlay {
@@ -280,10 +281,10 @@ const sheetStyles = `
     width: 100%;
     max-width: 640px;
     padding: 26px 22px 24px;
-    background: linear-gradient(180deg, #0f8a5a 0%, #0a6b47 100%);
+    background: linear-gradient(180deg, #7c3aed 0%, #6d28d9 55%, #4c1d95 100%);
     border-top-left-radius: 26px;
     border-top-right-radius: 26px;
-    box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.55), 0 -1px 0 rgba(255, 255, 255, 0.08) inset;
+    box-shadow: 0 -12px 48px rgba(76, 29, 149, 0.55), 0 -1px 0 rgba(255, 255, 255, 0.10) inset;
     color: #ffffff;
     text-align: right;
     animation: yamNativeSlideUp 320ms cubic-bezier(0.2, 0.9, 0.25, 1);
@@ -311,13 +312,13 @@ const sheetStyles = `
     width: 46px;
     height: 46px;
     border-radius: 14px;
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.16);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     color: #ffffff;
     margin-bottom: 14px;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+    box-shadow: 0 6px 18px rgba(76, 29, 149, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
   }
 
   .yam-native-update-title {
@@ -367,16 +368,16 @@ const sheetStyles = `
     cursor: default;
   }
 
-  /* الزر الرئيسي "تحديث الآن" — أبيض بارز مطابق للصورة */
+  /* الزر الرئيسي "تحديث الآن" — أبيض بارز على خلفية بنفسجية */
   .yam-native-update-btn-primary {
     background: #ffffff;
-    color: #0a6b47;
+    color: #6d28d9;
     border: 1px solid rgba(255, 255, 255, 0.9);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 6px 18px rgba(76, 29, 149, 0.35);
   }
 
   .yam-native-update-btn-primary:hover {
-    background: #f5faf7;
+    background: #f5f3ff;
   }
 
   /* الزر الثانوي "لاحقاً" — شفاف على الخضرة */
@@ -394,8 +395,8 @@ const sheetStyles = `
   .yam-native-update-spinner {
     width: 20px;
     height: 20px;
-    border: 2.5px solid rgba(10, 107, 71, 0.25);
-    border-top-color: #0a6b47;
+    border: 2.5px solid rgba(109, 40, 217, 0.25);
+    border-top-color: #6d28d9;
     border-radius: 50%;
     animation: yamNativeSpin 700ms linear infinite;
   }
@@ -441,13 +442,13 @@ const miniStyles = `
     width: 46px;
     height: 46px;
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    background: linear-gradient(135deg, #0f8a5a, #0a6b47);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
     color: #ffffff;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 22px rgba(10, 107, 71, 0.5);
+    box-shadow: 0 8px 22px rgba(109, 40, 217, 0.55);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     transition: transform 180ms ease;

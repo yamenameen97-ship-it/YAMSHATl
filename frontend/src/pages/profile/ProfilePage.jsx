@@ -220,11 +220,11 @@ export default function ProfilePage() {
     );
   }, []);
 
-  const loadProfile = useCallback(async ({ background = false } = {}) => {
+  const loadProfile = useCallback(async ({ background = false, forceRefresh = false } = {}) => {
     try {
       if (!background) setError('');
-      // ✅ الأهم: لا نمرر forceRefresh دائماً → نسمح للميموري-كاش (30ث) بالعمل
-      const { data } = await getProfileBundle(username, { forceRefresh: background });
+      // ✅ v88.36: دعم forceRefresh صريح لإعادة التحميل بعد حفظ تعديلات EditProfileModal
+      const { data } = await getProfileBundle(username, { forceRefresh: forceRefresh || background });
       applyProfileData(data);
       writeCachedProfile(data);
     } catch (err) {
@@ -338,7 +338,19 @@ export default function ProfilePage() {
     }
   }, [searchParams, setSearchParams]);
 
-  const openEditProfile = useCallback(() => setShowEditProfile(true), []);
+  // ✅ v88.36: زر "تعديل الملف" يفتح EditProfileModal فقط، ولا يمس بأي حال نافذة الثيم
+  const openEditProfile = useCallback(() => {
+    setShowCustomization(false); // احتياطياً: أغلق أي نافذة تخصيص ثيم مفتوحة
+    setShowEditProfile(true);
+    // أزل أي panel=themes من الـ URL لمنع إعادة فتح نافذة الثيم بعد التنقل
+    try {
+      const nextParams = new URLSearchParams(searchParams);
+      if (nextParams.get('panel') === 'themes') {
+        nextParams.delete('panel');
+        setSearchParams(nextParams, { replace: true });
+      }
+    } catch { /* noop */ }
+  }, [searchParams, setSearchParams]);
 
   const handleProfileSaved = useCallback((updatedUser) => {
     setProfile((previous) => {
@@ -347,7 +359,8 @@ export default function ProfilePage() {
       writeCachedProfile(next);
       return next;
     });
-    loadProfile({ background: true });
+    // ✅ v88.36: forceRefresh لضمان أحدث البيانات من الـ backend
+    loadProfile({ background: true, forceRefresh: true });
   }, [loadProfile, writeCachedProfile]);
 
   const handleAccountDeleted = useCallback(() => {

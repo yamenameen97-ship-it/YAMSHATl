@@ -144,6 +144,7 @@ export default function ProfileHeader({
   profile,
   isOwnProfile,
   onAnalyticsClick,
+  onEditProfileClick,
   onCustomizationClick,
   onFollowClick,
   isFollowPending = false,
@@ -627,7 +628,7 @@ export default function ProfileHeader({
       <div className="ymp-actions">
         {isOwnProfile ? (
           <>
-            <button type="button" className="ymp-btn ymp-btn-primary" onClick={onCustomizationClick}>
+            <button type="button" className="ymp-btn ymp-btn-primary" onClick={onEditProfileClick}>
               ✏️ تعديل الملف
             </button>
             <button type="button" className="ymp-btn ymp-btn-secondary" onClick={onAnalyticsClick}>

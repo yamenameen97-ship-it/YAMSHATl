@@ -1,0 +1,388 @@
+/* ================================================================
+   🛍 YAMSHAT v88.33 — SHOP MARKETPLACE SCROLL — FINAL ROOT FIX
+   ================================================================
+   شكوى المستخدم:
+     "صفحات التسوق تحتوي على بستات ونوافذ الطلبات كما موضح بالصور،
+      لكن مشكلتها أن السحب للأعلى والأسفل لا يعمل. أصلحه بنفس المعرفة
+      المطبَّقة على صفحة الملف الشخصي وصفحات الإعدادات — فهن يعملن
+      بسلاسة الآن."
+
+   المرجع الجذري (نفس النمط المُثبت):
+   ------------------------------------------------------------
+     ▸ .yam-home-mobile-page  (v59.13.28)
+     ▸ .settings-wrap / .settings-shell  (v87.17 + v87.18)
+     ▸ .ym-profile-page  (v81)
+     كلها تعمل فل الفل لأن CSS يضمن:
+       - كسر `contain / transform / filter / content-visibility`
+       - `touch-action: pan-y` على الحاوية وكل الأبناء غير التفاعليين
+       - `touch-action: manipulation` على الأزرار والروابط والحقول
+       - `overflow: visible` على الحاوية (والتمرير يُترك لـ .page-content
+         الأم من MainLayout — لا نُنشئ scroll container ثانياً)
+       - `padding-bottom` كافٍ ليصل المستخدم لآخر عنصر فوق BottomNav
+       - إبطال أي طبقات legacy (mobile-touch-master / drawer / v59.13.2)
+         التي قد تفرض `touch-action: none` على الأبناء
+
+   هذا الملف يطبّق البصمة نفسها 1:1 على:
+     • .shop-page / .yam-shop-page — الحاوية الرئيسية لصفحة السوق
+     • .shop-hero — رأس الصفحة (sticky داخل التمرير)
+     • .shop-grid — شبكة بطاقات المنتجات
+     • .pc-card + كل أبنائها (pc-header, pc-image-wrap, pc-body,
+        pc-cta, pc-footer, pc-actions-row, pc-reactions-summary)
+     • الأزرار .pc-btn / .pc-act / .shop-add-btn / .pc-owner-actions button
+     • مودالات .ml-layer / .ml-panel / .ml-body / .ml-thread — لضمان
+        عمل السحب الداخلي داخل نافذة "إرسال طلب" ونافذة "إضافة إعلان"
+        (التي ظهرت في صور المستخدم).
+
+   ⚠️ يجب أن يبقى هذا الملف آخر CSS import بعد v88.31 ليفوز في cascade.
+   ================================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   [1] ⭐ .shop-page / .yam-shop-page — الحاوية الرئيسية
+       نتبع نمط .ym-profile-page: overflow:visible والتمرير في
+       .page-content الأم — هذا هو النمط الأنجح على iOS Safari.
+   ───────────────────────────────────────────────────────────── */
+html body .shop-page,
+html body .yam-shop-page,
+html body div.shop-page[dir="rtl"],
+html body div.yam-shop-page[dir="rtl"] {
+  min-height: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: none !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  perspective: none !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+  will-change: auto !important;
+  overflow-anchor: none !important;
+  scroll-behavior: smooth;
+  box-sizing: border-box;
+}
+
+/* padding سفلي كافٍ ليصل المستخدم لآخر بطاقة فوق BottomNav */
+@media (max-width: 900px) {
+  html body .shop-page,
+  html body .yam-shop-page {
+    padding: 12px 12px calc(160px + env(safe-area-inset-bottom, 0px)) 12px !important;
+  }
+}
+@media (max-width: 900px) and (min-height: 720px) {
+  html body .shop-page,
+  html body .yam-shop-page {
+    padding-bottom: calc(200px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [2] رأس الصفحة .shop-hero — sticky ليبقى ظاهراً أثناء التمرير
+       على الموبايل، بنفس أسلوب .settings-hero.
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  html body .shop-page .shop-hero,
+  html body .yam-shop-page .shop-hero {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    background: rgba(2, 4, 10, 0.92) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 10px !important;
+    margin-bottom: 12px !important;
+    touch-action: pan-y !important;
+    contain: none !important;
+    will-change: auto !important;
+    transform: none !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [3] كسر contain / transform على كل الأبناء (البطاقات وأقسامها)
+       حتى لا يعوقوا تمرير الحاوية الأم .page-content.
+   ───────────────────────────────────────────────────────────── */
+html body .shop-page .shop-grid,
+html body .shop-page .shop-empty,
+html body .shop-page .pc-card,
+html body .shop-page .pc-header,
+html body .shop-page .pc-image-wrap,
+html body .shop-page .pc-body,
+html body .shop-page .pc-cta,
+html body .shop-page .pc-footer,
+html body .shop-page .pc-actions-row,
+html body .shop-page .pc-reactions-summary,
+html body .shop-page article,
+html body .shop-page section,
+html body .yam-shop-page .shop-grid,
+html body .yam-shop-page .pc-card,
+html body .yam-shop-page article,
+html body .yam-shop-page section {
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  will-change: auto !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  overflow: visible !important;
+  max-height: none !important;
+  overflow-anchor: none !important;
+}
+
+/* استثناء: صور المنتج يجب أن تبقى مقصوصة داخل حاويتها */
+html body .shop-page .pc-image-wrap {
+  overflow: hidden !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [4] العناصر التفاعلية — تستقبل النقر لكن لا تبتلع pan-y
+       (نفس نمط أزرار .yam-home-mobile-page).
+   ───────────────────────────────────────────────────────────── */
+html body .shop-page button,
+html body .shop-page a,
+html body .shop-page [role="button"],
+html body .shop-page [role="tab"],
+html body .shop-page [role="link"],
+html body .shop-page .shop-add-btn,
+html body .shop-page .pc-btn,
+html body .shop-page .pc-btn.primary,
+html body .shop-page .pc-btn.secondary,
+html body .shop-page .pc-act,
+html body .shop-page .pc-owner-actions button,
+html body .yam-shop-page button,
+html body .yam-shop-page a,
+html body .yam-shop-page [role="button"] {
+  touch-action: manipulation !important;
+  -ms-touch-action: manipulation !important;
+  pointer-events: auto !important;
+  -webkit-tap-highlight-color: rgba(124, 58, 237, 0.18) !important;
+}
+
+/* حقول الإدخال داخل الصفحة (لو ظهر composer inline) */
+html body .shop-page input,
+html body .shop-page select,
+html body .yam-shop-page input,
+html body .yam-shop-page select {
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+html body .shop-page textarea,
+html body .shop-page [contenteditable="true"],
+html body .yam-shop-page textarea {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  overscroll-behavior: contain !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [5] كسر contain على كل باقي الأبناء بلا استثناء (defensive)
+       حتى لا يتسرّب touch-action:none من أي طبقة قديمة.
+   ───────────────────────────────────────────────────────────── */
+html body .shop-page *,
+html body .yam-shop-page * {
+  overflow-anchor: none;
+}
+html body .shop-page *:not(input):not(select):not(button):not(a):not(textarea):not([role="button"]):not([role="tab"]):not([role="link"]):not(.pc-image-wrap):not(.pc-image-wrap img),
+html body .yam-shop-page *:not(input):not(select):not(button):not(a):not(textarea):not([role="button"]):not([role="tab"]):not([role="link"]):not(.pc-image-wrap):not(.pc-image-wrap img) {
+  touch-action: pan-y;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [6] .page-content عندما تحتوي صفحة التسوق — تنظيف السلوكيات
+       المعارضة (contain / content-visibility) مع إبقاء التمرير
+       من MainLayout كما هو. هذا هو النمط الذي أنجح صفحة الملف
+       الشخصي في v81.
+   ───────────────────────────────────────────────────────────── */
+html body .app-shell .page-content:has(.shop-page),
+html body .app-shell .page-content:has(.yam-shop-page),
+html body .app-shell.yamshat-unified .page-content:has(.shop-page),
+html body .app-shell.yamshat-unified .page-content:has(.yam-shop-page) {
+  contain: none !important;
+  content-visibility: visible !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  height: 100% !important;
+}
+
+/* .page-shell-glow — إبطال content-visibility الذي كان يمنع
+   المتصفح من رؤية الارتفاع الفعلي (نفس مشكلة v81 في الملف الشخصي) */
+html body .app-shell .page-content:has(.shop-page) .page-shell-glow,
+html body .app-shell .page-content:has(.yam-shop-page) .page-shell-glow,
+html body .page-shell-glow:has(> .shop-page),
+html body .page-shell-glow:has(> .yam-shop-page) {
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+  contain: none !important;
+  transform: none !important;
+  filter: none !important;
+  overflow: visible !important;
+  touch-action: pan-y !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [7] 🪟 مودالات صفحة التسوق (.ml-layer / .ml-panel)
+       المستخدم أظهر في الصور نافذتين مهمّتين:
+         • "إرسال طلب — ايفون برو ماكس"
+         • "إضافة إعلان"
+       يجب أن يعمل السحب داخل جسم المودال (.ml-body) بسلاسة على
+       الموبايل، ولا يبتلع الخلفية (.ml-layer) اللمس على iOS.
+   ───────────────────────────────────────────────────────────── */
+html body .ml-layer {
+  touch-action: manipulation !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+html body .ml-panel {
+  max-height: 92dvh !important;
+  overflow: hidden !important;
+  contain: none !important;
+  transform: none !important;
+  touch-action: pan-y !important;
+}
+
+html body .ml-panel .ml-body {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  contain: none !important;
+  transform: none !important;
+  filter: none !important;
+  will-change: auto !important;
+  overflow-anchor: none !important;
+  max-height: calc(92dvh - 60px) !important;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+html body .ml-panel .ml-thread {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  contain: none !important;
+}
+
+/* كل أبناء ml-body (labels, rows, actions, order cards) — pan-y */
+html body .ml-panel .ml-body .ml-lbl,
+html body .ml-panel .ml-body .ml-row,
+html body .ml-panel .ml-body .ml-info,
+html body .ml-panel .ml-body .ml-preview,
+html body .ml-panel .ml-body .ml-actions,
+html body .ml-panel .ml-body .ml-msg,
+html body .ml-panel .ml-body .ml-order,
+html body .ml-panel .ml-body .ml-compose,
+html body .ml-panel .ml-body .ml-reply,
+html body .ml-panel .ml-body .ml-reply-row {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  transform: none !important;
+  will-change: auto !important;
+}
+
+/* حقول المودال — manipulation للأزرار، pan-y للنصوص */
+html body .ml-panel button,
+html body .ml-panel a,
+html body .ml-panel [role="button"],
+html body .ml-panel .ml-btn,
+html body .ml-panel .ml-btn.primary,
+html body .ml-panel .ml-btn.cancel,
+html body .ml-panel .ml-reply-btn {
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  -webkit-tap-highlight-color: rgba(124, 58, 237, 0.22) !important;
+}
+
+html body .ml-panel input,
+html body .ml-panel select {
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+
+html body .ml-panel textarea,
+html body .ml-panel [contenteditable="true"] {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  overscroll-behavior: contain !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [8] iOS Safari — تأكيد momentum scroll على حاويات التسوق
+   ───────────────────────────────────────────────────────────── */
+@supports (-webkit-touch-callout: none) {
+  html body .shop-page,
+  html body .yam-shop-page,
+  html body .ml-panel .ml-body,
+  html body .ml-panel .ml-thread {
+    -webkit-overflow-scrolling: touch !important;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [9] احترام prefers-reduced-motion
+   ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html body .shop-page,
+  html body .yam-shop-page,
+  html body .ml-panel .ml-body,
+  html body .ml-panel .ml-thread {
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [10] إبطال طبقات legacy القديمة داخل صفحة التسوق
+        (mobile-touch-master-v57, drawer-v59.10, mobile-scroll-final-v59.13.2)
+        التي قد تفرض touch-action:none على body أو الأبناء.
+   ───────────────────────────────────────────────────────────── */
+html body.mobile-touch-master-active .shop-page,
+html body.mobile-touch-master-active .yam-shop-page,
+html body.drawer-open .shop-page,
+html body.drawer-open .yam-shop-page,
+html body.mobile-scroll-final-v59-13-2 .shop-page,
+html body.mobile-scroll-final-v59-13-2 .yam-shop-page {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+  overflow: visible !important;
+}
+
+/* قتل طبقات skeleton/shimmer العالقة داخل التسوق (نفس معالجة v81) */
+html body .shop-page [class*="skeleton"],
+html body .shop-page [class*="shimmer"],
+html body .yam-shop-page [class*="skeleton"],
+html body .yam-shop-page [class*="shimmer"] {
+  pointer-events: none !important;
+}
+
+
+/* ================================================================
+   نهاية v88.33 — SHOP MARKETPLACE SCROLL — FINAL ROOT FIX
+   يجب أن يبقى هذا الملف آخر استيراد CSS في main.jsx بعد v88.31.
+   ================================================================ */

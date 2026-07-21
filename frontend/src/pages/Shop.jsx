@@ -248,7 +248,7 @@ export default function Shop() {
 
   return (
     <MainLayout>
-      <div dir="rtl" className="shop-page">
+      <div dir="rtl" className="shop-page yam-shop-page" data-page="shop">
         <header className="shop-hero">
           <div className="shop-hero-inner">
             <div>

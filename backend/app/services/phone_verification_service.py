@@ -156,7 +156,7 @@ class PhoneVerificationService:
             return False
 
     @staticmethod
-    def send_verification_code(phone: str) -> Dict[str, Any]:
+    def send_verification_code(phone: str, code: Optional[str] = None) -> Dict[str, Any]:
         """
         إرسال رمز التحقق عبر SMS
         
@@ -176,7 +176,7 @@ class PhoneVerificationService:
         normalized_phone = PhoneVerificationService.normalize_phone_number(phone)
 
         # توليد رمز التحقق
-        code = generate_numeric_code(6)
+        code = code or generate_numeric_code(6)
 
         # إنشاء الرسالة
         message = f"رمز التحقق الخاص بك هو: {code}\nلا تشارك هذا الرمز مع أحد."

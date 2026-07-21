@@ -7,7 +7,9 @@ import ProfileHeader from '../../components/profile/ProfileHeader.jsx';
 import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Modal from '../../components/ui/Modal.jsx';
+import EditProfileModal from '../../components/ui/EditProfileModal.jsx';
 import { getProfileBundle, updateMyProfile, followUser } from '../../api/users.js';
+import { clearStoredUser } from '../../utils/auth.js';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
 import { getCurrentUsername } from '../../utils/auth.js';
 
@@ -140,6 +142,7 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState(TABS.POSTS);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showCustomization, setShowCustomization] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
   const [showFollowersInsights, setShowFollowersInsights] = useState(false);
   const [theme, setTheme] = useState('midnight');
   const [loading, setLoading] = useState(true);
@@ -335,6 +338,23 @@ export default function ProfilePage() {
     }
   }, [searchParams, setSearchParams]);
 
+  const openEditProfile = useCallback(() => setShowEditProfile(true), []);
+
+  const handleProfileSaved = useCallback((updatedUser) => {
+    setProfile((previous) => {
+      if (!previous) return previous;
+      const next = { ...previous, user: { ...(previous.user || {}), ...updatedUser, profile: { ...(previous.user?.profile || {}), ...(updatedUser?.profile || {}) } } };
+      writeCachedProfile(next);
+      return next;
+    });
+    loadProfile({ background: true });
+  }, [loadProfile, writeCachedProfile]);
+
+  const handleAccountDeleted = useCallback(() => {
+    clearStoredUser();
+    navigate('/login', { replace: true });
+  }, [navigate]);
+
   const openCustomization = useCallback(() => {
     setShowCustomization(true);
     const nextParams = new URLSearchParams(searchParams);
@@ -518,6 +538,7 @@ export default function ProfilePage() {
               profile={profile}
               isOwnProfile={isOwnProfile}
               onAnalyticsClick={() => setShowAnalytics(true)}
+              onEditProfileClick={openEditProfile}
               onCustomizationClick={openCustomization}
               onFollowClick={handleFollowClick}
               isFollowPending={isFollowPending}
@@ -612,6 +633,14 @@ export default function ProfilePage() {
       >
         <BottomNav />
       </div>
+
+      <EditProfileModal
+        open={showEditProfile}
+        onClose={() => setShowEditProfile(false)}
+        user={profile?.user}
+        onSaved={handleProfileSaved}
+        onDeleted={handleAccountDeleted}
+      />
 
       {/* Analytics Modal */}
       <Modal

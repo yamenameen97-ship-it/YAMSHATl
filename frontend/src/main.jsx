@@ -426,9 +426,16 @@ import './styles/yamshat-fixes-v88.30-GROUP-NOTIF-SCROLL-FINAL.css';
 //   (2) منع خروج فقاعة الرسائل الصوتية (.yam-voice-pill) عن
 //       حدود الشاشة من الجانب الأيسر — يبرز رأس زر التشغيل
 //       والفقاعة تتجاوز الحاوية.
-// ⚠️ يجب أن يبقى هذا آخر CSS import — يفوز على v88.22/v88.30
-//    وكل طبقات legacy (v60.*/v61/v63).
+// ⚠️ يبقى هذا هو استيراد الدردشة — لكن v88.33 (السوق) سيأتي بعده.
 import './styles/yamshat-fixes-v88.31-CHAT-HEADER-DOTS-VOICE-OVERFLOW.css';
+
+// ✅ v88.33 — SHOP MARKETPLACE SCROLL — FINAL ROOT FIX
+//   شكوى المستخدم: صفحات التسوق (بطاقات المنتجات + نافذة "إرسال طلب"
+//   + نافذة "إضافة إعلان") لا يعمل فيها السحب للأعلى والأسفل.
+//   يطبّق نفس نمط الإصلاح المُثبت في v81 (Profile) و v87.17/v87.18
+//   (Settings) على .shop-page + .yam-shop-page + .ml-panel / .ml-body.
+// ⚠️ يجب أن يبقى هذا آخر CSS import — يفوز على v88.31 وكل طبقات legacy.
+import './styles/yamshat-fixes-v88.33-SHOP-SCROLL-FINAL.css';
 
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
@@ -438,7 +445,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v88.17-MOBILE-FEED-UPDATE-STABILITY';
+const BUILD_ID = 'yamshat-v88.33-SHOP-SCROLL-FINAL';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 
 async function hardResetIfBuildChanged() {

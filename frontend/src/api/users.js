@@ -46,6 +46,10 @@ export const followUser = (username) => API.post('/users/follow', { following: u
 export const toggleFollow = (username) => API.post('/users/follow', { following: username });
 export const getUserPosts = (username) => API.get(`/users/user_posts/${encodeURIComponent(username)}`);
 export const updateMyProfile = (payload) => API.patch('/users/me', payload);
+export const sendPhoneVerification = () => API.post('/users/me/phone/send-verification');
+export const verifyPhoneVerification = (code) => API.post('/users/me/phone/verify', { code });
+export const resendEmailVerification = (email) => API.post('/auth/resend-verification', { email });
+export const deleteMyAccount = () => API.delete('/users/me', { data: { confirmation: 'DELETE' } });
 export const getSavedPosts = () => API.get('/users/me/saved-posts', { cache: false, forceRefresh: true });
 export const getLikedPosts = () => API.get('/users/me/liked-posts', { cache: false, forceRefresh: true });
 export const getBlockList = () => API.get('/users/me/block-list', { cache: false, forceRefresh: true });

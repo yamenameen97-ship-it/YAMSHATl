@@ -11,6 +11,11 @@ class UserProfile(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
     bio = Column(Text, nullable=True)
+    # بيانات الهوية المعروضة في محرر الملف الشخصي
+    first_name = Column(String(80), nullable=True)
+    father_name = Column(String(80), nullable=True)
+    last_name = Column(String(80), nullable=True)
+    date_of_birth = Column(DateTime, nullable=True)
     cover_photo = Column(String(1000), nullable=True)
     badges_json = Column(Text, nullable=True)
     is_verified = Column(Boolean, nullable=False, default=False)

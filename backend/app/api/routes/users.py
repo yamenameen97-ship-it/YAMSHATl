@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
@@ -23,6 +24,7 @@ from app.models.user_profile import UserProfile
 from app.models.user_session import UserSession
 from app.models.user_wallet import UserWallet
 from app.services.auth_service import list_login_activity, list_user_sessions, revoke_session
+from app.services.phone_verification_service import PhoneVerificationService
 from app.services.notification_service import create_and_send_notification
 from app.services.post_service import get_posts_by_username
 
@@ -110,6 +112,9 @@ def _user_payload(db: Session, user: User, following: bool | None = None) -> dic
         'name': user.username,
         'username': user.username,
         'email': user.email,
+        'email_verified': bool(user.email_verified),
+        'phone_number': user.phone_number,
+        'phone_verified': bool(user.phone_verified),
         'avatar': user.avatar,
         'role': user.role,
         'is_active': user.is_active,
@@ -119,6 +124,10 @@ def _user_payload(db: Session, user: User, following: bool | None = None) -> dic
         'last_login_at': user.last_login_at.isoformat() if user.last_login_at else None,
         'profile': {
             'bio': profile.bio or '',
+            'first_name': profile.first_name or '',
+            'father_name': profile.father_name or '',
+            'last_name': profile.last_name or '',
+            'date_of_birth': profile.date_of_birth.date().isoformat() if profile.date_of_birth else None,
             'cover_photo': profile.cover_photo,
             'badges': _loads_list(profile.badges_json),
             'is_verified': bool(profile.is_verified),
@@ -161,6 +170,9 @@ def _basic_user_payload(user: User, following: bool | None = None) -> dict:
         'name': user.username,
         'username': user.username,
         'email': user.email,
+        'email_verified': bool(user.email_verified),
+        'phone_number': user.phone_number,
+        'phone_verified': bool(user.phone_verified),
         'avatar': user.avatar,
         'role': user.role,
         'is_active': bool(user.is_active),
@@ -636,36 +648,121 @@ def update_preferences(payload: dict = Body(...), db: Session = Depends(get_db),
 
 @router.patch('/me')
 def update_me(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    requested_username = str(payload.get('username') or current_user.username).strip().replace(' ', '_')
+    """Update account and profile fields shown in EditProfileModal."""
+    requested_username = str(payload.get('username') or current_user.username).strip().replace(' ', '_')[:50]
     if not requested_username:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username is required')
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+', requested_username):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username contains invalid characters')
     existing = db.query(User).filter(User.username == requested_username, User.id != current_user.id).first()
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username already exists')
     current_user.username = requested_username
-    avatar_value = str(payload.get('avatar') or payload.get('avatar_url') or current_user.avatar or '').strip() or None
-    if avatar_value:
-        current_user.avatar = avatar_value
+
+    # Email changes require the account to be verified again. The standard resend endpoint sends the code.
+    if 'email' in payload:
+        requested_email = str(payload.get('email') or '').strip().lower()
+        if not requested_email or '@' not in requested_email:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='A valid email is required')
+        email_owner = db.query(User).filter(User.email == requested_email, User.id != current_user.id).first()
+        if email_owner is not None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already exists')
+        if requested_email != current_user.email:
+            current_user.email = requested_email
+            current_user.email_verified = False
+            current_user.email_verification_code = None
+            current_user.email_verification_expires_at = None
+
+    if 'phone_number' in payload:
+        raw_phone = str(payload.get('phone_number') or '').strip()
+        if raw_phone:
+            if not PhoneVerificationService.is_valid_phone_number(raw_phone):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid phone number format')
+            phone = PhoneVerificationService.normalize_phone_number(raw_phone)
+            phone_owner = db.query(User).filter(User.phone_number == phone, User.id != current_user.id).first()
+            if phone_owner is not None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Phone number already exists')
+            if phone != current_user.phone_number:
+                current_user.phone_number = phone
+                current_user.phone_verified = False
+                current_user.phone_verification_code = None
+                current_user.phone_verification_expires_at = None
+        else:
+            current_user.phone_number = None
+            current_user.phone_verified = False
+            current_user.phone_verification_code = None
+            current_user.phone_verification_expires_at = None
+
+    if 'avatar' in payload or 'avatar_url' in payload:
+        current_user.avatar = str(payload.get('avatar') or payload.get('avatar_url') or '').strip() or None
+
     profile = _get_or_create_profile(db, current_user.id)
-    profile.bio = str(payload.get('bio') or profile.bio or '').strip()[:800]
-    cover_value = str(payload.get('cover_photo') or payload.get('cover_url') or profile.cover_photo or '').strip() or None
-    if cover_value:
-        profile.cover_photo = cover_value
-    profile.profile_theme = str(payload.get('profile_theme') or profile.profile_theme or 'midnight').strip()[:40] or 'midnight'
-    profile.privacy_level = str(payload.get('privacy_level') or profile.privacy_level or 'public').strip()[:20] or 'public'
-    profile.activity_tagline = str(payload.get('activity_tagline') or profile.activity_tagline or '').strip()[:255]
-    requested_badges = payload.get('badges')
-    if isinstance(requested_badges, list):
-        profile.badges_json = json.dumps([str(item)[:50] for item in requested_badges[:8]], ensure_ascii=False)
-    achievements = payload.get('achievements')
-    if isinstance(achievements, list):
-        profile.achievements_json = json.dumps([str(item)[:60] for item in achievements[:10]], ensure_ascii=False)
+    for field, limit in (('first_name', 80), ('father_name', 80), ('last_name', 80)):
+        if field in payload:
+            setattr(profile, field, str(payload.get(field) or '').strip()[:limit] or None)
+    if 'date_of_birth' in payload:
+        raw_date = str(payload.get('date_of_birth') or '').strip()
+        if raw_date:
+            try:
+                birth_date = datetime.strptime(raw_date, '%Y-%m-%d')
+            except ValueError:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Date of birth must use YYYY-MM-DD')
+            if birth_date > datetime.utcnow():
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Date of birth cannot be in the future')
+            profile.date_of_birth = birth_date
+        else:
+            profile.date_of_birth = None
+    if 'bio' in payload:
+        profile.bio = str(payload.get('bio') or '').strip()[:800]
+    if 'cover_photo' in payload or 'cover_url' in payload:
+        profile.cover_photo = str(payload.get('cover_photo') or payload.get('cover_url') or '').strip() or None
+    if 'profile_theme' in payload:
+        profile.profile_theme = str(payload.get('profile_theme') or 'midnight').strip()[:40] or 'midnight'
+    if 'privacy_level' in payload:
+        profile.privacy_level = str(payload.get('privacy_level') or 'public').strip()[:20] or 'public'
+    if 'activity_tagline' in payload:
+        profile.activity_tagline = str(payload.get('activity_tagline') or '').strip()[:255]
+    if isinstance(payload.get('badges'), list):
+        profile.badges_json = json.dumps([str(item)[:50] for item in payload['badges'][:8]], ensure_ascii=False)
+    if isinstance(payload.get('achievements'), list):
+        profile.achievements_json = json.dumps([str(item)[:60] for item in payload['achievements'][:10]], ensure_ascii=False)
     if current_user.role in {'admin', 'moderator'} and 'is_verified' in payload:
         profile.is_verified = bool(payload.get('is_verified'))
     db.commit()
     db.refresh(current_user)
     db.refresh(profile)
     return _user_payload(db, current_user)
+
+
+@router.post('/me/phone/send-verification')
+def send_phone_verification(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not current_user.phone_number:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Add a phone number first')
+    # Persist one hashed code, then send that exact code by SMS.
+    code = PhoneVerificationService.issue_phone_verification_code(db, current_user)
+    result = PhoneVerificationService.send_verification_code(current_user.phone_number, code=code)
+    return {'message': 'Verification code sent', 'phone': result['phone'], 'expires_in_minutes': result['expires_in_minutes']}
+
+
+@router.post('/me/phone/verify')
+def verify_phone_verification(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    code = str(payload.get('code') or '').strip()
+    if not code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Verification code is required')
+    PhoneVerificationService.verify_phone_code(db, current_user, code)
+    return {'message': 'Phone verified successfully', 'phone_verified': True}
+
+
+@router.delete('/me')
+def delete_my_account(payload: dict = Body(default={}), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    confirmation = str(payload.get('confirmation') or '').strip().upper()
+    if confirmation != 'DELETE':
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Confirmation must be DELETE')
+    # Revoke active sessions before deleting; dependent account records use DB CASCADE.
+    db.query(UserSession).filter(UserSession.user_id == current_user.id).delete(synchronize_session=False)
+    db.delete(current_user)
+    db.commit()
+    return {'message': 'Account deleted successfully'}
 
 
 @router.get('/followers/{username}')

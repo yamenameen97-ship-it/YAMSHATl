@@ -146,6 +146,7 @@ export default function ProfileHeader({
   onAnalyticsClick,
   onCustomizationClick,
   onFollowClick,
+  isFollowPending = false,
   activeTab: externalActiveTab,
   onTabChange,
   tabs: externalTabs,
@@ -187,6 +188,8 @@ export default function ProfileHeader({
   const [avatarFile, setAvatarFile] = useState(null);
   const [coverImageError, setCoverImageError] = useState(false);
   const [avatarImageError, setAvatarImageError] = useState(false);
+  const [isSavingCover, setIsSavingCover] = useState(false);
+  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
 
   const fileInputRef = useRef(null);
   const avatarInputRef = useRef(null);
@@ -207,8 +210,28 @@ export default function ProfileHeader({
     if (typeof onTabChange === 'function') onTabChange(tab);
   }, [onTabChange]);
 
+  const openCoverEditor = useCallback((event) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setShowCoverEditor(true);
+  }, []);
+
+  const openCoverPicker = useCallback((event) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    fileInputRef.current?.click();
+  }, []);
+
+  const openAvatarPicker = useCallback((event) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    avatarInputRef.current?.click();
+  }, []);
+
   const handleCoverUpload = (e) => {
     const file = e.target.files?.[0];
+    // يسمح بإعادة اختيار نفس الملف بعد إغلاق المحرر.
+    e.target.value = ''; 
     if (!file) return;
     if (!file.type.startsWith('image/')) { alert('الرجاء اختيار صورة'); return; }
     if (file.size > 5 * 1024 * 1024) { alert('حجم الصورة كبير جداً (الحد الأقصى 5MB)'); return; }
@@ -221,6 +244,8 @@ export default function ProfileHeader({
 
   const handleAvatarUpload = (e) => {
     const file = e.target.files?.[0];
+    // يسمح بإعادة اختيار نفس الملف عند المحاولة التالية.
+    e.target.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/')) { alert('الرجاء اختيار صورة'); return; }
     if (file.size > 2 * 1024 * 1024) { alert('حجم الصورة كبير جداً (الحد الأقصى 2MB)'); return; }
@@ -257,6 +282,8 @@ export default function ProfileHeader({
   };
 
   const applyCrop = async () => {
+    if (!avatarFile || isSavingAvatar) return;
+    setIsSavingAvatar(true);
     try {
       const avatarUrl = await uploadImageAndResolveUrl(avatarFile, avatarImage);
       const res = await updateMyProfile({ avatar: avatarUrl, avatar_url: avatarUrl });
@@ -275,10 +302,17 @@ export default function ProfileHeader({
     } catch (error) {
       console.error('Failed to update avatar:', error);
       alert('فشل تحديث الصورة الشخصية');
+    } finally {
+      setIsSavingAvatar(false);
     }
   };
 
   const saveCoverImage = async () => {
+    if (!coverFile || isSavingCover) {
+      if (!coverFile) alert('اختر صورة غلاف أولاً');
+      return;
+    }
+    setIsSavingCover(true);
     try {
       const coverUrl = await uploadImageAndResolveUrl(coverFile, coverImage);
       const res = await updateMyProfile({ cover_photo: coverUrl, cover_url: coverUrl });
@@ -295,6 +329,8 @@ export default function ProfileHeader({
     } catch (error) {
       console.error('Failed to update cover:', error);
       alert('فشل تحديث صورة الغلاف');
+    } finally {
+      setIsSavingCover(false);
     }
   };
 
@@ -348,7 +384,15 @@ export default function ProfileHeader({
   const bio = profile?.user?.profile?.bio || '';
   const tagline = profile?.user?.profile?.activity_tagline || 'منشئ محتوى رقمي';
   const isVerified = profile?.user?.is_verified || profile?.user?.verified || false;
-  const isFollowing = profile?.is_following || false;
+  // استجابة /users/profile تعيد العلاقة داخل relationship.following؛
+  // قراءة كل الأشكال تمنع رجوع زر المتابعة لحالته القديمة بعد إعادة فتح الصفحة.
+  const isFollowing = Boolean(
+    profile?.relationship?.following
+    ?? profile?.is_following
+    ?? profile?.following
+    ?? profile?.user?.following
+    ?? false
+  );
   const city = profile?.user?.profile?.city || '';
   const gender = profile?.user?.profile?.gender || '';
 
@@ -478,7 +522,7 @@ export default function ProfileHeader({
         )}
 
         {isOwnProfile && (
-          <button className="ymp-cover-edit-btn" onClick={() => setShowCoverEditor(true)} type="button">
+          <button className="ymp-cover-edit-btn" onClick={openCoverEditor} type="button">
             ✏️ تعديل الغلاف
           </button>
         )}
@@ -513,7 +557,7 @@ export default function ProfileHeader({
             <button
               type="button"
               className="ymp-avatar-edit-btn"
-              onClick={() => avatarInputRef.current?.click()}
+              onClick={openAvatarPicker}
               aria-label="تغيير الصورة الشخصية"
             >
               📷
@@ -617,6 +661,8 @@ export default function ProfileHeader({
               type="button"
               className={`ymp-btn ${isFollowing ? 'ymp-btn-secondary' : 'ymp-btn-primary'}`}
               onClick={onFollowClick}
+              disabled={isFollowPending}
+              aria-busy={isFollowPending}
             >
               <span>{isFollowing ? '✓ تتابعه' : '＋ متابعة'}</span>
             </button>
@@ -749,11 +795,11 @@ export default function ProfileHeader({
               <FallbackCover />
             )}
           </div>
-          <Button onClick={() => fileInputRef.current?.click()} style={{ width: '100%', marginBottom: 10 }}>
+          <Button onClick={openCoverPicker} preventRepeat={false} style={{ width: '100%', marginBottom: 10 }}>
             اختيار صورة
           </Button>
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleCoverUpload} style={{ display: 'none' }} />
-          <Button onClick={saveCoverImage} style={{ width: '100%' }}>حفظ</Button>
+          <Button onClick={saveCoverImage} loading={isSavingCover} disabled={!coverFile} style={{ width: '100%' }}>حفظ</Button>
         </div>
       </Modal>
 
@@ -767,7 +813,7 @@ export default function ProfileHeader({
               <FallbackAvatar name={fullName} />
             )}
           </div>
-          <Button onClick={applyCrop} style={{ width: '100%' }}>تطبيق</Button>
+          <Button onClick={applyCrop} loading={isSavingAvatar} disabled={!avatarFile} style={{ width: '100%' }}>تطبيق</Button>
         </div>
       </Modal>
 
@@ -813,6 +859,7 @@ export default function ProfileHeader({
           -webkit-backdrop-filter: blur(6px);
         }
         .ymp-cover-edit-btn:hover { background: rgba(0,0,0,0.85); }
+        .ymp-cover-edit-btn { z-index: 12; pointer-events: auto !important; touch-action: manipulation; }
 
         .ymp-avatar-holder {
           position: absolute;
@@ -853,7 +900,9 @@ export default function ProfileHeader({
           cursor: pointer;
           display: grid; place-items: center;
           box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-          z-index: 2;
+          z-index: 12;
+          pointer-events: auto !important;
+          touch-action: manipulation;
         }
 
         /* 🆕 (5) — Online status indicator */

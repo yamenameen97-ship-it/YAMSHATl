@@ -95,6 +95,11 @@ class Reel(Base):
     shares_count = Column(Integer, default=0, nullable=False)
     views_count = Column(Integer, default=0, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    # v88.28 — تخزين سحابي دائم: نحفظ public_id/URL/نوع التخزين للريلز حتى لا نفقدها بعد إعادة النشر
+    cloudinary_public_id = Column(String(255), nullable=True, index=True)
+    cloudinary_video_public_id = Column(String(255), nullable=True)
+    cloudinary_thumb_public_id = Column(String(255), nullable=True)
+    storage_type = Column(String(32), default='local', nullable=False)  # cloudinary | persistent_disk | local
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

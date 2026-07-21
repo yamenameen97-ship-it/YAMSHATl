@@ -147,6 +147,7 @@ export default function ProfilePage() {
   const [pinnedPosts, setPinnedPosts] = useState([]);
   const [analyticsData, setAnalyticsData] = useState(null);
   const [followersData, setFollowersData] = useState(null);
+  const [isFollowPending, setIsFollowPending] = useState(false);
   const scrollRef = useRef(null);
 
   const requestedTab = normalizeRequestedTab(searchParams.get('tab'));
@@ -350,26 +351,39 @@ export default function ProfilePage() {
 
   const handleFollowClick = useCallback(async () => {
     const targetUsername = profile?.user?.username || '';
-    if (!targetUsername) return;
+    if (!targetUsername || isFollowPending) return;
 
+    setIsFollowPending(true);
     try {
-      await followUser(targetUsername);
+      // لا نعكس الحالة محلياً بالتخمين: الخادم يعيد following النهائي بعد toggle.
+      const response = await followUser(targetUsername);
+      const following = Boolean(response?.data?.following);
+      const followers = Number(response?.data?.followers);
+
       setProfile((prev) => {
         if (!prev) return prev;
-        const isFollowing = Boolean(prev.is_following);
-        const currentFollowers = Number(prev.followers_count || 0);
-        return {
+        const nextFollowers = Number.isFinite(followers)
+          ? followers
+          : Math.max(0, Number(prev?.counts?.followers ?? prev?.followers_count ?? 0) + (following ? 1 : -1));
+        const next = {
           ...prev,
-          is_following: !isFollowing,
-          followers_count: isFollowing
-            ? Math.max(0, currentFollowers - 1)
-            : currentFollowers + 1,
+          is_following: following,
+          following,
+          followers_count: nextFollowers,
+          counts: { ...(prev.counts || {}), followers: nextFollowers },
+          relationship: { ...(prev.relationship || {}), following },
+          user: { ...(prev.user || {}), followers_count: nextFollowers, following },
         };
+        writeCachedProfile(next);
+        return next;
       });
     } catch (error) {
       console.error('Failed to follow user:', error);
+      setError('تعذر حفظ حالة المتابعة. حاول مرة أخرى.');
+    } finally {
+      setIsFollowPending(false);
     }
-  }, [profile?.user?.username]);
+  }, [profile?.user?.username, isFollowPending, writeCachedProfile]);
 
   const getTabContent = useCallback(() => {
     if (!profile) return [];
@@ -506,6 +520,7 @@ export default function ProfilePage() {
               onAnalyticsClick={() => setShowAnalytics(true)}
               onCustomizationClick={openCustomization}
               onFollowClick={handleFollowClick}
+              isFollowPending={isFollowPending}
               activeTab={activeTab}
               onTabChange={handleTabChange}
               tabs={availableTabs}

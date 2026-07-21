@@ -72,7 +72,7 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
     'messages': {'sender_id', 'receiver_id', 'sender', 'receiver', 'message', 'content'},
     'notifications': {'user_id', 'type', 'title', 'body', 'data', 'is_read', 'created_at'},
     'live_room_sessions': {'host_user_id', 'host_username', 'title', 'stream_status', 'is_active', 'is_public', 'extra_json', 'last_activity_at'},
-    'reels': {'user_id', 'video_url', 'thumbnail_url', 'caption', 'category', 'duration', 'likes_count', 'comments_count', 'shares_count', 'views_count', 'is_deleted', 'created_at', 'updated_at'},
+    'reels': {'user_id', 'video_url', 'thumbnail_url', 'caption', 'category', 'duration', 'likes_count', 'comments_count', 'shares_count', 'views_count', 'is_deleted', 'created_at', 'updated_at', 'cloudinary_public_id', 'cloudinary_video_public_id', 'cloudinary_thumb_public_id', 'storage_type'},
     'reel_likes': {'reel_id', 'user_id', 'created_at'},
     'reel_views': {'reel_id', 'user_id', 'viewed_at'},
     'saved_reels': {'reel_id', 'user_id', 'saved_at'},
@@ -649,6 +649,11 @@ def _migrate_reels_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'reels', 'is_deleted', 'is_deleted BOOLEAN NOT NULL DEFAULT FALSE')
     _add_column_if_missing(engine, 'reels', 'created_at', 'created_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'reels', 'updated_at', 'updated_at TIMESTAMP NULL')
+    # v88.28 — أعمدة تخزين سحابي دائم للريلز (حل مشكلة اختفاء الفيديوهات بعد إعادة النشر)
+    _add_column_if_missing(engine, 'reels', 'cloudinary_public_id', 'cloudinary_public_id VARCHAR(255) NULL')
+    _add_column_if_missing(engine, 'reels', 'cloudinary_video_public_id', 'cloudinary_video_public_id VARCHAR(255) NULL')
+    _add_column_if_missing(engine, 'reels', 'cloudinary_thumb_public_id', 'cloudinary_thumb_public_id VARCHAR(255) NULL')
+    _add_column_if_missing(engine, 'reels', 'storage_type', "storage_type VARCHAR(32) NOT NULL DEFAULT 'local'")
 
     with engine.begin() as connection:
         connection.execute(text("UPDATE reels SET category = COALESCE(NULLIF(category, ''), 'general')"))

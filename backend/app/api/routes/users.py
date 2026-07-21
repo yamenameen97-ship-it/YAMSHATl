@@ -221,6 +221,8 @@ def _basic_profile_bundle(db: Session, target: User, viewer: User) -> dict:
         'saved_posts': [],
         'liked_posts': [],
         'relationship': relationship,
+        # توافق صريح مع عملاء أقدم تقرأ الحالة من الجذر.
+        'is_following': bool(relationship.get('following')),
         'privacy': {
             'level': 'public',
             'show_saved_posts': viewer.id == target.id,
@@ -313,7 +315,8 @@ def _engagement_summary(db: Session, user: User) -> dict:
 
 
 def _profile_bundle(db: Session, target: User, viewer: User) -> dict:
-    base_user = _user_payload(db, target, following=_relationship_flags(db, viewer, target)['following'])
+    relationship = _relationship_flags(db, viewer, target)
+    base_user = _user_payload(db, target, following=relationship['following'])
     profile = _get_or_create_profile(db, target.id)
     posts = get_posts_by_username(db, target.username, current_user=viewer)
     saved_posts = []
@@ -395,7 +398,9 @@ def _profile_bundle(db: Session, target: User, viewer: User) -> dict:
         'posts': posts,
         'saved_posts': saved_posts,
         'liked_posts': liked_posts,
-        'relationship': _relationship_flags(db, viewer, target),
+        'relationship': relationship,
+        # يبقى المفتاح في الجذر أيضاً لكي لا تعتمد الواجهة على شكل واحد للاستجابة.
+        'is_following': bool(relationship.get('following')),
         'privacy': {
             'level': profile.privacy_level or 'public',
             'show_saved_posts': viewer.id == target.id,

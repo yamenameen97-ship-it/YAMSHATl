@@ -88,9 +88,12 @@ function MobileCommentsSheet({ open, postId, onClose }) {
     // وبالتالي تظهر منطقة كتابة التعليق بالكامل ولا تفقد خلف شريط التنقل
     document.body.setAttribute('data-ym-sheet', 'open');
 
-    // ✅ v88.19 FIX: مواكبة visualViewport (لوحة المفاتيح على الجوال)
-    // كي يبقى صندوق كتابة التعليق فوق لوحة المفاتيح دائماً بدلاً من الاختفاء أسفل الشاشة.
-    // نضبط متغير CSS ‎--ym-kb-inset‎ إلى ارتفاع لوحة المفاتيح المرئية.
+    // ✅ v88.29 FIX (FEED MOBILE COMMENT COMPOSER LIFT):
+    // نطابق منطق درج الريلز حرفياً: نضبط متغير CSS ‎--ym-kb-inset‎ إلى ارتفاع
+    // لوحة المفاتيح المرئية عبر visualViewport، ونضبط ‎--ym-nav-inset‎ إلى
+    // ارتفاع شريط أزرار الجوال (gesture bar) الاحتياطي كي لا يعتمد الرفع
+    // على env(safe-area-inset-bottom) وحده — لأن قيمته قد تعود 0 داخل بعض
+    // متصفحات الأندرويد/PWA فيلتصق الـ composer بأسفل الشاشة.
     const updateKbInset = () => {
       try {
         const vv = window.visualViewport;
@@ -181,7 +184,13 @@ function MobileCommentsSheet({ open, postId, onClose }) {
            ═════════════════════════════════════════════════════════════════ */
 
         /* 1) الـ overlay = حاوية fixed تحتضن الشيت في الأسفل.
-              padding-bottom يرفع البانل بأكمله فوق أزرار النظام + لوحة المفاتيح. */
+              padding-bottom يرفع البانل بأكمله فوق أزرار النظام + لوحة المفاتيح.
+              ✅ v88.29 FEED MOBILE FIX (ROOT CAUSE):
+              نفس منطق ‎.ym-reels-drawer‎ في صفحة الريلز حرفياً — قاعدة ثابتة 70px
+              (تكفي لأزرار الرجوع/الهوم/الإيماءات على كل متصفحات الجوال) بدل
+              الاعتماد على env(safe-area-inset-bottom) الذي يعود 0px في
+              متصفحات أندرويد و PWA فيلتصق الـ composer بحافة الشاشة ويختفي.
+              نضيف كيبورد إن وُجد + safe-area كتعزيز إضافي على iPhone. */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] {
           position: fixed !important;
           inset: 0 !important;
@@ -190,9 +199,11 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           display: flex !important;
           align-items: flex-end !important;
           justify-content: center !important;
-          /* ⭐ المفتاح: نفس padding درج الريلز — safe-area + كيبورد إن وُجد.
-             هذا يرفع كامل البانل (بما فيه الـ composer) فوق أزرار الهاتف. */
-          padding: 0 0 calc(env(safe-area-inset-bottom, 0px) + var(--ym-kb-inset, 0px)) !important;
+          /* ⭐ المفتاح: 70px = نفس ثابت درج الريلز الذي أثبت أنه يرفع البانل فوق
+             شريط أزرار الهاتف بدقة (رجوع/هوم/شريط الإيماءات).
+             + env(safe-area-inset-bottom) لتعزيز الرفع على iPhone.
+             + var(--ym-kb-inset) لرفع البانل فوق لوحة المفاتيح عند فتحها. */
+          padding: 0 0 calc(70px + env(safe-area-inset-bottom, 0px) + var(--ym-kb-inset, 0px)) !important;
           margin: 0 !important;
           box-sizing: border-box !important;
           pointer-events: auto !important;
@@ -200,15 +211,37 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           opacity: 1 !important;
         }
 
+        /* 1.b) عند فتح لوحة المفاتيح: نلغي رفع 70px لأن الكيبورد نفسه دفع كل شيء
+              للأعلى، ولا نريد فراغاً مضاعفاً بين الـ composer وبين الكيبورد.
+              نبقي فقط قيمة الكيبورد + safe-area. */
+        @supports (padding: max(0px)) {
+          html body .ym-sheet-overlay[data-yam-comments-sheet="true"] {
+            padding-bottom: max(
+              calc(70px + env(safe-area-inset-bottom, 0px)),
+              calc(env(safe-area-inset-bottom, 0px) + var(--ym-kb-inset, 0px))
+            ) !important;
+          }
+        }
+
+        /* 1.c) على الشاشات الكبيرة (تابلت/ديسكتوب) لا يوجد شريط أزرار جوال،
+              فنُلغي الـ 70px الاحتياطي ونعتمد safe-area فقط. */
+        @media (min-width: 900px) {
+          html body .ym-sheet-overlay[data-yam-comments-sheet="true"] {
+            padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--ym-kb-inset, 0px)) !important;
+          }
+        }
+
         /* 2) الـ sheet نفسه = flex-column طبيعي، بدون position:absolute متضارب.
-              الارتفاع يستخدم dvh لكي يتقلص تلقائياً عند فتح الكيبورد. */
+              الارتفاع يستخدم dvh لكي يتقلص تلقائياً عند فتح الكيبورد.
+              ✅ v88.29: نقلّل الارتفاع الأقصى قليلاً كي يتناسب مع وجود 70px
+              padding-bottom على الحاوية (البانل بأكمله يجب أن يظل داخل الشاشة). */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet {
           position: relative !important;
           width: 100% !important;
           max-width: 640px !important;
           /* ارتفاع البانل الفعلي — dvh يتقلص مع الكيبورد */
-          height: min(82dvh, 720px) !important;
-          max-height: 82dvh !important;
+          height: min(78dvh, 720px) !important;
+          max-height: 78dvh !important;
           min-height: 320px !important;
           margin: 0 !important;
           background: #0f1420 !important;

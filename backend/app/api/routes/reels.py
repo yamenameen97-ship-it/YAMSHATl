@@ -15,6 +15,15 @@ from app.core.media_urls import normalize_media_url
 from app.db.bootstrap import initialize_database
 from app.models.stories_reels import Reel, ReelComment, ReelLike, ReelView, SavedReel
 from app.models.user import User
+# v88.28 — خدمة تخزين سحابي دائم للريلز
+try:
+    from app.services.reels_storage_service import persist_reel_media, rehost_reel_url
+    from app.services.cloudinary_service import is_configured as _cloud_is_configured
+except Exception:  # pragma: no cover
+    persist_reel_media = None  # type: ignore[assignment]
+    rehost_reel_url = None  # type: ignore[assignment]
+    def _cloud_is_configured() -> bool:  # type: ignore[override]
+        return False
 
 # v87.0 — نظام الإشعارات الذكي
 try:
@@ -110,6 +119,21 @@ def _load_reels_items(db: Session, current_user: User, *, limit: int, offset: in
     return serialized
 
 
+def _regenerate_cloudinary_url(reel: Reel) -> str | None:
+    """v88.28 — إن كان لدينا public_id للريل، نولّد رابطاً مطلقاً جديداً من Cloudinary.
+    يحل حالة تفريغ قاعدة البيانات من URL القديم مع بقاء public_id.
+    """
+    public_id = getattr(reel, 'cloudinary_video_public_id', None) or getattr(reel, 'cloudinary_public_id', None)
+    if not public_id:
+        return None
+    try:
+        import cloudinary
+        url, _ = cloudinary.utils.cloudinary_url(public_id, resource_type='video', secure=True)
+        return url
+    except Exception:
+        return None
+
+
 def _serialize_reel(db: Session, reel: Reel, current_user: User | None = None) -> dict:
     try:
         owner = db.query(User).filter(User.id == reel.user_id).first()
@@ -136,6 +160,16 @@ def _serialize_reel(db: Session, reel: Reel, current_user: User | None = None) -
 
     video_url = normalize_media_url(reel.video_url)
     thumbnail_url = normalize_media_url(reel.thumbnail_url)
+
+    # v88.28 — إذا كان الرابط محلياً ولدينا public_id سحابي → نعيد توليد الرابط السحابي
+    try:
+        storage_type = getattr(reel, 'storage_type', 'local') or 'local'
+        if storage_type != 'cloudinary' and getattr(reel, 'cloudinary_video_public_id', None):
+            regenerated = _regenerate_cloudinary_url(reel)
+            if regenerated:
+                video_url = regenerated
+    except Exception:
+        pass
 
     payload = {
         'id': reel.id,
@@ -208,18 +242,43 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
     video_url = ''
     thumbnail_url = ''
 
+    # v88.28 — متغيرات سحابية دائمة
+    cloudinary_video_public_id: str | None = None
+    cloudinary_thumb_public_id: str | None = None
+    storage_type: str = 'local'
+    detected_duration: int = 0
+
     if 'multipart/form-data' in content_type:
         form = await request.form()
         caption = str(form.get('caption') or '').strip()
         category = str(form.get('category') or 'general').strip() or 'general'
         file = form.get('file') or form.get('video') or form.get('media')
         thumbnail = form.get('thumbnail') or form.get('poster') or form.get('preview')
-        if file is not None and hasattr(file, 'filename'):
-            upload_payload = save_upload(file)
-            video_url = str(upload_payload.get('media_url') or upload_payload.get('file_url') or upload_payload.get('url') or '').strip()
-        if thumbnail is not None and hasattr(thumbnail, 'filename'):
-            thumb_payload = save_upload(thumbnail)
-            thumbnail_url = str(thumb_payload.get('media_url') or thumb_payload.get('file_url') or thumb_payload.get('url') or '').strip()
+        # v88.28 — إذا توفّر ملف وفيديو، نستخدم الخدمة السحابية الإلزامية
+        if file is not None and hasattr(file, 'filename') and file.filename and persist_reel_media is not None:
+            reel_persist = persist_reel_media(
+                file if hasattr(file, 'filename') else None,
+                thumbnail if (thumbnail is not None and hasattr(thumbnail, 'filename') and thumbnail.filename) else None,
+                user_id=current_user.id,
+            )
+            video_url = str(reel_persist.get('video_url') or '').strip()
+            thumbnail_url = str(reel_persist.get('thumbnail_url') or '').strip()
+            cloudinary_video_public_id = reel_persist.get('cloudinary_video_public_id')
+            cloudinary_thumb_public_id = reel_persist.get('cloudinary_thumb_public_id')
+            storage_type = str(reel_persist.get('storage_type') or 'local')
+            try:
+                detected_duration = int(reel_persist.get('duration') or 0)
+            except Exception:
+                detected_duration = 0
+        else:
+            # مسار احتياطي: JSON بدون ملف (رابط خارجي جاهز)
+            if file is not None and hasattr(file, 'filename'):
+                upload_payload = save_upload(file)
+                video_url = str(upload_payload.get('media_url') or upload_payload.get('file_url') or upload_payload.get('url') or '').strip()
+                storage_type = str(upload_payload.get('storage') or 'local')
+            if thumbnail is not None and hasattr(thumbnail, 'filename'):
+                thumb_payload = save_upload(thumbnail)
+                thumbnail_url = str(thumb_payload.get('media_url') or thumb_payload.get('file_url') or thumb_payload.get('url') or '').strip()
     else:
         payload = await request.json()
         upload_payload = payload.get('upload') if isinstance(payload.get('upload'), dict) else {}
@@ -256,6 +315,12 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
             thumbnail_url=thumbnail_url or None,
             caption=caption or None,
             category=category,
+            duration=detected_duration or 0,
+            # v88.28 — حقول التخزين السحابي الدائم
+            cloudinary_video_public_id=cloudinary_video_public_id,
+            cloudinary_thumb_public_id=cloudinary_thumb_public_id,
+            cloudinary_public_id=cloudinary_video_public_id,
+            storage_type=storage_type,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
@@ -644,3 +709,85 @@ def like_reel_comment(
         )
 
     return {'ok': True, 'likes_count': comment.likes_count}
+
+
+# ==============================================================================
+# v88.28 — إعادة رفع الريلز القديمة إلى Cloudinary (Rehost)
+# ==============================================================================
+# الفكرة: بعد كل نشر جديد على Render، الريلز التي كان رابطها محلياً (/uploads/xxx)
+# تختفي لأن قرص Render غير دائم. هذا الـ endpoint يفحص كل الريلز التي storage_type
+# غير 'cloudinary' ويحاول إعادة رفعها إلى Cloudinary (إن كان الملف لا يزال موجوداً
+# على قرص الـ backend). يمكن استدعاؤه يدوياً من لوحة الأدمن أو كـ cron خفيف.
+# ==============================================================================
+
+
+@router.post('/admin/rehost')
+def rehost_local_reels(
+    limit: int = Query(default=50, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """يحاول إعادة رفع كل الريلز ذات الرابط المحلي إلى Cloudinary.
+
+    لا يفشل: يتخطى الريلز التي لم يعد ملفها موجوداً على القرص.
+    """
+    if not getattr(current_user, 'role', '') in ('admin', 'superadmin'):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='admin only')
+    if rehost_reel_url is None or not _cloud_is_configured():
+        return {'ok': False, 'reason': 'cloudinary_not_configured', 'processed': 0}
+
+    processed = 0
+    rehosted = 0
+    skipped = 0
+    failed = 0
+    query = db.query(Reel).filter(
+        Reel.is_deleted.is_(False),
+        (Reel.storage_type != 'cloudinary') | (Reel.storage_type.is_(None)),
+    ).order_by(Reel.id.desc()).limit(limit)
+    for reel in query.all():
+        processed += 1
+        try:
+            result = rehost_reel_url(reel.video_url or '', is_video=True)
+            if not result:
+                skipped += 1
+                continue
+            reel.video_url = result['video_url']
+            reel.cloudinary_video_public_id = result.get('cloudinary_public_id')
+            reel.cloudinary_public_id = result.get('cloudinary_public_id')
+            reel.storage_type = 'cloudinary'
+            reel.updated_at = datetime.utcnow()
+            db.commit()
+            rehosted += 1
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            failed += 1
+            logger.warning('[reels.rehost] failed for reel %s: %s', getattr(reel, 'id', '?'), exc)
+    return {
+        'ok': True,
+        'processed': processed,
+        'rehosted': rehosted,
+        'skipped_missing_file': skipped,
+        'failed': failed,
+    }
+
+
+@router.get('/admin/storage-audit')
+def audit_reels_storage(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """يُرجع إحصائية سريعة: كم ريلز محفوظ سحابياً وكم محلياً."""
+    if not getattr(current_user, 'role', '') in ('admin', 'superadmin'):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='admin only')
+    total = db.query(Reel).filter(Reel.is_deleted.is_(False)).count()
+    cloud = db.query(Reel).filter(
+        Reel.is_deleted.is_(False),
+        Reel.storage_type == 'cloudinary',
+    ).count()
+    return {
+        'ok': True,
+        'total_reels': total,
+        'cloudinary': cloud,
+        'local_or_persistent': total - cloud,
+        'cloudinary_configured': _cloud_is_configured(),
+    }

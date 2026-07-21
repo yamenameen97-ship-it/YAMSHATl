@@ -409,6 +409,27 @@ import './styles/yamshat-fixes-v88.19-COMMENTS-SHEET-FINAL.css';
 // يجب أن يبقى هذا آخر import CSS ليفوز في Cascade على كل الطبقات السابقة.
 import './styles/yamshat-fixes-v88.23-GROUP-WIZARD-NOTIF-SCROLL.css';
 
+// ✅ v88.30 — الإصلاح النهائي الحاسم لصفحة إعدادات إشعارات المجموعة
+// (GroupNotificationSettings.jsx). v88.23 لم يكفِ لأن البنية أعمق
+// (بطاقات متعددة + شبكة grid + switches) وطبقات legacy كانت تُلغي
+// pan-y على بعض الأبناء. هذا الملف يطبّق بصمة .yam-home-mobile-page
+// (v59.13.28) + .settings-wrap (v87.17) بشكل حاسم وأخير على
+// .yamg-page مع padding-bottom أوسع (180-260px حسب طول الشاشة)
+// ليظهر آخر عنصر (كتم الإشارات) فوق BottomNav.
+// ⚠️ يجب أن يبقى آخر CSS import ليفوز في cascade.
+import './styles/yamshat-fixes-v88.30-GROUP-NOTIF-SCROLL-FINAL.css';
+
+// ✅ v88.31 — إصلاحان حاسمان في الدردشة الفردية:
+//   (1) إعادة إظهار زر النقاط الثلاث ⋮ الذي اختفى بعد v88.22
+//       (بسبب قواعد legacy تخفي :nth-of-type(3) وكانت تستهدف
+//       زر البحث سابقاً — الآن هي تستهدف زر ⋮ الجديد).
+//   (2) منع خروج فقاعة الرسائل الصوتية (.yam-voice-pill) عن
+//       حدود الشاشة من الجانب الأيسر — يبرز رأس زر التشغيل
+//       والفقاعة تتجاوز الحاوية.
+// ⚠️ يجب أن يبقى هذا آخر CSS import — يفوز على v88.22/v88.30
+//    وكل طبقات legacy (v60.*/v61/v63).
+import './styles/yamshat-fixes-v88.31-CHAT-HEADER-DOTS-VOICE-OVERFLOW.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

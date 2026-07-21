@@ -16,7 +16,7 @@ const SERVICE_ITEMS = [
   { to: '/inbox', label: 'الدردشة', icon: '💬' },
   { to: '/chat', label: 'المكالمات', icon: '📞' },
   { to: '/groups', label: 'المجموعات', icon: '👥' },
-  { to: '/search', label: 'الأخبار', icon: '📰' },
+  { to: '/shop', label: 'التسوق', icon: '🛍' },
   { to: '/profile?panel=themes', label: 'الثيمات المميزة', icon: '🖼' },
 ];
 

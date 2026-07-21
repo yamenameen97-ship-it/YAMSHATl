@@ -1,0 +1,315 @@
+/* ================================================================
+   🎯 YAMSHAT v88.31 — إصلاحان حاسمان في الدردشة الفردية
+   ================================================================
+   شكوى المستخدم:
+     1) بعد إصلاح v88.22 (قائمة النقاط الثلاث)، النقاط الثلاث `⋮`
+        اختفت كلياً من رأس الدردشة على الجوال، فلا يستطيع المستخدم
+        فتح خيارات (بحث في الدردشة / حذف الدردشة).
+     2) الرسائل الصوتية للطرف الآخر (فقاعة `.yam-voice-pill.them`)
+        تخرج برأسها خارج حدود الشاشة من الجانب الأيسر — يظهر زر
+        التشغيل مقطوعاً خارج الشاشة.
+
+   ─────────── السبب الجذري (Root Cause) ───────────
+
+   ▸ المشكلة (1):
+     في v88.22 نقلنا زر البحث ⌕ من الهيدر إلى داخل قائمة ⋮، فأصبح
+     ترتيب الأزرار الآن:
+         (1) 📞  (2) 🎥  (3) ⋮
+     لكن ملفات CSS القديمة (chat-mobile-redesign-v60.1/v60.2/v60.6
+     /v60.7/v60.8، chat-mobile-pixel-match-v63، chat-redesign-v61)
+     تحوي القاعدة:
+         .yam-chat-stage-actions .yam-stage-icon:nth-of-type(3) {
+             display: none !important;
+         }
+     كانت هذه القاعدة تخفي زر البحث (الثالث سابقاً: 📞🎥⌕⋮).
+     الآن `nth-of-type(3)` صار = زر ⋮ نفسه → فيختفي!
+     نتيجة: النقاط الثلاث تختفي بينما كانت هدف الإصلاح الأصلي.
+
+   ▸ المشكلة (2):
+     `.yam-voice-pill` مضبوطة بـ:
+         min-width: 210px !important;
+         max-width: min(84vw, 340px) !important;
+         width: auto !important;
+         padding: 6px 12px 6px 6px !important;
+     مع `display:inline-flex` و `direction:ltr` — هذا سليم.
+     لكن الفقاعة الأم `.yam-bubble` عليها `min-width:118px` و
+     الحاوية `.yam-message-stack` مضبوطة `max-width: 82%` على
+     الجوال، لكن على شاشات ≤400px، عرض 210px + padding 15px من
+     الفقاعة قد يتجاوز عرض السطر المتاح، ومع `direction:rtl` على
+     `.yam-messages-area` + `direction:ltr` مقلوبة على voice-pill،
+     يخرج المحتوى من الحافة.
+
+     كذلك `.yam-voice-pill__play` بـ `width:36px` + وسادة سالبة
+     محتملة (لا padding-left يكفي) عند justify-content:flex-start
+     مع اتجاه ltr = زر التشغيل يبرز خارج الفقاعة.
+
+   ─────────── الحل ───────────
+
+     A) إبطال كل قواعد `:nth-of-type(3){display:none}` القديمة
+        عبر إعادة زر ⋮ إلى `display:inline-flex` صراحةً.
+        نستهدف الزر بواسطة `[aria-label*="خيارات"]` كي نصل إليه
+        بغض النظر عن ترتيبه في الشجرة.
+        كذلك نُبقي 📞 🎥 مرئيَّين.
+
+     B) ضبط `.yam-voice-pill` كي لا يخرج من حدود الفقاعة:
+        - `max-width: 100%` نسبةً لأمّه `.yam-bubble`.
+        - `overflow: hidden` على `.yam-bubble` كي تضمن قص أي فائض.
+        - تقليص `min-width` على الشاشات الصغيرة إلى 180px.
+        - ضمان `box-sizing: border-box` على voice-pill وأبنائه.
+        - ضمان `padding-left: 6px` (بديل `padding-inline-start`)
+          حتى في وضع RTL/LTR كي لا يبرز زر التشغيل.
+        - ضمان `.yam-message-stack` أقل من عرض الحاوية:
+          `max-width: min(78%, calc(100% - 24px))`.
+
+   ⚠️ يجب أن يبقى هذا الملف آخر CSS مُستورد بعد v88.30 كي يفوز
+       على cascade كل الطبقات السابقة (v60.*/v61/v63/v88.22).
+   ================================================================ */
+
+
+/* ═════════════════════════════════════════════════════════════
+   [A] إصلاح اختفاء النقاط الثلاث ⋮ في رأس الدردشة (v88.22)
+   ─────────────────────────────────────────────────────────────
+   نُبطل صراحةً كل قواعد `nth-of-type(3){display:none}` القديمة
+   ═════════════════════════════════════════════════════════════ */
+
+/* 1) إعادة إظهار زر ⋮ (خيارات الدردشة) — أولاً بواسطة aria-label
+      حتى يعمل بغض النظر عن ترتيبه */
+html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon[aria-label="خيارات الدردشة"],
+html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon[aria-haspopup="menu"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+  flex: 0 0 36px !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  font-size: 20px !important;
+  line-height: 1 !important;
+  padding: 0 !important;
+  border: none !important;
+  cursor: pointer !important;
+  position: relative !important;
+  z-index: 5 !important;
+}
+
+/* 2) إبطال أي قاعدة تخفي الأيقونة الثالثة (زر ⋮ حالياً)
+      في جميع media queries — نستخدم `not` كي نتوافق مع أي
+      ترتيب مستقبلي (📞🎥⋮) أو (📞🎥⌕⋮) */
+html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon:nth-of-type(3):not([aria-label="بحث"]) {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+/* 3) إذا كان الترتيب (📞🎥⋮) — الثالث هو ⋮ فنُبقيه، بغض النظر */
+@media (max-width: 980px) {
+  html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon:last-of-type {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    flex: 0 0 36px !important;
+    font-size: 20px !important;
+  }
+
+  /* ضمان أن حاوية الأزرار لا تنكمش لصفر */
+  html body .yam-chat-stage-header .yam-chat-stage-actions {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 4px !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 120px !important;   /* 3 أزرار × ~36px + الفجوات */
+    max-width: none !important;
+    margin-inline-start: auto !important;
+    overflow: visible !important;
+  }
+}
+
+/* 4) شاشات ضيقة جداً — مع الحفاظ على ظهور ⋮ بحجم مقلص */
+@media (max-width: 400px) {
+  html body .yam-chat-stage-header .yam-chat-stage-actions {
+    gap: 2px !important;
+    min-width: 108px !important;
+  }
+  html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon,
+  html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon[aria-label="خيارات الدردشة"],
+  html body .yam-chat-stage-header .yam-chat-stage-actions .yam-stage-icon:last-of-type {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    flex: 0 0 34px !important;
+    font-size: 18px !important;
+  }
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   [B] إصلاح خروج فقاعة الرسالة الصوتية عن حدود الشاشة
+   ─────────────────────────────────────────────────────────────
+   نضمن أن voice-pill لا تتجاوز أبداً عرض الفقاعة الأم، وأن
+   زر التشغيل لا يبرز خارج الحافة اليسرى.
+   ═════════════════════════════════════════════════════════════ */
+
+/* 1) الفقاعة الأم .yam-bubble تقص أي فائض */
+html body .yam-messages-area .yam-message-row .yam-bubble {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  overflow: hidden !important;   /* يقص voice-pill إن حاول الخروج */
+}
+
+/* لكن نُبقي is-media-only مسموحة بعرض داخلي بلا padding */
+html body .yam-messages-area .yam-message-row .yam-bubble.is-media-only {
+  overflow: hidden !important;
+}
+
+/* 2) حاوية message-stack لا تلامس الحافة (نترك 12px من كل جهة) */
+@media (max-width: 640px) {
+  html body .yam-messages-area .yam-message-stack {
+    max-width: min(78%, calc(100vw - 60px)) !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+}
+
+@media (max-width: 400px) {
+  html body .yam-messages-area .yam-message-stack {
+    max-width: min(82%, calc(100vw - 48px)) !important;
+  }
+}
+
+/* 3) voice-pill: مقيّدة بعرض الفقاعة الأم بشكل حاسم */
+html body .yam-messages-area .yam-voice-pill,
+html body .yam-bubble .yam-voice-pill {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  width: 100% !important;                   /* بدلاً من auto — تملأ الفقاعة تماماً */
+  min-width: 0 !important;                  /* يسمح بالتقلص تحت 210px */
+  padding: 6px 10px 6px 6px !important;
+  overflow: hidden !important;
+}
+
+/* على شاشات موبايل صغيرة — تقليل min-width الافتراضي */
+@media (max-width: 640px) {
+  html body .yam-messages-area .yam-voice-pill,
+  html body .yam-bubble .yam-voice-pill {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 5px 9px 5px 5px !important;
+  }
+}
+
+@media (max-width: 400px) {
+  html body .yam-messages-area .yam-voice-pill,
+  html body .yam-bubble .yam-voice-pill {
+    padding: 4px 8px 4px 4px !important;
+    gap: 6px !important;
+  }
+}
+
+/* 4) زر التشغيل: مضمون داخل الفقاعة، لا يبرز خارجاً */
+html body .yam-messages-area .yam-voice-pill .yam-voice-pill__play {
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+  position: relative !important;
+  inset-inline-start: 0 !important;
+  transform: none !important;
+  align-self: center !important;
+}
+
+@media (max-width: 400px) {
+  html body .yam-messages-area .yam-voice-pill .yam-voice-pill__play {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+    flex-basis: 32px !important;
+  }
+}
+
+/* 5) الموجة الصوتية تنكمش بمرونة */
+html body .yam-messages-area .yam-voice-pill .yam-voice-pill__wave {
+  flex: 1 1 auto !important;
+  min-width: 40px !important;    /* بدل 92px — لا يفرض عرضاً ثابتاً */
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+@media (max-width: 400px) {
+  html body .yam-messages-area .yam-voice-pill .yam-voice-pill__wave {
+    min-width: 32px !important;
+    height: 24px !important;
+  }
+  html body .yam-messages-area .yam-voice-pill .audio-waveform {
+    height: 20px !important;
+    gap: 1px !important;
+  }
+}
+
+/* 6) meta (الوقت + الشارة) لا تنكمش وتبقى مرئية */
+html body .yam-messages-area .yam-voice-pill .yam-voice-pill__meta {
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+}
+
+@media (max-width: 400px) {
+  html body .yam-messages-area .yam-voice-pill .yam-voice-pill__meta {
+    gap: 5px !important;
+  }
+  html body .yam-messages-area .yam-voice-pill .yam-voice-pill__time {
+    min-width: 28px !important;
+    font-size: 10px !important;
+  }
+  html body .yam-messages-area .yam-voice-pill .yam-voice-pill__badge {
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    min-height: 24px !important;
+  }
+}
+
+/* 7) ضمان أن .yam-message-row لا يخرج من messages-area */
+html body .yam-messages-area .yam-message-row {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  padding-inline: 2px !important; /* هامش أمان للحافة */
+}
+
+/* 8) messages-area نفسها تمنع overflow-x */
+html body .yam-messages-area {
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
+  box-sizing: border-box !important;
+}
+
+
+/* ═════════════════════════════════════════════════════════════
+   [C] كسر أي contain/transform يقطع voice-pill بصرياً
+   ═════════════════════════════════════════════════════════════ */
+html body .yam-messages-area .yam-message-row,
+html body .yam-messages-area .yam-message-stack,
+html body .yam-messages-area .yam-bubble {
+  contain: none !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+}
+
+/* نهاية v88.31 */

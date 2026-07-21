@@ -19,6 +19,11 @@ from app.core.media_urls import normalize_media_url
 from app.db.bootstrap import initialize_database
 from app.models.stories_reels import Reel, ReelLike, ReelView, SavedReel
 from app.models.user import User
+# v88.28 — خدمة تخزين سحابي دائم للريلز
+try:
+    from app.services.reels_storage_service import persist_reel_media
+except Exception:  # pragma: no cover
+    persist_reel_media = None  # type: ignore[assignment]
 
 router = APIRouter()
 
@@ -167,6 +172,12 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
     video_url = ''
     thumbnail_url = ''
 
+    # v88.28 — متغيرات سحابية دائمة
+    cloudinary_video_public_id = None
+    cloudinary_thumb_public_id = None
+    storage_type = 'local'
+    detected_duration = 0
+
     # معالجة البيانات متعددة الأجزاء
     if 'multipart/form-data' in content_type:
         form = await request.form()
@@ -174,14 +185,32 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
         category = str(form.get('category') or 'general').strip() or 'general'
         file = form.get('file') or form.get('video') or form.get('media')
         thumbnail = form.get('thumbnail') or form.get('poster') or form.get('preview')
-        
-        if file is not None and hasattr(file, 'filename'):
-            upload_payload = save_upload(file)
-            video_url = str(upload_payload.get('media_url') or upload_payload.get('file_url') or upload_payload.get('url') or '').strip()
-        
-        if thumbnail is not None and hasattr(thumbnail, 'filename'):
-            thumb_payload = save_upload(thumbnail)
-            thumbnail_url = str(thumb_payload.get('media_url') or thumb_payload.get('file_url') or thumb_payload.get('url') or '').strip()
+
+        # v88.28 — المسار المفضّل: رفع إلزامي إلى Cloudinary
+        if file is not None and hasattr(file, 'filename') and file.filename and persist_reel_media is not None:
+            reel_persist = persist_reel_media(
+                file,
+                thumbnail if (thumbnail is not None and hasattr(thumbnail, 'filename') and thumbnail.filename) else None,
+                user_id=current_user.id,
+            )
+            video_url = str(reel_persist.get('video_url') or '').strip()
+            thumbnail_url = str(reel_persist.get('thumbnail_url') or '').strip()
+            cloudinary_video_public_id = reel_persist.get('cloudinary_video_public_id')
+            cloudinary_thumb_public_id = reel_persist.get('cloudinary_thumb_public_id')
+            storage_type = str(reel_persist.get('storage_type') or 'local')
+            try:
+                detected_duration = int(reel_persist.get('duration') or 0)
+            except Exception:
+                detected_duration = 0
+        else:
+            if file is not None and hasattr(file, 'filename'):
+                upload_payload = save_upload(file)
+                video_url = str(upload_payload.get('media_url') or upload_payload.get('file_url') or upload_payload.get('url') or '').strip()
+                storage_type = str(upload_payload.get('storage') or 'local')
+
+            if thumbnail is not None and hasattr(thumbnail, 'filename'):
+                thumb_payload = save_upload(thumbnail)
+                thumbnail_url = str(thumb_payload.get('media_url') or thumb_payload.get('file_url') or thumb_payload.get('url') or '').strip()
     else:
         # معالجة JSON
         payload = await request.json()
@@ -221,6 +250,12 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
             thumbnail_url=thumbnail_url or None,
             caption=caption or None,
             category=category,
+            duration=detected_duration or 0,
+            # v88.28 — حقول التخزين السحابي الدائم
+            cloudinary_video_public_id=cloudinary_video_public_id,
+            cloudinary_thumb_public_id=cloudinary_thumb_public_id,
+            cloudinary_public_id=cloudinary_video_public_id,
+            storage_type=storage_type,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )

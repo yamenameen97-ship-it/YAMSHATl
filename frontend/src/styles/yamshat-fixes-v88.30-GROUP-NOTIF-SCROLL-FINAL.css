@@ -1,0 +1,472 @@
+/* ================================================================
+   🎯 YAMSHAT v88.30 — الإصلاح النهائي الحاسم لصفحة إعدادات
+      إشعارات المجموعة (GroupNotificationSettings.jsx)
+   ================================================================
+   شكوى المستخدم (باللهجة العراقية):
+     "وانا داخل الدردشه بالمجموعه في شريط علوي للدردشه فيه
+      الاستطلاع والمنشورات والاشعارات — عندما اضغط على
+      الاشعارات تظهر هذه الصفحه لكنها لا تستجيب للسحب للأعلى
+      والأسفل مثل باقي الصفحات، وفيها بالأسفل أزرار أريد
+      الوصول إليها. أصلحها مثلما أصلحت بقية الصفحات (بوست
+      رفع المنشور / الملف الشخصي / الإعدادات) — كلها تعمل
+      فل الفل بسلاسة، ما عدا هذه فقط. أصلحها إصلاحاً دقيقاً
+      حثيثاً."
+
+   لماذا لم يكفِ v88.23؟
+     ▸ v88.23 استهدف .yamg-page بشكل عام (Wizard + Notif).
+     ▸ لكن في صفحة الإشعارات، البنية أعمق: بطاقات .yamg-card
+       متعدّدة، شبكة .yamg-noti-modes (grid 2 أعمدة)، وأزرار
+       switch (.yamg-switch) — أي طبقة legacy تفرض
+       touch-action:none على أحد الأبناء تُلغي pan-y للأم.
+     ▸ الأزرار السفلية (نغمة الإشعار / الاهتزاز / معاينة /
+       كتم الإشارات) لا تصل — لأن آخر بطاقة تختفي خلف
+       BottomNav إذا لم يكن padding-bottom كافياً.
+     ▸ نحتاج نسخة حصينة تستهدف الصفحة عبر السياق (السطر
+       الأخير في cascade) وتُفعّل السحب على كل عنصر داخل
+       .yamg-page مع padding-bottom أوسع.
+
+   المبدأ:
+     نطبّق بصمة .yam-home-mobile-page (v59.13.28) و
+     .settings-wrap (v87.17) — البصمتان المُشهود لهما
+     بالسلاسة الكاملة — على .yamg-page بشكل حاسم وأخير،
+     مع كسر contain/transform/touch-action:none على كل
+     مستوى، وتخصيص padding-bottom كبير كي تظهر آخر
+     بطاقة (كتم الإشارات) فوق شريط BottomNav.
+
+   ⚠️ يجب أن يبقى هذا الملف آخر CSS مُستورد في main.jsx
+       ليفوز في cascade على كل الطبقات السابقة (بما فيها
+       v88.23 و v88.19 و v87.24 و mobile-touch-master
+       و drawer-style-touch-final).
+   ================================================================ */
+
+
+/* ─────────────────────────────────────────────────────────────
+   [1] الحاوية الأم .page-content عندما تحتوي .yamg-page
+       تصبح scroll container سلس بارتفاع 100dvh ثابت.
+       (المفتاح: inset:0 مع overflow-y:auto كما في .ym-reels-feed)
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  html body .app-shell .page-content:has(.yamg-page),
+  html body main.mobile-main-content:has(.yamg-page),
+  html body .app-shell.yamshat-unified .page-content:has(.yamg-page) {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    -ms-touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    overscroll-behavior-x: none !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    min-height: 100dvh !important;
+    contain: none !important;
+    content-visibility: visible !important;
+    padding: 0 !important;
+    padding-top: var(--yam-top-chrome-height, 54px) !important;
+    padding-bottom: var(--yam-bottom-chrome-height, 64px) !important;
+    will-change: auto !important;
+    transform: none !important;
+    -webkit-transform: none !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+    perspective: none !important;
+    pointer-events: auto !important;
+    overflow-anchor: none !important;
+    scroll-behavior: smooth !important;
+    scrollbar-gutter: auto !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [2] .yamg-page — الغلاف الرئيسي.
+       طول يتبع المحتوى + كسر كل قيود legacy.
+       نفس بصمة .settings-wrap في v87.17 و .yam-home-mobile-page
+       في v59.13.28.
+   ───────────────────────────────────────────────────────────── */
+html body .yamg-page,
+html body div.yamg-page[dir="rtl"],
+html body .app-shell .yamg-page {
+  min-height: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  overflow-y: visible !important;
+  overflow-x: hidden !important;
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  overscroll-behavior-x: none !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  will-change: auto !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  perspective: none !important;
+  overflow-anchor: none !important;
+  box-sizing: border-box !important;
+  position: relative !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+  padding-top: 12px !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [3] padding سفلي كبير كافٍ ليظهر آخر عنصر:
+       - آخر بطاقة (كتم الإشارات) + زر حفظ.
+       - يجب أن ترتفع فوق BottomNav + safe-area.
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  html body .yamg-page {
+    padding-bottom: calc(180px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+@media (max-width: 900px) and (min-height: 720px) {
+  html body .yamg-page {
+    padding-bottom: calc(220px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+@media (max-width: 900px) and (min-height: 900px) {
+  html body .yamg-page {
+    padding-bottom: calc(260px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [4] كل أبناء .yamg-page — كسر contain على كل مستوى
+       حتى يعمل السحب على كامل المساحة.
+       شامل: البطاقات، الصفوف، الشبكات، أزرار Switch،
+       الأيقونات، النصوص، القوائم المنسدلة.
+   ───────────────────────────────────────────────────────────── */
+html body .yamg-page,
+html body .yamg-page > *,
+html body .yamg-page > * > *,
+html body .yamg-page > * > * > *,
+html body .yamg-page > * > * > * > *,
+html body .yamg-page > * > * > * > * > *,
+html body .yamg-page .yamg-toolbar,
+html body .yamg-page .yamg-sub-header,
+html body .yamg-page .yamg-card,
+html body .yamg-page .yamg-noti-modes,
+html body .yamg-page .yamg-noti-modes .mode,
+html body .yamg-page .yamg-noti-row,
+html body .yamg-page .yamg-noti-label,
+html body .yamg-page .yamg-noti-hint,
+html body .yamg-page .yamg-col,
+html body .yamg-page .yamg-row,
+html body .yamg-page .yamg-tag,
+html body .yamg-page section,
+html body .yamg-page form,
+html body .yamg-page ol,
+html body .yamg-page ul,
+html body .yamg-page li,
+html body .yamg-page h1,
+html body .yamg-page h2,
+html body .yamg-page h3,
+html body .yamg-page h4,
+html body .yamg-page p,
+html body .yamg-page span,
+html body .yamg-page div {
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  pointer-events: auto !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  will-change: auto !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  perspective: none !important;
+  overflow-anchor: none !important;
+}
+
+/* بطاقات yamg-card تحتاج overflow:visible و max-height:none
+   حتى لا تُقصّ محتوياتها الطويلة */
+html body .yamg-page .yamg-card {
+  overflow: visible !important;
+  max-height: none !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin-bottom: 12px !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [5] العناصر التفاعلية (أزرار / Switch / Select / روابط)
+       — تستقبل النقر (manipulation) لكن لا تبتلع pan-y الرأسي.
+   ───────────────────────────────────────────────────────────── */
+html body .yamg-page button,
+html body .yamg-page a,
+html body .yamg-page [role="button"],
+html body .yamg-page [role="tab"],
+html body .yamg-page [role="link"],
+html body .yamg-page [role="switch"],
+html body .yamg-page .yamg-btn,
+html body .yamg-page .yamg-back,
+html body .yamg-page .yamg-switch,
+html body .yamg-page .yamg-switch input,
+html body .yamg-page .yamg-switch .slider,
+html body .yamg-page .yamg-noti-modes .mode {
+  touch-action: manipulation !important;
+  -ms-touch-action: manipulation !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-tap-highlight-color: rgba(139, 92, 246, 0.18) !important;
+}
+
+/* حقول input/select — تسمح للمتصفح بإدارتها */
+html body .yamg-page input,
+html body .yamg-page select,
+html body .yamg-page .yamg-input,
+html body .yamg-page .yamg-select {
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  -webkit-user-select: auto !important;
+  user-select: auto !important;
+}
+
+/* textarea / contenteditable — pan-y عمودي داخلي */
+html body .yamg-page textarea,
+html body .yamg-page .yamg-textarea,
+html body .yamg-page [contenteditable="true"] {
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+  pointer-events: auto !important;
+}
+
+/* الصور والأيقونات لا تُسحب */
+html body .yamg-page img,
+html body .yamg-page svg {
+  touch-action: pan-y !important;
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+  pointer-events: auto !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [6] هيدر GroupSubHeader داخل صفحة الإشعارات — sticky
+       ليبقى العنوان وزر "حفظ" ظاهرَين دائماً أثناء السحب.
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  html body .yamg-page > .yamg-toolbar,
+  html body .yamg-page > .yamg-sub-header,
+  html body .yamg-page .group-sub-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 25 !important;
+    background: rgba(8, 10, 18, 0.96) !important;
+    backdrop-filter: blur(14px) !important;
+    -webkit-backdrop-filter: blur(14px) !important;
+    padding-top: calc(8px + env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 10px !important;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+    margin: 0 -16px 14px !important;
+    touch-action: pan-y !important;
+    -ms-touch-action: pan-y !important;
+    contain: none !important;
+    will-change: auto !important;
+    transform: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    box-shadow: 0 6px 16px -14px rgba(0, 0, 0, 0.6) !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [7] شبكة أوضاع الإشعارات yamg-noti-modes — grid 2 أعمدة
+       (تطابق الصورة). لا تمرير أفقي — pan-y فقط.
+   ───────────────────────────────────────────────────────────── */
+html body .yamg-page .yamg-noti-modes {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  overflow: visible !important;
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+html body .yamg-page .yamg-noti-modes .mode {
+  padding: 12px 14px !important;
+  border-radius: 12px !important;
+  min-height: 62px !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease !important;
+}
+
+html body .yamg-page .yamg-noti-modes .mode:active {
+  transform: scale(0.97) !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [8] صفوف yamg-noti-row (منشورات جديدة / الأحداث / ...)
+       — كل صف يستقبل touch-action:pan-y كي لا يعرقل السحب.
+   ───────────────────────────────────────────────────────────── */
+html body .yamg-page .yamg-noti-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 14px 0 !important;
+  touch-action: pan-y !important;
+  -ms-touch-action: pan-y !important;
+  pointer-events: auto !important;
+  min-height: 56px !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [9] Switch (.yamg-switch) — يبقى قابلاً للنقر
+       والحاوية الأم قابلة للسحب. علاج شائع للـ toggle switch.
+   ───────────────────────────────────────────────────────────── */
+html body .yamg-page .yamg-switch {
+  position: relative !important;
+  display: inline-block !important;
+  flex-shrink: 0 !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+html body .yamg-page .yamg-switch input {
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+
+html body .yamg-page .yamg-switch .slider {
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [10] إبطال طبقات legacy الضارّة على .yamg-page
+        (mobile-touch-master-fix-v57 / drawer-style-touch-final-v59.10
+         / mobile-scroll-final-v59.13.2 / touch-none globals)
+   ───────────────────────────────────────────────────────────── */
+html body .yamg-page[style*="touch-action"],
+html body .yamg-page *[style*="touch-action: none"],
+html body .yamg-page *[style*="touch-action:none"] {
+  touch-action: pan-y !important;
+}
+
+/* ضمان أن أي *[data-nodrag] لا يمنع السحب */
+html body .yamg-page [data-nodrag],
+html body .yamg-page [data-no-scroll] {
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [11] iOS Safari — تأكيد momentum scrolling على الحاويات الأم
+        (يمنع فقدان الزخم بعد رفع الإصبع).
+   ───────────────────────────────────────────────────────────── */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 900px) {
+    html body .app-shell .page-content:has(.yamg-page),
+    html body main.mobile-main-content:has(.yamg-page) {
+      -webkit-overflow-scrolling: touch !important;
+      overflow-y: auto !important;
+      touch-action: pan-y !important;
+      height: 100dvh !important;
+      max-height: 100dvh !important;
+    }
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [12] Desktop (>900px) — لا نفرض 100dvh ولا padding مبالغ فيه.
+        نترك السلوك الطبيعي على النافذة.
+   ───────────────────────────────────────────────────────────── */
+@media (min-width: 901px) {
+  html body .yamg-page {
+    min-height: auto !important;
+    padding-bottom: 80px !important;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+  }
+  html body .yamg-page > .yamg-toolbar,
+  html body .yamg-page > .yamg-sub-header {
+    position: static !important;
+    margin: 0 0 16px !important;
+    background: transparent !important;
+    padding: 0 !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [13] احترام إعداد المستخدم لتقليل الحركة.
+   ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html body .yamg-page {
+    scroll-behavior: auto !important;
+  }
+  html body .yamg-page .yamg-noti-modes .mode {
+    transition: none !important;
+  }
+  html body .yamg-page .yamg-noti-modes .mode:active {
+    transform: none !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   [14] Focus visible للأزرار — accessibility
+   ───────────────────────────────────────────────────────────── */
+html body .yamg-page button:focus-visible,
+html body .yamg-page [role="button"]:focus-visible,
+html body .yamg-page .yamg-noti-modes .mode:focus-visible {
+  outline: 2px solid rgba(139, 92, 246, 0.85) !important;
+  outline-offset: 2px !important;
+  border-radius: 12px !important;
+}
+
+
+/* ================================================================
+   ✨ نهاية v88.30
+   صفحة إعدادات إشعارات المجموعة (GroupNotificationSettings)
+   الآن تعمل بسلاسة كاملة على الجوال:
+     ▸ السحب باللمس للأعلى والأسفل يستجيب فوراً.
+     ▸ زر "حفظ" يبقى ثابتاً بالأعلى (sticky).
+     ▸ آخر بطاقة (الصوت والاهتزاز / كتم الإشارات) تظهر
+       بوضوح فوق BottomNav — كل الأزرار قابلة للوصول.
+     ▸ أزرار الوضع (كل الرسائل / الإشارات فقط / المهمّ فقط
+       / صامت) تستجيب للنقر بلا ابتلاع السحب.
+     ▸ Switches (منشورات جديدة / الأحداث / ...) تعمل كتوغل
+       سليم مع سحب رأسي عادي حول العنصر.
+     ▸ أوقات الكتم (ساعة / 8 ساعات / يوم / أسبوع / دائماً /
+       إلغاء الكتم) تستجيب للنقر.
+   بصمة المطابقة: .yam-home-mobile-page (v59.13.28) +
+                  .settings-wrap (v87.17) — كلاهما شهد لهما
+                  المستخدم بالسلاسة الكاملة.
+   ================================================================ */

@@ -742,6 +742,42 @@ def _migrate_user_sessions_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'user_sessions', 'login_method', "login_method VARCHAR(40) NOT NULL DEFAULT 'password'")
 
 
+def _migrate_user_profiles_table(engine: Engine) -> None:
+    """v88.34: ضمان وجود حقول الهوية الجديدة في جدول user_profiles.
+
+    هذه الحقول (first_name / father_name / last_name / date_of_birth) يستخدمها
+    محرر الملف الشخصي (EditProfileModal). بدون هذه الأعمدة، endpoint PATCH /users/me
+    يفشل عند حفظ التعديلات على قواعد البيانات القديمة.
+    """
+    if not _table_exists(engine, 'user_profiles'):
+        return
+
+    _add_column_if_missing(engine, 'user_profiles', 'first_name', 'first_name VARCHAR(80) NULL')
+    _add_column_if_missing(engine, 'user_profiles', 'father_name', 'father_name VARCHAR(80) NULL')
+    _add_column_if_missing(engine, 'user_profiles', 'last_name', 'last_name VARCHAR(80) NULL')
+    _add_column_if_missing(engine, 'user_profiles', 'date_of_birth', 'date_of_birth TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'user_profiles', 'bio', 'bio TEXT NULL')
+    _add_column_if_missing(engine, 'user_profiles', 'cover_photo', 'cover_photo VARCHAR(1000) NULL')
+    _add_column_if_missing(engine, 'user_profiles', 'badges_json', 'badges_json TEXT NULL')
+    _add_column_if_missing(engine, 'user_profiles', 'is_verified', 'is_verified BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'user_profiles', 'profile_theme', "profile_theme VARCHAR(40) NOT NULL DEFAULT 'midnight'")
+    _add_column_if_missing(engine, 'user_profiles', 'privacy_level', "privacy_level VARCHAR(20) NOT NULL DEFAULT 'public'")
+    _add_column_if_missing(engine, 'user_profiles', 'achievements_json', 'achievements_json TEXT NULL')
+    _add_column_if_missing(engine, 'user_profiles', 'activity_tagline', 'activity_tagline VARCHAR(255) NULL')
+
+
+def _migrate_users_identity_fields(engine: Engine) -> None:
+    """v88.34: ضمان وجود حقول الهاتف والتوثيق في جدول users."""
+    if not _table_exists(engine, 'users'):
+        return
+    _add_column_if_missing(engine, 'users', 'phone_number', 'phone_number VARCHAR(20) NULL')
+    _add_column_if_missing(engine, 'users', 'phone_verified', 'phone_verified BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'users', 'phone_verification_code', 'phone_verification_code VARCHAR(128) NULL')
+    _add_column_if_missing(engine, 'users', 'phone_verification_expires_at', 'phone_verification_expires_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'users', 'phone_verification_attempts', 'phone_verification_attempts INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'users', 'phone_verification_locked_until', 'phone_verification_locked_until TIMESTAMP NULL')
+
+
 def _migrate_login_challenges_table(engine: Engine) -> None:
     if not _table_exists(engine, 'login_challenges'):
         return
@@ -1013,6 +1049,8 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
     _safe(_migrate_audit_logs_table, 'migrate_audit_logs_table')
     _safe(_migrate_user_sessions_table, 'migrate_user_sessions_table')
     _safe(_migrate_login_challenges_table, 'migrate_login_challenges_table')
+    _safe(_migrate_user_profiles_table, 'migrate_user_profiles_table')
+    _safe(_migrate_users_identity_fields, 'migrate_users_identity_fields')
     try:
         Base.metadata.create_all(bind=engine)
     except Exception as exc:

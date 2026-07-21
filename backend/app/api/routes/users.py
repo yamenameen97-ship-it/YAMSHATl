@@ -182,6 +182,10 @@ def _basic_user_payload(user: User, following: bool | None = None) -> dict:
         'last_login_at': user.last_login_at.isoformat() if user.last_login_at else None,
         'profile': {
             'bio': '',
+            'first_name': '',
+            'father_name': '',
+            'last_name': '',
+            'date_of_birth': None,
             'cover_photo': None,
             'badges': [],
             'is_verified': False,

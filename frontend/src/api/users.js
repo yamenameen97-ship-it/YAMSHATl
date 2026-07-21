@@ -42,6 +42,8 @@ export const updateUserPreferences = (payload) => API.put('/users/preferences', 
 export const getFollowersSummary = (username) => API.get(`/users/followers/${encodeURIComponent(username)}`);
 export const getRelationship = (username) => API.get(`/users/relationship/${encodeURIComponent(username)}`);
 export const followUser = (username) => API.post('/users/follow', { following: username });
+// ✅ v88.32: نسخة ack-friendly تستخدم لتثبيت حالة المتابعة (تعيد follow: true/false من الـ backend)
+export const toggleFollow = (username) => API.post('/users/follow', { following: username });
 export const getUserPosts = (username) => API.get(`/users/user_posts/${encodeURIComponent(username)}`);
 export const updateMyProfile = (payload) => API.patch('/users/me', payload);
 export const getSavedPosts = () => API.get('/users/me/saved-posts', { cache: false, forceRefresh: true });

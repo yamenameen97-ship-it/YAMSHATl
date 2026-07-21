@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { useAppStore } from '../store/appStore.js';
-import { getMe, getProfileBundle, getRelationship, getUserPosts } from '../api/users.js';
+import { getMe, getProfileBundle, getRelationship, getUserPosts, followUser } from '../api/users.js';
 import { getCurrentUsername } from '../utils/auth.js';
 // ✅ v87.18 FIX: صفحة الملف الشخصي كانت تختفي كلياً (شاشة بيضاء) لأن
 //    الكود كان يستدعي resolveMediaUrlPublic بينما الدالة المتاحة اسمها
@@ -362,6 +362,25 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState('posts');
   const [profile, setProfile] = useState(() => extractProfile({}, currentUsername));
   const [relationship, setRelationship] = useState({ following: false, loading: false });
+
+  // ✅ v88.32 FIX: تثبيت حالة المتابعة حتى بعد الخروج والعودة.
+  // المفتاح مخزّن بـ localStorage ليظهر الزر فوراً (optimistic hydrate) قبل رد الـ backend.
+  const followCacheKey = useMemo(
+    () => (targetUsername ? `ym_follow_state:${targetUsername.toLowerCase()}` : ''),
+    [targetUsername]
+  );
+
+  useEffect(() => {
+    if (!followCacheKey || isOwnProfile) return;
+    try {
+      const cached = window.localStorage.getItem(followCacheKey);
+      if (cached === '1') {
+        setRelationship((prev) => ({ ...prev, following: true }));
+      } else if (cached === '0') {
+        setRelationship((prev) => ({ ...prev, following: false }));
+      }
+    } catch { /* ignore */ }
+  }, [followCacheKey, isOwnProfile]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -437,12 +456,13 @@ export default function Profile() {
       try {
         const res = await getRelationship(targetUsername);
         if (cancelled) return;
-        setRelationship({
-          following: Boolean(
-            res?.data?.following ?? res?.data?.is_following ?? res?.data?.you_follow ?? false
-          ),
-          loading: false,
-        });
+        const serverFollowing = Boolean(
+          res?.data?.following ?? res?.data?.is_following ?? res?.data?.you_follow ?? false
+        );
+        setRelationship({ following: serverFollowing, loading: false });
+        try {
+          if (followCacheKey) window.localStorage.setItem(followCacheKey, serverFollowing ? '1' : '0');
+        } catch { /* ignore */ }
       } catch (err) {
         if (cancelled) return;
         setRelationship({ following: false, loading: false });
@@ -527,8 +547,50 @@ export default function Profile() {
                   <span>رسالة</span>
                   <Icon name="paper" size={15} color="rgba(245,247,255,0.92)" />
                 </button>
-                <button type="button" className="ym-ref-action ym-ref-action-primary">
-                  {relationship.following ? 'إلغاء المتابعة' : 'متابعة'}
+                <button
+                  type="button"
+                  className={`ym-ref-action ym-ref-action-primary ${relationship.following ? 'is-following' : ''}`}
+                  disabled={relationship.loading}
+                  onClick={async () => {
+                    if (!targetUsername || relationship.loading) return;
+                    // Optimistic toggle + persist فوراً قبل أي خروج/عودة
+                    const nextFollowing = !relationship.following;
+                    setRelationship({ following: nextFollowing, loading: true });
+                    try {
+                      if (followCacheKey) window.localStorage.setItem(followCacheKey, nextFollowing ? '1' : '0');
+                    } catch { /* ignore */ }
+                    try {
+                      const res = await followUser(targetUsername);
+                      const serverFollowing = Boolean(
+                        res?.data?.following ?? res?.data?.is_following ?? nextFollowing
+                      );
+                      setRelationship({ following: serverFollowing, loading: false });
+                      try {
+                        if (followCacheKey) window.localStorage.setItem(followCacheKey, serverFollowing ? '1' : '0');
+                      } catch { /* ignore */ }
+                      // تحديث عداد المتابعين محلياً
+                      setProfile((prev) => ({
+                        ...prev,
+                        stats: {
+                          ...prev.stats,
+                          followers: Math.max(
+                            0,
+                            Number(prev.stats.followers || 0) + (serverFollowing ? 1 : -1)
+                          ),
+                        },
+                      }));
+                    } catch (err) {
+                      // rollback
+                      setRelationship({ following: !nextFollowing, loading: false });
+                      try {
+                        if (followCacheKey) window.localStorage.setItem(followCacheKey, !nextFollowing ? '1' : '0');
+                      } catch { /* ignore */ }
+                    }
+                  }}
+                >
+                  {relationship.loading
+                    ? '…'
+                    : (relationship.following ? 'إلغاء المتابعة' : 'متابعة')}
                 </button>
               </div>
             ) : null}

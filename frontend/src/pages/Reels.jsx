@@ -157,12 +157,68 @@ export default function Reels() {
   const [reelActionLoading, setReelActionLoading] = useState(false);
   const currentUsername = getCurrentUsername();
 
+  // ✅ v88.32: قلوب وردية طائرة شفافة عند الضغط المتكرر على الريل — تمر فوق أزرار التفاعل بشكل بطيء.
+  // حتى لو سبق أن أعجب المستخدم بالفيديو، الضغط المتكرر يدفق قلوباً جديدة ويراها المشتركون.
+  const [floatingHearts, setFloatingHearts] = useState([]); // {id, reelId, left, drift, size, delay}
+  const heartIdRef = useRef(0);
+  const handleLikeRef = useRef(null); // نُعبّئه لاحقاً بعد تعريف handleLike لتفادي مشكلة ترتيب التعريف
+
   const videoRefs = useRef([]);
   const containerRef = useRef(null);
   // ✅ FIX v59.13.8 (#3): isMountedRef لحماية setState داخل الـ handlers الـ async
   //    (handleLike / handleShare / openComments / sendComment) عند مغادرة الصفحة.
   const isMountedRef = useRef(true);
   useEffect(() => () => { isMountedRef.current = false; }, []);
+
+  const spawnFloatingHearts = useCallback((reel, count = 1) => {
+    if (!reel) return;
+    const items = [];
+    for (let n = 0; n < count; n += 1) {
+      heartIdRef.current += 1;
+      const id = `h_${Date.now()}_${heartIdRef.current}`;
+      items.push({
+        id,
+        reelId: reel.id,
+        left: 35 + Math.random() * 30,
+        drift: (Math.random() * 40 - 20).toFixed(1),
+        size: 26 + Math.floor(Math.random() * 14),
+        delay: Math.floor(Math.random() * 120),
+      });
+    }
+    setFloatingHearts((prev) => {
+      const merged = [...prev, ...items];
+      return merged.length > 60 ? merged.slice(merged.length - 60) : merged;
+    });
+    const ids = items.map((it) => it.id);
+    setTimeout(() => {
+      if (!isMountedRef.current) return;
+      setFloatingHearts((prev) => prev.filter((it) => !ids.includes(it.id)));
+    }, 3000);
+  }, []);
+
+  // معالج الضغط على الفيديو: ضغطة واحدة للتشغيل/الإيقاف، وضغطات متتالية لتدفق القلوب.
+  const lastTapRef = useRef({ reelId: null, ts: 0, count: 0 });
+  const handleReelTap = useCallback((reel, i) => {
+    const v = videoRefs.current[i];
+    const now = Date.now();
+    const last = lastTapRef.current;
+    const isSameReel = last.reelId === reel.id;
+    const dt = now - last.ts;
+
+    if (isSameReel && dt < 700) {
+      const c = Math.min(3, (last.count || 1) + 1);
+      spawnFloatingHearts(reel, c);
+      lastTapRef.current = { reelId: reel.id, ts: now, count: c };
+      if (!reel.is_liked && last.count === 1 && typeof handleLikeRef.current === 'function') {
+        handleLikeRef.current(reel);
+      }
+    } else {
+      if (v) {
+        if (v.paused) v.play?.().catch(() => {}); else v.pause?.();
+      }
+      lastTapRef.current = { reelId: reel.id, ts: now, count: 1 };
+    }
+  }, [spawnFloatingHearts]);
 
   const openReelMenu = (reel) => {
     setMenuReel(reel);
@@ -456,7 +512,7 @@ export default function Reels() {
     });
   }, [activeIndex, muted, reels.length]);
 
-  const handleLike = useCallback(async (reel) => {
+  const handleLike = useCallback(async (reel) => { /* eslint-disable-next-line */
     if (!reel) return;
     const nextLiked = !reel.is_liked;
     const delta = nextLiked ? 1 : -1;
@@ -474,6 +530,11 @@ export default function Reels() {
       pushToast?.({ type: 'error', title: 'تعذّر تحديث الإعجاب' });
     }
   }, [pushToast]);
+
+  // ✅ v88.32: ربط handleLike مع handleLikeRef حتى يستطيع handleReelTap المعرف مبكراً الوصول إليه
+  useEffect(() => {
+    handleLikeRef.current = handleLike;
+  }, [handleLike]);
 
   const handleShare = useCallback(async (reel) => {
     if (!reel) return;
@@ -702,11 +763,7 @@ export default function Reels() {
                       console.warn('Reel video load error', reel.id, e.currentTarget?.error);
                     }}
                     onTimeUpdate={i === activeIndex ? handleTimeUpdate : undefined}
-                    onClick={() => {
-                      const v = videoRefs.current[i];
-                      if (!v) return;
-                      if (v.paused) v.play?.().catch(() => {}); else v.pause?.();
-                    }}
+                    onClick={() => handleReelTap(reel, i)}
                   />
                 ) : (
                   <div
@@ -751,6 +808,27 @@ export default function Reels() {
               <button type="button" className="ym-reels-more" onClick={() => openReelMenu(reel)} aria-label="المزيد" aria-haspopup="dialog">
                 <span /><span /><span />
               </button>
+
+              {/* ✅ v88.32: طبقة القلوب الوردية الطائرة — تمر فوق أزرار التفاعل بشكل بطيء */}
+              {i === activeIndex ? (
+                <div className="ym-reels-hearts-layer" aria-hidden>
+                  {floatingHearts.filter((h) => h.reelId === reel.id).map((h) => (
+                    <span
+                      key={h.id}
+                      className="ym-reels-flying-heart"
+                      style={{
+                        insetInlineEnd: `${h.left}%`,
+                        fontSize: `${h.size}px`,
+                        animationDelay: `${h.delay}ms`,
+                        // eslint-disable-next-line no-restricted-syntax
+                        '--drift': `${h.drift}px`,
+                      }}
+                    >
+                      ♥
+                    </span>
+                  ))}
+                </div>
+              ) : null}
 
               {/* Right side actions */}
               <aside className="ym-reels-actions" aria-label="إجراءات الريل">
@@ -1502,6 +1580,39 @@ export default function Reels() {
             flex-direction: column;
             gap: 22px;
             z-index: 5;
+          }
+
+          /* ✅ v88.32: قلوب طائرة شفافة وردية بطيئة — تتدفق فوق أزرار التفاعل */
+          .ym-reels-hearts-layer {
+            position: absolute;
+            inset-inline-end: 0;
+            bottom: 180px;
+            width: 100%;
+            height: 380px;
+            pointer-events: none;
+            overflow: visible;
+            z-index: 6; /* فوق أزرار التفاعل (5) */
+          }
+          .ym-reels-flying-heart {
+            position: absolute;
+            bottom: 0;
+            color: #ff8fd0;
+            text-shadow:
+              0 0 6px rgba(255, 143, 208, 0.55),
+              0 0 14px rgba(255, 105, 180, 0.35);
+            opacity: 0;
+            transform: translateY(0) translateX(0) scale(.6);
+            animation: ym-reel-heart-rise 2.6s cubic-bezier(.22,.61,.36,1) forwards;
+            will-change: transform, opacity;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,.25));
+            user-select: none;
+          }
+          @keyframes ym-reel-heart-rise {
+            0%   { opacity: 0;   transform: translateY(20px)  translateX(0)              scale(.6) rotate(-6deg); }
+            15%  { opacity: .85; transform: translateY(-20px) translateX(calc(var(--drift, 0px) * .25)) scale(1)  rotate(2deg); }
+            55%  { opacity: .75; transform: translateY(-160px) translateX(calc(var(--drift, 0px) * .6))  scale(1.05) rotate(-3deg); }
+            85%  { opacity: .35; transform: translateY(-280px) translateX(var(--drift, 0px)) scale(1.1) rotate(4deg); }
+            100% { opacity: 0;   transform: translateY(-340px) translateX(var(--drift, 0px)) scale(1.15) rotate(0deg); }
           }
           .ym-action-group {
             display: flex;

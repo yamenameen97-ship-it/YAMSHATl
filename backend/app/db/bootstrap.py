@@ -63,6 +63,17 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
         'phone_verification_expires_at',
         'phone_verification_attempts',
         'phone_verification_locked_until',
+        # v88.46 — أعمدة كتم الدردشة على مستوى النظام (system-wide chat mute)
+        'chat_muted_until',
+        'chat_muted_by',
+        'chat_muted_reason',
+    },
+    # v88.46 — أعمدة تجميد المجموعة إدارياً
+    'groups': {
+        'is_frozen',
+        'frozen_at',
+        'frozen_by',
+        'frozen_reason',
     },
     'audit_logs': {'action', 'entity_type', 'description', 'meta', 'created_at'},
     'user_sessions': {'user_id', 'session_key', 'refresh_token_hash', 'expires_at', 'revoked_at', 'last_seen_at'},
@@ -778,6 +789,47 @@ def _migrate_users_identity_fields(engine: Engine) -> None:
     _add_column_if_missing(engine, 'users', 'phone_verification_locked_until', 'phone_verification_locked_until TIMESTAMP NULL')
 
 
+def _migrate_admin_chat_group_control(engine: Engine) -> None:
+    """v88.46: ضمان وجود أعمدة كتم الدردشة على users وتجميد المجموعات على groups.
+
+    هذه الأعمدة أُضيفت في alembic migration 0018 لكنها قد لا تكون مطبّقة على قاعدة
+    الإنتاج (Render)، مما يسبب فشل تسجيل الدخول برسالة:
+        ERROR: column users.chat_muted_until does not exist
+    هذه الدالة تكمل النقص بأسلوب idempotent — لا تفعل شيئاً إذا كانت الأعمدة موجودة.
+    """
+    # ---- users: كتم الدردشة على مستوى النظام ----
+    if _table_exists(engine, 'users'):
+        _add_column_if_missing(engine, 'users', 'chat_muted_until', 'chat_muted_until TIMESTAMP NULL')
+        _add_column_if_missing(engine, 'users', 'chat_muted_by', 'chat_muted_by VARCHAR(150) NULL')
+        _add_column_if_missing(engine, 'users', 'chat_muted_reason', 'chat_muted_reason VARCHAR(500) NULL')
+        # فهرس على chat_muted_until (idempotent — CREATE INDEX IF NOT EXISTS)
+        try:
+            if engine.dialect.name == 'postgresql':
+                with engine.begin() as connection:
+                    connection.execute(text(
+                        'CREATE INDEX IF NOT EXISTS ix_users_chat_muted_until '
+                        'ON users (chat_muted_until)'
+                    ))
+        except Exception:
+            pass
+
+    # ---- groups: تجميد المجموعة إدارياً ----
+    if _table_exists(engine, 'groups'):
+        _add_column_if_missing(engine, 'groups', 'is_frozen', 'is_frozen BOOLEAN NOT NULL DEFAULT FALSE')
+        _add_column_if_missing(engine, 'groups', 'frozen_at', 'frozen_at TIMESTAMP NULL')
+        _add_column_if_missing(engine, 'groups', 'frozen_by', 'frozen_by VARCHAR(150) NULL')
+        _add_column_if_missing(engine, 'groups', 'frozen_reason', 'frozen_reason VARCHAR(500) NULL')
+        try:
+            if engine.dialect.name == 'postgresql':
+                with engine.begin() as connection:
+                    connection.execute(text(
+                        'CREATE INDEX IF NOT EXISTS ix_groups_is_frozen '
+                        'ON groups (is_frozen)'
+                    ))
+        except Exception:
+            pass
+
+
 def _migrate_login_challenges_table(engine: Engine) -> None:
     if not _table_exists(engine, 'login_challenges'):
         return
@@ -1051,6 +1103,8 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
     _safe(_migrate_login_challenges_table, 'migrate_login_challenges_table')
     _safe(_migrate_user_profiles_table, 'migrate_user_profiles_table')
     _safe(_migrate_users_identity_fields, 'migrate_users_identity_fields')
+    # v88.46: كتم الدردشة على مستوى النظام + تجميد المجموعات إدارياً
+    _safe(_migrate_admin_chat_group_control, 'migrate_admin_chat_group_control')
     try:
         Base.metadata.create_all(bind=engine)
     except Exception as exc:

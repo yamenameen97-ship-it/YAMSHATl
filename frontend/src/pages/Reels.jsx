@@ -257,13 +257,18 @@ export default function Reels() {
   //   - النقرة الثانية خلال 350ms: قلوب طائرة + إعجاب (إن لم يكن مُعجباً) + بث Socket.
   //   - النقرات المتتالية الإضافية: تدفق قلوب متواصل.
   const lastTapRef = useRef({ reelId: null, ts: 0, count: 0 });
+  // ✅ v88.47: كشف الضغط المتكرر على الجوال — نستخدم performance.now (أدق) بدل Date.now
+  //   ونوسّع نافذة الاكتشاف إلى 450ms لأن الجوال (خاصة PWA) قد يؤخّر أحداث اللمس.
+  //   نُطلق القلوب من أول ضغطتين متتاليتين على نفس الريل، وضغطات إضافية تدفّق قلوب.
   const handleReelTap = useCallback((reel, i, opts = {}) => {
+    if (!reel) return;
     const v = videoRefs.current[i];
-    const now = Date.now();
+    const nowFn = (typeof performance !== 'undefined' && performance.now) ? performance.now.bind(performance) : Date.now;
+    const now = nowFn();
     const last = lastTapRef.current;
-    const isSameReel = last.reelId === reel.id;
-    const dt = now - last.ts;
-    const DOUBLE_TAP_MS = 350;
+    const isSameReel = String(last.reelId) === String(reel.id);
+    const dt = now - (last.ts || 0);
+    const DOUBLE_TAP_MS = 450; // كان 350 — نوسّع النافذة لتحسين موثوقية الجوال
 
     if (isSameReel && dt < DOUBLE_TAP_MS) {
       // ضغطة مزدوجة أو ضغطات متتالية → قلوب طائرة + بث لحظي
@@ -871,7 +876,15 @@ export default function Reels() {
                       console.warn('Reel video load error', reel.id, e.currentTarget?.error);
                     }}
                     onTimeUpdate={i === activeIndex ? handleTimeUpdate : undefined}
-                    onClick={() => handleReelTap(reel, i, { fromVideo: true })}
+                    /* ✅ v88.47: pointer events تلتقط اللمس على الجوال بشكل موثوق */
+                    onPointerUp={() => handleReelTap(reel, i, { fromVideo: true })}
+                    onClick={(e) => {
+                      // احتياطي — نتجنّب الازدواج مع onPointerUp
+                      const nowFn = (typeof performance !== 'undefined' && performance.now) ? performance.now.bind(performance) : Date.now;
+                      const now = nowFn();
+                      if ((now - (lastTapRef.current?.ts || 0)) < 60 && String(lastTapRef.current?.reelId) === String(reel.id)) return;
+                      handleReelTap(reel, i, { fromVideo: true });
+                    }}
                   />
                 ) : (
                   <div
@@ -917,15 +930,28 @@ export default function Reels() {
                 <span /><span /><span />
               </button>
 
-              {/* ✅ v88.43: طبقة اعتراض شفافة تلتقط النقر المزدوج في أي مكان من الريل حتى فوق الأزرار الشفافة/الفراغ */}
+              {/* ✅ v88.47: طبقة اعتراض شفافة تلتقط النقر المزدوج على الجوال والديسكتوب معاً
+                   — نستخدم onPointerUp (يعمل على اللمس والفأرة) بدل onClick فقط
+                   لأن onClick على الجوال قد يتأخّر أو يُبتَلع من قِبَل PWA أو المتصفح. */}
               <div
                 className="ym-reels-tap-catcher"
                 aria-hidden
-                onClick={(e) => {
+                onPointerUp={(e) => {
                   // نتجنّب ابتلاع نقرة على عنصر تفاعلي (زر/رابط) → نتركها تصل لهدفها
                   const t = e.target;
                   const interactive = t && t.closest && t.closest('button, a, input, textarea, [role="button"], .ym-reels-actions, .ym-reels-mute, .ym-reels-more, .ym-reels-caption a');
                   if (interactive) return;
+                  handleReelTap(reel, i, { fromVideo: false });
+                }}
+                onClick={(e) => {
+                  // احتياطي للمتصفحات القديمة التي لا تدعم PointerEvents جيداً
+                  const t = e.target;
+                  const interactive = t && t.closest && t.closest('button, a, input, textarea, [role="button"], .ym-reels-actions, .ym-reels-mute, .ym-reels-more, .ym-reels-caption a');
+                  if (interactive) return;
+                  // إذا كان onPointerUp قد عالج الضغطة للتو (خلال 60ms)، نتجاهل onClick لتفادي تكرار
+                  const nowFn = (typeof performance !== 'undefined' && performance.now) ? performance.now.bind(performance) : Date.now;
+                  const now = nowFn();
+                  if ((now - (lastTapRef.current?.ts || 0)) < 60 && String(lastTapRef.current?.reelId) === String(reel.id)) return;
                   handleReelTap(reel, i, { fromVideo: false });
                 }}
               />
@@ -2091,7 +2117,11 @@ export default function Reels() {
             font-family: inherit;
           }
 
-          /* ===== Desktop / Laptop layout — نفس التصميم بإطار موبايل في الوسط ===== */
+          /* ===== Desktop / Laptop layout — نفس التصميم بإطار موبايل في الوسط =====
+             ✅ v88.47 FIX: كانت .ym-reels-feed تستخدم display:flex مع align-items:center
+             مما جعل كل الشرائح تتراكم على نفس المحور الأفقي وتظهر مكدسة جنباً إلى جنب.
+             الحل: نُبقيها كتدفّق عمودي طبيعي (block) مع scroll-snap عمودي،
+             ونستخدم margin auto فقط لتوسيط كل شريحة أفقياً — مطابق تماماً لسلوك الجوال. */
           @media (min-width: 900px) {
             .ym-reels-root {
               background:
@@ -2100,21 +2130,26 @@ export default function Reels() {
                 #06030d;
             }
             .ym-reels-feed {
+              /* ⚠️ لا نستخدم flex هنا — سيُكدّس الشرائح أفقياً */
               inset: 0;
-              display: flex;
-              align-items: center;
-              justify-content: center;
+              display: block;
+              overflow-y: auto;
+              overflow-x: hidden;
               scroll-snap-type: y mandatory;
+              -webkit-overflow-scrolling: touch;
+              scroll-behavior: smooth;
             }
             .ym-reels-slide {
               position: relative;
+              display: block;
               width: min(440px, 90vw);
-              height: min(820px, 92vh);
-              margin: 4vh auto;
+              height: 100vh; /* كل شريحة تملأ الفيوبورت عمودياً — نفس سلوك الجوال */
+              margin: 0 auto; /* توسيط أفقي فقط */
               border-radius: 28px;
               overflow: hidden;
               box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(139,92,246,.2);
               scroll-snap-align: center;
+              scroll-snap-stop: always;
             }
             .ym-reels-top {
               /* v58: توسيط التابات أيضاً في تجربة الديسكتوب */
@@ -2134,7 +2169,7 @@ export default function Reels() {
           @media (min-width: 1400px) {
             .ym-reels-slide {
               width: 460px;
-              height: 860px;
+              height: 100vh;
             }
           }
         `}</style>

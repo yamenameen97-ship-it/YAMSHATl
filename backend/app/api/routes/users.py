@@ -107,9 +107,15 @@ def _profile_completion(user: User, profile: UserProfile | None) -> int:
 def _user_payload(db: Session, user: User, following: bool | None = None) -> dict:
     profile = _get_or_create_profile(db, user.id)
     wallet = _get_or_create_wallet(db, user.id)
+    # اسم العرض يأتي من بيانات الهوية المحفوظة في قاعدة البيانات، مع fallback ثابت لاسم المستخدم.
+    # إعادته من كل استجابات الملف يجعل كل واجهات المنصة تتحدث من مصدر سحابي واحد.
+    full_name = ' '.join(part for part in (profile.first_name, profile.father_name, profile.last_name) if part).strip()
+    display_name = full_name or user.username
     payload = {
         'id': user.id,
-        'name': user.username,
+        'name': display_name,
+        'display_name': display_name,
+        'full_name': full_name,
         'username': user.username,
         'email': user.email,
         'email_verified': bool(user.email_verified),
@@ -124,6 +130,8 @@ def _user_payload(db: Session, user: User, following: bool | None = None) -> dic
         'last_login_at': user.last_login_at.isoformat() if user.last_login_at else None,
         'profile': {
             'bio': profile.bio or '',
+            'full_name': full_name,
+            'display_name': display_name,
             'first_name': profile.first_name or '',
             'father_name': profile.father_name or '',
             'last_name': profile.last_name or '',

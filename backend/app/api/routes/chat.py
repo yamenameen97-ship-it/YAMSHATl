@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, WebSocket, W
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
+from app.core.content_scanner import scan_content
 from app.core.dependencies import get_current_user, get_db
 from app.core.rate_limit import allow_socket_message
 from app.core.security import ACCESS_TOKEN_TYPE, TokenError, decode_token
@@ -258,6 +259,19 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
     for att in attachments:
         if not scan_media_for_malware(att['url']):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Attachment failed malware scan.')
+
+    # v88.46 (point 6) — فاحص محتوى تلقائي شامل (لغة مسيئة + عنف + وسائط مشبوهة)
+    _scan = scan_content(text=raw_message, media_url=media_url or None, attachments=attachments)
+    if _scan.is_blocked:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                'code': 'content_blocked',
+                'message': 'الرسالة تحتوي محتوى مخالفاً لسياسة المنصة.',
+                'categories': sorted(_scan.categories),
+                'score': _scan.score,
+            },
+        )
 
     # التحقق من reply_to_id
     if reply_to_id is not None:

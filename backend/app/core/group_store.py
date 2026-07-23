@@ -94,6 +94,11 @@ class GroupItem:
     cover_image_url: str = ""
     category: str = ""
     is_verified: bool = False
+    # v88.46 — تجميد المجموعة إدارياً بواسطة المدير العام
+    is_frozen: bool = False
+    frozen_at: str | None = None
+    frozen_by: str | None = None            # username المدير الذي جمّد
+    frozen_reason: str | None = None
 
 
 class GroupStore:
@@ -382,7 +387,11 @@ class GroupStore:
         group = self._groups.get(str(group_id))
         if not group:
             return None
-        
+
+        # v88.46 — منع الإرسال في المجموعات المُجمّدة إدارياً
+        if group.is_frozen:
+            return None
+
         # التحقق من أن المستخدم عضو في المجموعة
         member = group.members.get(sender_username)
         if not member:
@@ -391,7 +400,25 @@ class GroupStore:
         # التحقق من عدم كتم صوت المستخدم
         if member.is_muted:
             return None
-        
+
+        # v88.46 (point 6) — فاحص محتوى موحّد (لغة مسيئة + عنف + وسائط مشبوهة)
+        try:
+            from app.core.content_scanner import scan_content as _cc_scan
+            _scan = _cc_scan(text=content or None, attachments=attachments)
+            if _scan.is_blocked:
+                # نسجّل في audit ونرفض الإرسال بصمت (return None يتوافق مع باقي المسار)
+                self._add_audit_log(
+                    group_id,
+                    sender_username,
+                    "content_blocked",
+                    f"Blocked message (score={_scan.score}, cats={sorted(_scan.categories)})",
+                )
+                self._save()
+                return None
+        except Exception:
+            # فاحص المحتوى اختياري — لا نُعطّل الإرسال لو انهار الفاحص
+            _scan = None
+
         message_id = str(uuid.uuid4())
         message = GroupMessage(
             id=message_id,
@@ -408,6 +435,16 @@ class GroupStore:
         if str(group_id) not in self._messages:
             self._messages[str(group_id)] = []
         
+        # v88.46 (point 6) — ختم الرسالة بنتيجة الفحص لو flagged (للأدمن)
+        try:
+            if _scan is not None and _scan.is_flagged:
+                message.attachments = list(message.attachments or [])
+                # لا نغيّر الشكل العام؛ نستخدم حقل نصّي واحد ضمن الرسالة نفسها
+                setattr(message, '_scan_score', int(_scan.score))
+                setattr(message, '_scan_categories', sorted(_scan.categories))
+        except Exception:
+            pass
+
         self._messages[str(group_id)].append(message)
         self._save()
         
@@ -453,6 +490,188 @@ class GroupStore:
                 return True
         
         return False
+
+    # ============================================================
+    # v88.46 — دوال إدارية خارقة للمدير العام (Super Admin Actions)
+    # ------------------------------------------------------------
+    # هذه الدوال لا تشترط أن يكون المدير عضواً في المجموعة،
+    # ولا تحترم أدوار المجموعة (owner/admin/moderator).
+    # يجب أن يتم التحقق من صلاحية المدير العام في طبقة الـ router
+    # قبل استدعاء أيّ من هذه الدوال.
+    # ============================================================
+
+    def freeze_group(
+        self,
+        group_id: str,
+        admin_username: str,
+        reason: str = "",
+        frozen: bool = True,
+    ) -> dict | None:
+        """تجميد / فكّ تجميد مجموعة كاملة بواسطة المدير العام.
+
+        - عند التجميد: تُمنع كل الرسائل / الدعوات / المنشورات داخل المجموعة
+          (يعتمد التطبيق على قراءة `is_frozen` في نقاط الإدخال).
+        - لا يحتاج المدير أن يكون عضواً بالمجموعة.
+        """
+        group = self._groups.get(str(group_id))
+        if group is None:
+            return None
+        group.is_frozen = bool(frozen)
+        group.frozen_at = datetime.utcnow().isoformat() if frozen else None
+        group.frozen_by = admin_username if frozen else None
+        group.frozen_reason = (reason or "").strip() if frozen else None
+        action = "admin_freeze_group" if frozen else "admin_unfreeze_group"
+        description = (
+            f"Group frozen by super-admin {admin_username}: {reason}"
+            if frozen
+            else f"Group unfrozen by super-admin {admin_username}"
+        )
+        self._add_audit_log(group_id, admin_username, action, description)
+        self._save()
+        return {
+            "group_id": group.id,
+            "is_frozen": group.is_frozen,
+            "frozen_at": group.frozen_at,
+            "frozen_by": group.frozen_by,
+            "frozen_reason": group.frozen_reason,
+        }
+
+    def admin_delete_message(
+        self,
+        group_id: str,
+        message_id: str,
+        admin_username: str,
+        reason: str = "",
+    ) -> bool:
+        """حذف رسالة داخل أيّ مجموعة بواسطة المدير العام (تجاوز أدوار المجموعة).
+
+        يعمل حتى لو لم يكن المدير عضواً بالمجموعة.
+        """
+        group = self._groups.get(str(group_id))
+        if group is None:
+            return False
+        messages = self._messages.get(str(group_id), [])
+        for message in messages:
+            if message.id == message_id:
+                message.is_deleted = True
+                self._add_audit_log(
+                    group_id,
+                    admin_username,
+                    "admin_delete_message",
+                    f"Super-admin {admin_username} deleted message {message_id}"
+                    + (f" — reason: {reason}" if reason else ""),
+                )
+                self._save()
+                return True
+        return False
+
+    def admin_delete_group(
+        self,
+        group_id: str,
+        admin_username: str,
+        reason: str = "",
+    ) -> bool:
+        """حذف مجموعة كاملة بواسطة المدير العام (تجاوز شرط الملكية)."""
+        group = self._groups.get(str(group_id))
+        if group is None:
+            return False
+        # سجّل الحدث قبل الحذف الكامل حتى يبقى أثر
+        self._add_audit_log(
+            group_id,
+            admin_username,
+            "admin_delete_group",
+            f"Super-admin {admin_username} deleted group '{group.name}'"
+            + (f" — reason: {reason}" if reason else ""),
+        )
+        del self._groups[str(group_id)]
+        if str(group_id) in self._messages:
+            del self._messages[str(group_id)]
+        self._save()
+        return True
+
+    def admin_mute_group_member(
+        self,
+        group_id: str,
+        target_username: str,
+        admin_username: str,
+        muted: bool = True,
+        reason: str = "",
+    ) -> bool:
+        """كتم / فكّ كتم عضو داخل مجموعة معيّنة بواسطة المدير العام.
+
+        لا يشترط أن يكون المدير عضواً بالمجموعة، ولا يحترم أدوار المجموعة.
+        """
+        group = self._groups.get(str(group_id))
+        if group is None:
+            return False
+        target = group.members.get(target_username)
+        if target is None:
+            return False
+        target.is_muted = bool(muted)
+        target.muted_until = "admin_indefinite" if muted else None
+        action = "admin_mute_member" if muted else "admin_unmute_member"
+        description = (
+            f"Super-admin {admin_username} muted {target_username}"
+            if muted
+            else f"Super-admin {admin_username} unmuted {target_username}"
+        )
+        if reason:
+            description += f" — reason: {reason}"
+        self._add_audit_log(group_id, admin_username, action, description)
+        self._save()
+        return True
+
+    def admin_mute_user_system_wide(
+        self,
+        target_username: str,
+        admin_username: str,
+        duration_minutes: int | None = None,
+        reason: str = "",
+        muted: bool = True,
+    ) -> dict:
+        """كتم مستخدم عن الشات على مستوى النظام (بغض النظر عن أي مجموعة).
+
+        هذه العملية تُطبّق كتماً فورياً داخل كل المجموعات التي فيها
+        هذا المستخدم في متجر المجموعات. تحديث `User.chat_muted_until`
+        في قاعدة البيانات يتم في طبقة الـ router.
+        """
+        affected_groups: list[str] = []
+        for group in self._groups.values():
+            member = group.members.get(target_username)
+            if member is None:
+                continue
+            member.is_muted = bool(muted)
+            member.muted_until = (
+                f"system_wide:{duration_minutes}m" if (muted and duration_minutes) else
+                ("system_wide" if muted else None)
+            )
+            affected_groups.append(group.id)
+            self._add_audit_log(
+                group.id,
+                admin_username,
+                "admin_mute_user_system_wide" if muted else "admin_unmute_user_system_wide",
+                (
+                    f"Super-admin {admin_username} "
+                    f"{'muted' if muted else 'unmuted'} {target_username} "
+                    f"system-wide"
+                    + (f" for {duration_minutes}m" if (muted and duration_minutes) else "")
+                    + (f" — reason: {reason}" if reason else "")
+                ),
+            )
+        self._save()
+        return {
+            "target_username": target_username,
+            "muted": bool(muted),
+            "duration_minutes": duration_minutes,
+            "reason": reason,
+            "affected_groups": affected_groups,
+            "affected_groups_count": len(affected_groups),
+        }
+
+    def is_group_frozen(self, group_id: str) -> bool:
+        """فحص سريع لحالة تجميد المجموعة (يُستخدم في نقاط الإدخال)."""
+        group = self._groups.get(str(group_id))
+        return bool(group and group.is_frozen)
 
     def edit_message(self, group_id: str, message_id: str, actor: str, new_content: str) -> bool:
         """تعديل رسالة"""
@@ -529,6 +748,11 @@ class GroupStore:
             'cover_image_url': item.cover_image_url,
             'category': item.category,
             'is_verified': item.is_verified,
+            # v88.46 — كشف حالة التجميد الإداري في الاستجابة
+            'is_frozen': bool(item.is_frozen),
+            'frozen_at': item.frozen_at,
+            'frozen_by': item.frozen_by,
+            'frozen_reason': item.frozen_reason,
             'members': [
                 {
                     'username': member.username,
@@ -582,6 +806,10 @@ class GroupStore:
                     'cover_image_url': group.cover_image_url,
                     'category': group.category,
                     'is_verified': group.is_verified,
+                    'is_frozen': bool(group.is_frozen),
+                    'frozen_at': group.frozen_at,
+                    'frozen_by': group.frozen_by,
+                    'frozen_reason': group.frozen_reason,
                     'members': {
                         username: {
                             'username': member.username,
@@ -687,6 +915,10 @@ class GroupStore:
                     cover_image_url=str(raw.get('cover_image_url') or ''),
                     category=str(raw.get('category') or ''),
                     is_verified=bool(raw.get('is_verified', False)),
+                    is_frozen=bool(raw.get('is_frozen', False)),
+                    frozen_at=(str(raw.get('frozen_at')) if raw.get('frozen_at') else None),
+                    frozen_by=(str(raw.get('frozen_by')) if raw.get('frozen_by') else None),
+                    frozen_reason=(str(raw.get('frozen_reason')) if raw.get('frozen_reason') else None),
                 )
                 if item.id:
                     restored[item.id] = item

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from pydantic import BaseModel, Field
@@ -26,9 +26,12 @@ from app.core.socket_server import emit_user_event_background, sio
 from app.models.app_setting import AppSetting
 from app.models.audit_log import AuditLog
 from app.models.comment import Comment
+from app.models.comment_like import CommentLike
 from app.models.message import Message
 from app.models.notification import Notification
 from app.models.post import Post
+from app.models.report import Report, ReportEvent
+from app.models.stories_reels import Reel, ReelComment, ReelLike, ReelView, SavedReel
 from app.models.user import User
 from app.models.user_wallet import UserWallet
 from app.services.auth_service import register_user
@@ -1133,6 +1136,703 @@ def bulk_delete_posts(
     return {'deleted': deleted, 'ids': ids}
 
 
+# ============================================================
+# v88.44 — Comment Management Endpoints for Admin Panel
+# ============================================================
+
+def _serialize_comment_admin(db: Session, comment: Comment) -> dict[str, Any]:
+    """Serialize a comment for the admin panel with user and post info."""
+    user = db.query(User).filter(User.id == comment.user_id).first()
+    post = db.query(Post).filter(Post.id == comment.post_id).first()
+    likes_count = db.query(func.count(CommentLike.id)).filter(
+        CommentLike.comment_id == comment.id
+    ).scalar() or 0
+    replies_count = db.query(func.count(Comment.id)).filter(
+        Comment.parent_id == comment.id
+    ).scalar() or 0
+    return {
+        'id': comment.id,
+        'content': comment.content,
+        'post_id': comment.post_id,
+        'post_content_preview': (post.content[:80] + '…') if post and post.content and len(post.content) > 80 else (post.content if post else None),
+        'user_id': comment.user_id,
+        'username': user.username if user else (getattr(comment, 'username', None) or 'unknown'),
+        'avatar': user.avatar if user else None,
+        'parent_id': comment.parent_id,
+        'likes_count': int(likes_count),
+        'replies_count': int(replies_count),
+        'is_pinned': bool(comment.is_pinned),
+        'is_hidden': bool(comment.is_hidden),
+        'created_at': comment.created_at.isoformat() if comment.created_at else None,
+        'updated_at': comment.updated_at.isoformat() if comment.updated_at else None,
+    }
+
+
+@router.get('/comments')
+def list_admin_comments(
+    post_id: int | None = Query(default=None, description='Filter by post ID'),
+    search: str = Query(default=''),
+    include_hidden: bool = Query(default=True),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    sort_by: str = Query(default='created_at'),
+    sort_direction: str = Query(default='desc'),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List comments for admin management — optionally filtered by post_id."""
+    _require_permission(current_user, 'posts.view')
+
+    query = db.query(Comment)
+    if post_id is not None:
+        query = query.filter(Comment.post_id == post_id)
+    if not include_hidden:
+        query = query.filter(Comment.is_hidden.is_(False))
+
+    term = search.strip()
+    if term:
+        query = query.filter(Comment.content.ilike(f'%{term}%'))
+
+    if sort_by == 'likes':
+        order_field = Comment.likes_count
+    else:
+        order_field = Comment.created_at
+    query = query.order_by(order_field.asc() if sort_direction == 'asc' else order_field.desc())
+
+    total = query.count()
+    items = query.offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        'items': [_serialize_comment_admin(db, c) for c in items],
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'pages': max((total + page_size - 1) // page_size, 1),
+        },
+    }
+
+
+@router.get('/posts/{post_id}/comments')
+def list_post_comments_admin(
+    post_id: int,
+    include_hidden: bool = Query(default=True),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all comments for a specific post (admin view — includes hidden)."""
+    _require_permission(current_user, 'posts.view')
+
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
+
+    query = db.query(Comment).filter(Comment.post_id == post_id)
+    if not include_hidden:
+        query = query.filter(Comment.is_hidden.is_(False))
+    query = query.order_by(Comment.created_at.desc())
+
+    total = query.count()
+    items = query.offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        'items': [_serialize_comment_admin(db, c) for c in items],
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'pages': max((total + page_size - 1) // page_size, 1),
+        },
+    }
+
+
+@router.delete('/comments/{comment_id}')
+def delete_comment_admin(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a comment (and its replies) as admin — bypasses ownership check."""
+    _require_permission(current_user, 'posts.delete')
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if comment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Comment not found')
+
+    # Recursively delete descendant replies
+    def _delete_descendants(parent_id: int) -> None:
+        children = db.query(Comment).filter(Comment.parent_id == parent_id).all()
+        for child in children:
+            _delete_descendants(child.id)
+            db.delete(child)
+
+    _delete_descendants(comment.id)
+    comment_content = (comment.content or '')[:80]
+    db.delete(comment)
+    db.commit()
+    _add_audit_log(
+        db, current_user, 'comment_deleted', 'comment', comment_id,
+        f'تم حذف التعليق رقم {comment_id} ("{comment_content}…") بواسطة الإدارة.',
+        {'comment_id': comment_id, 'post_id': comment.post_id},
+    )
+    _emit_admin_event('admin:comment_deleted', {'comment_id': comment_id})
+    return {'message': 'Comment deleted', 'comment_id': comment_id}
+
+
+@router.post('/comments/{comment_id}/hide')
+def toggle_hide_comment_admin(
+    comment_id: int,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Hide/show a comment as admin."""
+    _require_permission(current_user, 'posts.edit')
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if comment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Comment not found')
+
+    hidden = bool(payload.get('hidden', not comment.is_hidden))
+    comment.is_hidden = hidden
+    comment.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(comment)
+    action = 'comment_hidden' if hidden else 'comment_unhidden'
+    description = f"تم {'إخفاء' if hidden else 'إظهار'} التعليق رقم {comment_id} بواسطة الإدارة."
+    _add_audit_log(db, current_user, action, 'comment', comment_id, description, {'comment_id': comment_id})
+    _emit_admin_event('admin:comment_updated', {'comment_id': comment_id, 'hidden': hidden})
+    return _serialize_comment_admin(db, comment)
+
+
+# ============================================================
+# v88.44 — Reports List Endpoint (actual reports from Report model)
+# ============================================================
+
+@router.get('/reports')
+def list_admin_reports(
+    status_filter: str | None = Query(default=None, alias='status'),
+    priority: str | None = Query(default=None),
+    target_type: str | None = Query(default=None),
+    reason: str | None = Query(default=None),
+    search: str = Query(default=''),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List actual reports from the unified Report system — real data, not just stats."""
+    _require_permission(current_user, 'reports.view')
+
+    query = db.query(Report)
+    if status_filter and status_filter != 'all':
+        query = query.filter(Report.status == status_filter)
+    if priority and priority != 'all':
+        query = query.filter(Report.priority == priority)
+    if target_type and target_type != 'all':
+        query = query.filter(Report.target_type == target_type)
+    if reason and reason != 'all':
+        query = query.filter(Report.reason == reason)
+
+    term = search.strip()
+    if term:
+        like_pattern = f'%{term}%'
+        query = query.filter(or_(
+            Report.details.ilike(like_pattern),
+            Report.target_id.ilike(like_pattern),
+        ))
+
+    # Count by status for quick filter bar
+    from sqlalchemy import func as _func
+    counts_query = db.query(Report.status, _func.count(Report.id)).group_by(Report.status)
+    if status_filter and status_filter != 'all':
+        counts_query = counts_query.filter(Report.status == status_filter)
+    counts_rows = counts_query.all()
+    counts = {s: int(c) for s, c in counts_rows}
+    counts['all'] = int(query.count())
+
+    total = query.count()
+    items = (
+        query.order_by(Report.priority.desc(), Report.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    # Serialize reports with user info and snapshot
+    from app.services.report_service import serialize_report, reason_label
+    serialized = [serialize_report(db, r) for r in items]
+
+    return {
+        'items': serialized,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'counts': counts,
+    }
+
+
+@router.get('/reports/{report_id}/details')
+def get_report_details_admin(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get detailed report info including event timeline."""
+    _require_permission(current_user, 'reports.view')
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if report is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Report not found')
+
+    events = (
+        db.query(ReportEvent)
+        .filter(ReportEvent.report_id == report_id)
+        .order_by(ReportEvent.created_at.asc())
+        .all()
+    )
+
+    from app.services.report_service import serialize_report
+    return {
+        'report': serialize_report(db, report),
+        'events': [
+            {
+                'id': e.id,
+                'actor_user_id': e.actor_user_id,
+                'event_type': e.event_type,
+                'note': e.note,
+                'meta': e.meta or {},
+                'created_at': e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in events
+        ],
+    }
+
+
+# ============================================================
+# v88.45 — Reels Management (Admin Panel)
+# ============================================================
+# GET    /admin/reels                       → قائمة كل الريلز (مع فلاتر)
+# GET    /admin/reels/{reel_id}             → تفاصيل ريل محدد
+# DELETE /admin/reels/{reel_id}             → حذف ريل (soft-delete) بصلاحية أدمن
+# POST   /admin/reels/{reel_id}/restore     → استعادة ريل محذوف
+# GET    /admin/reels/{reel_id}/comments    → تعليقات ريل (شامل المخفية)
+# DELETE /admin/reels/comments/{cid}        → حذف تعليق ريل بصلاحية أدمن
+# POST   /admin/reels/comments/{cid}/hide   → إخفاء/إظهار تعليق ريل
+# GET    /admin/reels/{reel_id}/reports     → البلاغات على ريل محدد
+# ============================================================
+
+def _serialize_reel_admin(db: Session, reel: Reel) -> dict[str, Any]:
+    """Serialize a reel for the admin panel including owner and reports count."""
+    owner = db.query(User).filter(User.id == reel.user_id).first()
+    reports_count = db.query(func.count(Report.id)).filter(
+        Report.target_type.in_(['reel', 'reel_comment']),
+        Report.target_id == str(reel.id),
+    ).scalar() or 0
+    pending_reports = db.query(func.count(Report.id)).filter(
+        Report.target_type == 'reel',
+        Report.target_id == str(reel.id),
+        Report.status == 'pending',
+    ).scalar() or 0
+    hidden_comments = db.query(func.count(ReelComment.id)).filter(
+        ReelComment.reel_id == reel.id,
+        ReelComment.is_hidden.is_(True),
+    ).scalar() or 0
+    return {
+        'id': reel.id,
+        'user_id': reel.user_id,
+        'username': owner.username if owner else 'unknown',
+        'user_avatar': getattr(owner, 'avatar_url', None) or getattr(owner, 'avatar', None) if owner else None,
+        'user_email': owner.email if owner else None,
+        'video_url': reel.video_url,
+        'media_url': reel.video_url,
+        'thumbnail_url': reel.thumbnail_url,
+        'preview_url': reel.thumbnail_url or reel.video_url,
+        'caption': reel.caption or '',
+        'content': reel.caption or '',
+        'category': reel.category or 'general',
+        'duration': int(reel.duration or 0),
+        'likes_count': int(reel.likes_count or 0),
+        'comments_count': int(reel.comments_count or 0),
+        'shares_count': int(reel.shares_count or 0),
+        'views_count': int(reel.views_count or 0),
+        'hidden_comments_count': int(hidden_comments),
+        'reports_count': int(reports_count),
+        'pending_reports_count': int(pending_reports),
+        'is_deleted': bool(reel.is_deleted),
+        'storage_type': getattr(reel, 'storage_type', 'local'),
+        'created_at': reel.created_at.isoformat() if reel.created_at else None,
+        'updated_at': reel.updated_at.isoformat() if reel.updated_at else None,
+    }
+
+
+def _serialize_reel_comment_admin(db: Session, comment: ReelComment) -> dict[str, Any]:
+    """Serialize a reel comment for the admin panel."""
+    user = db.query(User).filter(User.id == comment.user_id).first()
+    replies_count = db.query(func.count(ReelComment.id)).filter(
+        ReelComment.parent_id == comment.id
+    ).scalar() or 0
+    reports_count = db.query(func.count(Report.id)).filter(
+        Report.target_type == 'reel_comment',
+        Report.target_id == str(comment.id),
+    ).scalar() or 0
+    return {
+        'id': comment.id,
+        'reel_id': comment.reel_id,
+        'content': comment.content,
+        'user_id': comment.user_id,
+        'username': user.username if user else (comment.username or 'unknown'),
+        'avatar': getattr(user, 'avatar_url', None) or getattr(user, 'avatar', None) if user else None,
+        'parent_id': comment.parent_id,
+        'likes_count': int(comment.likes_count or 0),
+        'replies_count': int(replies_count),
+        'reports_count': int(reports_count),
+        'is_hidden': bool(comment.is_hidden),
+        'created_at': comment.created_at.isoformat() if comment.created_at else None,
+        'updated_at': comment.updated_at.isoformat() if comment.updated_at else None,
+    }
+
+
+@router.get('/reels')
+def list_admin_reels(
+    status_filter: str = Query(default='active', alias='status', description='active | deleted | all'),
+    category: str | None = Query(default=None),
+    search: str = Query(default=''),
+    has_reports: bool = Query(default=False),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    sort_by: str = Query(default='created_at'),
+    sort_direction: str = Query(default='desc'),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List reels for admin management with filters."""
+    _require_permission(current_user, 'posts.view')
+
+    query = db.query(Reel)
+    if status_filter == 'active':
+        query = query.filter(Reel.is_deleted.is_(False))
+    elif status_filter == 'deleted':
+        query = query.filter(Reel.is_deleted.is_(True))
+    # 'all' → no filter
+
+    if category and category != 'all':
+        query = query.filter(Reel.category == category)
+
+    term = search.strip()
+    if term:
+        like_pattern = f'%{term}%'
+        # join with users for username search
+        query = query.outerjoin(User, User.id == Reel.user_id).filter(or_(
+            Reel.caption.ilike(like_pattern),
+            User.username.ilike(like_pattern),
+        ))
+
+    if has_reports:
+        # subquery of reel_ids that have any report
+        reported_ids = db.query(Report.target_id).filter(
+            Report.target_type == 'reel',
+        ).subquery()
+        query = query.filter(Reel.id.in_(db.query(reported_ids.c.target_id)))
+
+    # ordering
+    if sort_by == 'likes':
+        order_field = Reel.likes_count
+    elif sort_by == 'views':
+        order_field = Reel.views_count
+    elif sort_by == 'comments':
+        order_field = Reel.comments_count
+    else:
+        order_field = Reel.created_at
+    query = query.order_by(order_field.asc() if sort_direction == 'asc' else order_field.desc())
+
+    total = query.count()
+    items = query.offset((page - 1) * page_size).limit(page_size).all()
+
+    # counts for filter bar
+    counts = {
+        'active': db.query(func.count(Reel.id)).filter(Reel.is_deleted.is_(False)).scalar() or 0,
+        'deleted': db.query(func.count(Reel.id)).filter(Reel.is_deleted.is_(True)).scalar() or 0,
+        'all': db.query(func.count(Reel.id)).scalar() or 0,
+        'with_reports': db.query(func.count(func.distinct(Report.target_id))).filter(
+            Report.target_type == 'reel'
+        ).scalar() or 0,
+    }
+
+    return {
+        'items': [_serialize_reel_admin(db, r) for r in items],
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'counts': counts,
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'pages': max((total + page_size - 1) // page_size, 1),
+        },
+    }
+
+
+@router.get('/reels/{reel_id}')
+def get_reel_detail_admin(
+    reel_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get detailed reel info for admin view."""
+    _require_permission(current_user, 'posts.view')
+    reel = db.query(Reel).filter(Reel.id == reel_id).first()
+    if reel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')
+    return _serialize_reel_admin(db, reel)
+
+
+@router.delete('/reels/{reel_id}')
+def delete_reel_admin(
+    reel_id: int,
+    hard: bool = Query(default=False, description='If true, permanently delete (with related data)'),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a reel (admin) — bypasses ownership check. Soft-delete by default."""
+    _require_permission(current_user, 'posts.delete')
+    reel = db.query(Reel).filter(Reel.id == reel_id).first()
+    if reel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')
+
+    if hard:
+        # hard delete: remove reel + comments + likes + views + saves
+        db.query(ReelComment).filter(ReelComment.reel_id == reel_id).delete(synchronize_session=False)
+        db.query(ReelLike).filter(ReelLike.reel_id == reel_id).delete(synchronize_session=False)
+        db.query(ReelView).filter(ReelView.reel_id == reel_id).delete(synchronize_session=False)
+        db.query(SavedReel).filter(SavedReel.reel_id == reel_id).delete(synchronize_session=False)
+        db.delete(reel)
+    else:
+        reel.is_deleted = True
+        reel.updated_at = datetime.utcnow()
+
+    db.commit()
+    _add_audit_log(
+        db, current_user, 'reel_deleted', 'reel', reel_id,
+        f'تم {"حذف نهائي" if hard else "إخفاء"} الريل رقم {reel_id} بواسطة الإدارة.',
+        {'reel_id': reel_id, 'hard': hard},
+    )
+    _emit_admin_event('admin:reel_deleted', {'reel_id': reel_id, 'hard': hard})
+    return {'ok': True, 'reel_id': reel_id, 'hard': hard}
+
+
+@router.post('/reels/{reel_id}/restore')
+def restore_reel_admin(
+    reel_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Restore a soft-deleted reel."""
+    _require_permission(current_user, 'posts.edit')
+    reel = db.query(Reel).filter(Reel.id == reel_id).first()
+    if reel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')
+    reel.is_deleted = False
+    reel.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(reel)
+    _add_audit_log(
+        db, current_user, 'reel_restored', 'reel', reel_id,
+        f'تم استعادة الريل رقم {reel_id} بواسطة الإدارة.',
+        {'reel_id': reel_id},
+    )
+    _emit_admin_event('admin:reel_restored', {'reel_id': reel_id})
+    return _serialize_reel_admin(db, reel)
+
+
+@router.get('/reels/{reel_id}/comments')
+def list_reel_comments_admin(
+    reel_id: int,
+    include_hidden: bool = Query(default=True),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all comments of a reel (admin view — includes hidden)."""
+    _require_permission(current_user, 'posts.view')
+    reel = db.query(Reel).filter(Reel.id == reel_id).first()
+    if reel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')
+
+    query = db.query(ReelComment).filter(ReelComment.reel_id == reel_id)
+    if not include_hidden:
+        query = query.filter(ReelComment.is_hidden.is_(False))
+    query = query.order_by(ReelComment.created_at.desc())
+
+    total = query.count()
+    items = query.offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        'items': [_serialize_reel_comment_admin(db, c) for c in items],
+        'reel': _serialize_reel_admin(db, reel),
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'pages': max((total + page_size - 1) // page_size, 1),
+        },
+    }
+
+
+@router.delete('/reels/comments/{comment_id}')
+def delete_reel_comment_admin(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a reel comment (and its replies) as admin — bypasses ownership check."""
+    _require_permission(current_user, 'posts.delete')
+    comment = db.query(ReelComment).filter(ReelComment.id == comment_id).first()
+    if comment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Comment not found')
+
+    reel_id_ref = comment.reel_id
+
+    def _delete_descendants(parent_id: int) -> int:
+        deleted = 0
+        children = db.query(ReelComment).filter(ReelComment.parent_id == parent_id).all()
+        for child in children:
+            deleted += _delete_descendants(child.id)
+            db.delete(child)
+            deleted += 1
+        return deleted
+
+    removed = _delete_descendants(comment.id)
+    comment_preview = (comment.content or '')[:80]
+    db.delete(comment)
+    removed += 1
+
+    # decrement reel comments_count
+    reel = db.query(Reel).filter(Reel.id == reel_id_ref).first()
+    if reel is not None:
+        try:
+            reel.comments_count = max(0, int(reel.comments_count or 0) - removed)
+        except Exception:
+            pass
+
+    db.commit()
+    _add_audit_log(
+        db, current_user, 'reel_comment_deleted', 'reel_comment', comment_id,
+        f'تم حذف تعليق الريل رقم {comment_id} ("{comment_preview}…") بواسطة الإدارة.',
+        {'comment_id': comment_id, 'reel_id': reel_id_ref, 'removed': removed},
+    )
+    _emit_admin_event('admin:reel_comment_deleted', {'comment_id': comment_id, 'reel_id': reel_id_ref})
+    return {'ok': True, 'comment_id': comment_id, 'removed': removed}
+
+
+@router.post('/reels/comments/{comment_id}/hide')
+def toggle_hide_reel_comment_admin(
+    comment_id: int,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Hide/show a reel comment as admin."""
+    _require_permission(current_user, 'posts.edit')
+    comment = db.query(ReelComment).filter(ReelComment.id == comment_id).first()
+    if comment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Comment not found')
+
+    hidden = bool(payload.get('hidden', not comment.is_hidden))
+    comment.is_hidden = hidden
+    comment.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(comment)
+    action = 'reel_comment_hidden' if hidden else 'reel_comment_unhidden'
+    description = f"تم {'إخفاء' if hidden else 'إظهار'} تعليق الريل رقم {comment_id} بواسطة الإدارة."
+    _add_audit_log(db, current_user, action, 'reel_comment', comment_id, description, {'comment_id': comment_id})
+    _emit_admin_event('admin:reel_comment_updated', {'comment_id': comment_id, 'hidden': hidden})
+    return _serialize_reel_comment_admin(db, comment)
+
+
+@router.get('/reels/{reel_id}/reports')
+def list_reel_reports_admin(
+    reel_id: int,
+    include_resolved: bool = Query(default=True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all reports filed against a specific reel (and its comments)."""
+    _require_permission(current_user, 'reports.view')
+    reel = db.query(Reel).filter(Reel.id == reel_id).first()
+    if reel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Reel not found')
+
+    # reports on the reel itself
+    reel_reports_q = db.query(Report).filter(
+        Report.target_type == 'reel',
+        Report.target_id == str(reel_id),
+    )
+    if not include_resolved:
+        reel_reports_q = reel_reports_q.filter(Report.status.in_(['pending', 'reviewing']))
+    reel_reports = reel_reports_q.order_by(Report.created_at.desc()).all()
+
+    # reports on comments of this reel
+    comment_ids = [str(c.id) for c in db.query(ReelComment.id).filter(ReelComment.reel_id == reel_id).all()]
+    comment_reports = []
+    if comment_ids:
+        cr_q = db.query(Report).filter(
+            Report.target_type == 'reel_comment',
+            Report.target_id.in_(comment_ids),
+        )
+        if not include_resolved:
+            cr_q = cr_q.filter(Report.status.in_(['pending', 'reviewing']))
+        comment_reports = cr_q.order_by(Report.created_at.desc()).all()
+
+    from app.services.report_service import serialize_report
+    return {
+        'reel': _serialize_reel_admin(db, reel),
+        'reel_reports': [serialize_report(db, r) for r in reel_reports],
+        'comment_reports': [serialize_report(db, r) for r in comment_reports],
+        'total': len(reel_reports) + len(comment_reports),
+    }
+
+
+@router.post('/reports/{report_id}/action')
+def take_report_action_admin(
+    report_id: int,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Take action on a report (dismiss/remove_content/warn_user/mute_user/suspend_user/ban_user/escalate)."""
+    _require_permission(current_user, 'reports.view')
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if report is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Report not found')
+
+    from app.services.report_service import apply_action
+    action = str(payload.get('action') or '').strip()
+    if not action:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Action is required')
+    notes = payload.get('notes')
+    duration_hours = payload.get('duration_hours')
+
+    effect = apply_action(
+        db,
+        report=report,
+        actor_user_id=current_user.id,
+        action=action,
+        notes=notes,
+        duration_hours=duration_hours,
+    )
+    _add_audit_log(
+        db, current_user, 'report_action', 'report', report_id,
+        f'تم اتخاذ إجراء "{action}" على البلاغ رقم {report_id}.',
+        {'report_id': report_id, 'action': action, 'effect': effect},
+    )
+    _emit_admin_event('admin:report_updated', {'report_id': report_id, 'action': action})
+    from app.services.report_service import serialize_report
+    return {
+        'ok': True,
+        'effect': effect,
+        'report': serialize_report(db, report),
+    }
+
+
 @router.get('/settings')
 def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _require_permission(current_user, 'settings.manage')
@@ -1570,3 +2270,783 @@ def get_advanced_admin_reports(
             "accuracy_rate": 0.98
         }
     }
+
+
+# ============================================================================
+# v88.46 — Admin Chat / Group Super-Control Endpoints (Stage 2)
+# ----------------------------------------------------------------------------
+# نقاط النهاية الإدارية الخارقة للسيطرة الكاملة على الشات والمجموعات.
+# المدير العام لا يحتاج لأن يكون عضواً في أي مجموعة.
+# جميع العمليات تُسجَّل في audit_logs.
+# ============================================================================
+try:
+    from app.core.group_store_enhanced import group_store as _admin_group_store  # مصدر الحقيقة الوحيد للمجموعات
+except Exception:  # pragma: no cover — fallback إن لم يوجد ملف enhanced
+    from app.core.group_store import group_store as _admin_group_store
+
+
+class _AdminGroupFreezePayload(BaseModel):
+    frozen: bool = True
+    reason: str | None = None
+
+
+class _AdminMessageDeletePayload(BaseModel):
+    reason: str | None = None
+
+
+class _AdminGroupDeletePayload(BaseModel):
+    reason: str | None = None
+
+
+class _AdminGroupMemberMutePayload(BaseModel):
+    username: str = Field(..., min_length=1, max_length=150)
+    muted: bool = True
+    reason: str | None = None
+
+
+class _AdminUserChatMutePayload(BaseModel):
+    muted: bool = True
+    duration_minutes: int | None = Field(default=None, ge=1, le=60 * 24 * 365)
+    reason: str | None = None
+
+
+class _AdminNsfwScanPayload(BaseModel):
+    media_url: str | None = None
+    message_id: str | int | None = None
+    text: str | None = None
+
+
+class _AdminContentScanPayload(BaseModel):
+    """Payload موحّد لنقطة الفحص العامة /admin/content/scan.
+
+    يُقبل نصّ و/أو media_url و/أو attachments مع تحديد اختياري للسياق
+    (مثل: kind='chat_message' أو 'group_message' أو 'post' ...).
+    """
+    text: str | None = None
+    media_url: str | None = None
+    attachments: list[dict] | None = None
+    kind: str | None = None            # نوع السياق (chat_message, group_message, post, comment, reel, ...)
+    target_id: str | int | None = None  # المعرّف داخل السياق (اختياري — لفتح بلاغ ذاتي)
+    open_report: bool = False           # إن كانت True نفتح بلاغاً تلقائياً عند flagged/blocked
+    persist: bool = True                # حفظ ai_score/nsfw_score على الرسالة (لو kind=chat_message ومعروف target_id)
+
+
+def _require_super_admin(current_user: User) -> None:
+    """يسمح فقط للمدير العام (Primary Admin) أو أدوار admin/moderator بالتنفيذ.
+
+    التجميد / حذف مجموعة / كتم على مستوى النظام يجب أن تكون للمدير العام فقط.
+    نقاط أخرى (حذف رسالة داخل مجموعة، كتم عضو داخل مجموعة) يُسمح بها للمدير العام
+    وللمشرف. للتفريق نستخدم `effective_role` عند الحاجة.
+    """
+    role = effective_role(current_user)
+    if role not in {"admin", "moderator"} and not is_primary_admin_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super-admin privileges required",
+        )
+
+
+def _require_primary_only(current_user: User) -> None:
+    if not (is_primary_admin_user(current_user) or effective_role(current_user) == "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Primary admin privileges required",
+        )
+
+
+# ---- Chat threads / message oversight -------------------------------------
+
+@router.get('/admin/chat/threads')
+def admin_list_chat_threads(
+    limit: int = Query(200, ge=1, le=1000),
+    flagged_only: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """قائمة المحادثات النشطة على مستوى النظام (رؤية إدارية شاملة)."""
+    _require_super_admin(current_user)
+    q = db.query(
+        Message.sender,
+        Message.receiver,
+        func.max(Message.id).label('last_id'),
+        func.max(Message.created_at).label('last_at'),
+        func.count(Message.id).label('total'),
+    ).group_by(Message.sender, Message.receiver).order_by(func.max(Message.created_at).desc())
+    rows = q.limit(limit).all()
+    threads: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        pair = tuple(sorted([str(row.sender or ''), str(row.receiver or '')]))
+        if pair in seen:
+            continue
+        seen.add(pair)
+        last_msg = db.query(Message).filter(Message.id == row.last_id).first()
+        ai_score = int(getattr(last_msg, 'ai_score', 0) or 0)
+        is_deleted = bool(getattr(last_msg, 'deleted', False) or getattr(last_msg, 'is_deleted', False))
+        flagged = ai_score > 50
+        if flagged_only and not flagged:
+            continue
+        threads.append({
+            'id': f"{pair[0]}::{pair[1]}",
+            'username': pair[1] if pair[0] != row.sender else pair[1],
+            'participants': list(pair),
+            'last_message': (last_msg.content if last_msg else '') or '',
+            'last_at': (last_msg.created_at.isoformat() if last_msg and last_msg.created_at else None),
+            'updated_at': (last_msg.created_at.isoformat() if last_msg and last_msg.created_at else None),
+            'total_messages': int(row.total or 0),
+            'flagged': flagged,
+            'abuse_score': ai_score,
+            'has_deleted': is_deleted,
+        })
+    return {'items': threads, 'total': len(threads)}
+
+
+@router.get('/admin/chat/threads/{thread_id}/messages')
+def admin_get_thread_messages(
+    thread_id: str,
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """رسائل محادثة معيّنة (thread_id = 'userA::userB')."""
+    _require_super_admin(current_user)
+    try:
+        a, b = thread_id.split('::', 1)
+    except ValueError:
+        raise HTTPException(status_code=400, detail='Invalid thread_id')
+    rows = (
+        db.query(Message)
+        .filter(
+            or_(
+                (Message.sender == a) & (Message.receiver == b),
+                (Message.sender == b) & (Message.receiver == a),
+            )
+        )
+        .order_by(Message.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    items: list[dict[str, Any]] = []
+    for m in reversed(rows):
+        items.append({
+            'id': m.id,
+            'sender': m.sender,
+            'receiver': m.receiver,
+            'content': m.content or '',
+            'type': getattr(m, 'type', None) or getattr(m, 'kind', None) or 'text',
+            'media_url': getattr(m, 'media_url', None),
+            'ai_score': int(getattr(m, 'ai_score', 0) or 0),
+            'nsfw_score': int(getattr(m, 'nsfw_score', 0) or 0),
+            'deleted': bool(getattr(m, 'deleted', False) or getattr(m, 'is_deleted', False)),
+            'created_at': m.created_at.isoformat() if m.created_at else None,
+        })
+    return {'items': items, 'total': len(items)}
+
+
+@router.post('/admin/chat/messages/{message_id}/delete')
+def admin_delete_chat_message(
+    message_id: int,
+    payload: _AdminMessageDeletePayload = Body(default_factory=_AdminMessageDeletePayload),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """حذف نهائي (soft-delete) لرسالة شات فردية بواسطة المدير."""
+    _require_super_admin(current_user)
+    msg = db.query(Message).filter(Message.id == message_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail='Message not found')
+    # soft delete متوافق مع أي واحد من الحقلين
+    if hasattr(msg, 'is_deleted'):
+        setattr(msg, 'is_deleted', True)
+    if hasattr(msg, 'deleted'):
+        setattr(msg, 'deleted', True)
+    if hasattr(msg, 'deleted_at'):
+        setattr(msg, 'deleted_at', datetime.utcnow())
+    if hasattr(msg, 'deleted_by'):
+        setattr(msg, 'deleted_by', current_user.username)
+    db.commit()
+    _add_audit_log(
+        db,
+        current_user,
+        'admin_chat_delete_message',
+        f"Super-admin deleted message #{message_id} (sender={msg.sender}) reason={payload.reason or '-'}",
+    )
+    _emit_admin_event('admin_chat_message_deleted', {'message_id': message_id, 'by': current_user.username})
+    return {'ok': True, 'message_id': message_id, 'deleted': True}
+
+
+@router.post('/admin/chat/messages/{message_id}/restore')
+def admin_restore_chat_message(
+    message_id: int,
+    payload: _AdminMessageDeletePayload = Body(default_factory=_AdminMessageDeletePayload),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """استعادة رسالة شات فردية محذوفة (soft-restore) بواسطة المدير.
+
+    v88.46 (النقطة 6): مقابل نقطة الحذف — يعيد `is_deleted`/`deleted`
+    لـ False، ويصفّر `deleted_at`/`deleted_by`. لا يستعيد الرسالة إن
+    كانت مسجّلة كـ hard-deleted (غير موجودة أصلاً).
+    """
+    _require_super_admin(current_user)
+    msg = db.query(Message).filter(Message.id == message_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail='Message not found')
+
+    was_deleted = bool(
+        getattr(msg, 'is_deleted', False) or getattr(msg, 'deleted', False)
+    )
+    if not was_deleted:
+        return {
+            'ok': True,
+            'message_id': message_id,
+            'restored': False,
+            'note': 'Message is not deleted',
+        }
+
+    if hasattr(msg, 'is_deleted'):
+        setattr(msg, 'is_deleted', False)
+    if hasattr(msg, 'deleted'):
+        setattr(msg, 'deleted', False)
+    if hasattr(msg, 'deleted_at'):
+        setattr(msg, 'deleted_at', None)
+    if hasattr(msg, 'deleted_by'):
+        setattr(msg, 'deleted_by', None)
+    db.commit()
+
+    _add_audit_log(
+        db,
+        current_user,
+        'admin_chat_restore_message',
+        (
+            f"Super-admin restored message #{message_id} "
+            f"(sender={getattr(msg, 'sender', '-')}) reason={payload.reason or '-'}"
+        ),
+    )
+    _emit_admin_event(
+        'admin_chat_message_restored',
+        {'message_id': message_id, 'by': current_user.username},
+    )
+    return {'ok': True, 'message_id': message_id, 'restored': True}
+
+
+@router.post('/admin/chat/users/{user_id}/mute')
+def admin_chat_mute_user(
+    user_id: int,
+    payload: _AdminUserChatMutePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """كتم / فك كتم مستخدم عن كامل نظام الشات (بدون حظر الحساب)."""
+    _require_super_admin(current_user)
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail='User not found')
+    if is_primary_admin_user(target) and not is_primary_admin_user(current_user):
+        raise HTTPException(status_code=403, detail='Primary admin is protected')
+    if payload.muted:
+        duration = payload.duration_minutes or (60 * 24 * 30)  # افتراض 30 يوم عند غياب المدة
+        target.chat_muted_until = datetime.utcnow() + timedelta(minutes=duration)
+        target.chat_muted_by = current_user.username
+        target.chat_muted_reason = (payload.reason or '')[:500]
+    else:
+        target.chat_muted_until = None
+        target.chat_muted_by = None
+        target.chat_muted_reason = None
+    db.commit()
+    # طبّق أيضاً على متجر المجموعات (كتم داخل كل المجموعات التي هو فيها)
+    try:
+        _admin_group_store.admin_mute_user_system_wide(
+            target_username=target.username,
+            admin_username=current_user.username,
+            duration_minutes=payload.duration_minutes,
+            reason=payload.reason or '',
+            muted=bool(payload.muted),
+        )
+    except Exception:
+        pass
+    _add_audit_log(
+        db,
+        current_user,
+        'admin_chat_mute_user' if payload.muted else 'admin_chat_unmute_user',
+        f"target={target.username} duration={payload.duration_minutes} reason={payload.reason or '-'}",
+    )
+    _emit_admin_event('admin_user_chat_mute', {
+        'user_id': target.id,
+        'username': target.username,
+        'muted': bool(payload.muted),
+        'chat_muted_until': target.chat_muted_until.isoformat() if target.chat_muted_until else None,
+    })
+    return {
+        'ok': True,
+        'user_id': target.id,
+        'username': target.username,
+        'muted': bool(payload.muted),
+        'chat_muted_until': target.chat_muted_until.isoformat() if target.chat_muted_until else None,
+        'reason': target.chat_muted_reason,
+    }
+
+
+@router.post('/admin/chat/users/{user_id}/ban')
+def admin_chat_ban_user(
+    user_id: int,
+    payload: _AdminMessageDeletePayload = Body(default_factory=_AdminMessageDeletePayload),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """حظر كامل لمستخدم من داخل واجهة الشات (اختصار لواجهة المدير)."""
+    _require_super_admin(current_user)
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail='User not found')
+    if is_primary_admin_user(target) and not is_primary_admin_user(current_user):
+        raise HTTPException(status_code=403, detail='Primary admin is protected')
+    target.is_active = False
+    target.banned_at = datetime.utcnow()
+    db.commit()
+    _add_audit_log(
+        db, current_user, 'admin_chat_ban_user',
+        f"banned {target.username} from chat panel reason={payload.reason or '-'}",
+    )
+    _emit_admin_event('admin_user_banned', {'user_id': target.id, 'username': target.username})
+    return {'ok': True, 'user_id': target.id, 'username': target.username, 'banned': True}
+
+
+# ---- NSFW / abuse auto-scan (lightweight) ---------------------------------
+
+_NSFW_HINT_KEYWORDS = {
+    # كلمات إباحية عربية شائعة (لا تُعرض للمستخدم)
+    'سكس', 'إباحي', 'اباحي', 'عاري', 'عارية', 'جنس',
+    # كلمات إنجليزية شائعة
+    'porn', 'nude', 'nudes', 'xxx', 'nsfw', 'sex', 'onlyfans',
+}
+_NSFW_URL_HINTS = ('porn', 'xxx', 'sex', 'nsfw', 'nude', 'adult')
+
+
+def _quick_nsfw_score(media_url: str | None, text: str | None) -> tuple[int, list[str]]:
+    """كاشف احتمالي خفيف للوسائط الإباحية / النصوص المسيئة.
+
+    ليست بديلاً عن نموذج ML كامل، لكنها بوابة أولى تمنع المحتوى الأشد وضوحاً
+    وتنشئ إشارة تحذير للأدمن. النموذج الحقيقي يمكن استبدال هذه الدالة به.
+    """
+    reasons: list[str] = []
+    score = 0
+    if media_url:
+        low = str(media_url).lower()
+        for hint in _NSFW_URL_HINTS:
+            if hint in low:
+                score += 45
+                reasons.append(f"media_url_contains:{hint}")
+                break
+        # امتدادات فيديو/صور مع hint => يبقى فقط الرابط
+    if text:
+        low_text = str(text).lower()
+        for kw in _NSFW_HINT_KEYWORDS:
+            if kw in low_text:
+                score += 35
+                reasons.append(f"text_keyword:{kw}")
+    return min(score, 100), reasons
+
+
+@router.post('/admin/chat/scan-nsfw')
+def admin_chat_scan_nsfw(
+    payload: _AdminNsfwScanPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """فحص موحّد للوسائط/النص + احتساب nsfw_score.
+
+    v88.46 (النقطة 6): وسّعنا هذه النقطة لتُشغّل `scan_content` الموحّد بدل
+    الكاشف الخفيف القديم. مع ذلك نُبقي نفس شكل الاستجابة (`nsfw_score`,
+    `is_nsfw`, `reasons`) حتى لا يُكسر AdminChat.jsx الحالي، ونضيف حقولاً
+    جديدة (`score`, `categories`, `is_blocked`, `is_flagged`) للاستهلاك
+    الحديث.
+    """
+    _require_super_admin(current_user)
+
+    # الفاحص الموحّد (لو انهار الاستيراد نرجع للـ quick score كـ fallback)
+    unified_result = None
+    try:
+        from app.core.content_scanner import scan_content as _cc_scan
+        unified_result = _cc_scan(
+            text=payload.text or None,
+            media_url=payload.media_url or None,
+            attachments=None,
+        )
+    except Exception as _exc:  # pragma: no cover — الفاحص اختياري
+        unified_result = None
+
+    if unified_result is not None:
+        score = int(unified_result.score)
+        reasons = list(unified_result.reasons)
+        categories = sorted(unified_result.categories)
+        is_blocked = bool(unified_result.is_blocked)
+        is_flagged = bool(unified_result.is_flagged)
+        # nsfw_score خاص بفئة nsfw فقط (لتوافق AdminChat.jsx)
+        if 'nsfw' in unified_result.categories or 'suspicious_media' in unified_result.categories:
+            nsfw_score = score
+        else:
+            # لو ما فيه فئة nsfw صراحةً نُبقي 0 حتى لا نُشوّه شارة NSFW
+            nsfw_score = 0
+    else:
+        # fallback على الكاشف القديم
+        score, reasons = _quick_nsfw_score(payload.media_url, payload.text)
+        nsfw_score = score
+        categories = ['nsfw'] if score >= 60 else []
+        is_blocked = score >= 80
+        is_flagged = score >= 40
+
+    # لو معطى message_id: خزّن النتيجة على الرسالة
+    if payload.message_id is not None:
+        try:
+            mid = int(payload.message_id)
+        except (TypeError, ValueError):
+            mid = None
+        if mid is not None:
+            msg = db.query(Message).filter(Message.id == mid).first()
+            if msg is not None:
+                if hasattr(msg, 'nsfw_score'):
+                    setattr(msg, 'nsfw_score', nsfw_score)
+                if hasattr(msg, 'ai_score'):
+                    setattr(msg, 'ai_score', max(int(getattr(msg, 'ai_score', 0) or 0), score))
+                db.commit()
+
+    return {
+        'ok': True,
+        'nsfw_score': nsfw_score,
+        'is_nsfw': nsfw_score >= 60,
+        'score': score,
+        'categories': categories,
+        'is_blocked': is_blocked,
+        'is_flagged': is_flagged,
+        'reasons': reasons,
+        'message_id': payload.message_id,
+    }
+
+
+# ---- Unified content scan (v88.46 point 6) --------------------------------
+
+@router.post('/admin/content/scan')
+def admin_content_scan(
+    payload: _AdminContentScanPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """نقطة فحص موحّدة للمحتوى (نص/وسائط/مرفقات) عبر `scan_content`.
+
+    - تعيد النتيجة الكاملة (score, categories, is_blocked, is_flagged, reasons).
+    - اختيارياً تفتح بلاغاً ذاتياً في جدول reports إذا `open_report=True`
+      وكان المحتوى flagged/blocked وتوفّرت `kind` و `target_id`.
+    - اختيارياً تحفظ nsfw_score/ai_score على رسالة (لو kind='chat_message'
+      و target_id رقمي و persist=True).
+    """
+    _require_super_admin(current_user)
+
+    # 1) الفحص عبر الفاحص الموحّد
+    try:
+        from app.core.content_scanner import scan_content as _cc_scan
+        result = _cc_scan(
+            text=payload.text or None,
+            media_url=payload.media_url or None,
+            attachments=payload.attachments or None,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f'content_scanner_unavailable: {exc}',
+        )
+
+    data = result.to_dict()
+    data['kind'] = payload.kind
+    data['target_id'] = str(payload.target_id) if payload.target_id is not None else None
+    data['report_id'] = None
+
+    # 2) حفظ النتيجة على الرسالة (اختياري)
+    persisted = False
+    if payload.persist and payload.kind == 'chat_message' and payload.target_id is not None:
+        try:
+            mid = int(payload.target_id)
+        except (TypeError, ValueError):
+            mid = None
+        if mid is not None:
+            msg = db.query(Message).filter(Message.id == mid).first()
+            if msg is not None:
+                if hasattr(msg, 'nsfw_score'):
+                    # نُخزّن فقط نقاط الفئة الجنسية على nsfw_score
+                    nsfw_part = int(result.score) if (
+                        'nsfw' in result.categories or 'suspicious_media' in result.categories
+                    ) else 0
+                    setattr(msg, 'nsfw_score', nsfw_part)
+                if hasattr(msg, 'ai_score'):
+                    setattr(msg, 'ai_score', max(int(getattr(msg, 'ai_score', 0) or 0), int(result.score)))
+                db.commit()
+                persisted = True
+    data['persisted'] = persisted
+
+    # 3) فتح بلاغ ذاتي (اختياري)
+    if payload.open_report and (result.is_flagged or result.is_blocked) and payload.kind and payload.target_id is not None:
+        try:
+            from app.services.report_service import create_report
+            # تحديد target_type من kind
+            kind_to_target = {
+                'chat_message': 'message',
+                'group_message': 'group_message',
+                'post': 'post',
+                'reel': 'reel',
+                'comment': 'comment',
+                'reel_comment': 'reel_comment',
+                'story': 'story',
+                'user': 'user',
+                'group': 'group',
+            }
+            target_type = kind_to_target.get(payload.kind, 'message')
+            # اختيار reason بناءً على الفئات
+            if 'nsfw' in result.categories or 'suspicious_media' in result.categories:
+                reason = 'nudity'
+            elif 'violence' in result.categories:
+                reason = 'violence'
+            elif 'profanity' in result.categories:
+                reason = 'hate_speech'
+            elif 'spam' in result.categories:
+                reason = 'spam'
+            else:
+                reason = 'inappropriate'
+            report, _is_new = create_report(
+                db,
+                reporter_user_id=current_user.id,
+                target_type=target_type,
+                target_id=str(payload.target_id),
+                reason=reason,
+                details=(
+                    f"Auto-opened by content scanner (score={result.score}, "
+                    f"cats={sorted(result.categories)})"
+                ),
+                context={
+                    'auto_scanner': True,
+                    'score': int(result.score),
+                    'categories': sorted(result.categories),
+                    'reasons': list(result.reasons)[:8],
+                    'by_admin': current_user.username,
+                },
+            )
+            data['report_id'] = int(getattr(report, 'id', 0)) or None
+        except Exception as exc:  # pragma: no cover — لا نُفشل الفحص إن فشل البلاغ
+            data['report_error'] = str(exc)[:200]
+
+    # 4) audit
+    try:
+        _add_audit_log(
+            db,
+            current_user,
+            'admin_content_scan',
+            (
+                f"kind={payload.kind or '-'} target={payload.target_id or '-'} "
+                f"score={result.score} blocked={result.is_blocked} "
+                f"cats={sorted(result.categories)}"
+            ),
+        )
+    except Exception:
+        pass
+
+    return {'ok': True, **data}
+
+
+# ---- Group super-control --------------------------------------------------
+
+@router.get('/admin/groups')
+def admin_list_groups(
+    include_frozen: bool = Query(True),
+    current_user: User = Depends(get_current_user),
+):
+    """قائمة كل المجموعات (يشمل المُجمَّدة). لا يشترط أن يكون المدير عضواً."""
+    _require_super_admin(current_user)
+    all_groups = _admin_group_store.list_groups()
+    items: list[dict[str, Any]] = []
+    for g in all_groups:
+        serialized = _admin_group_store.serialize_group(g) if hasattr(_admin_group_store, 'serialize_group') else g
+        if isinstance(serialized, dict):
+            data = serialized
+        else:
+            data = {
+                'id': getattr(g, 'id', None),
+                'name': getattr(g, 'name', ''),
+                'description': getattr(g, 'description', ''),
+                'owner_username': getattr(g, 'owner_username', ''),
+                'members_count': len(getattr(g, 'members', {}) or {}),
+                'members': list((getattr(g, 'members', {}) or {}).keys()),
+                'created_at': getattr(g, 'created_at', None),
+                'is_frozen': bool(getattr(g, 'is_frozen', False)),
+                'frozen_at': getattr(g, 'frozen_at', None),
+                'frozen_by': getattr(g, 'frozen_by', None),
+                'frozen_reason': getattr(g, 'frozen_reason', None),
+            }
+        if not include_frozen and data.get('is_frozen'):
+            continue
+        items.append(data)
+    return items
+
+
+@router.post('/admin/groups/{group_id}/freeze')
+def admin_freeze_group(
+    group_id: str,
+    payload: _AdminGroupFreezePayload = Body(default_factory=_AdminGroupFreezePayload),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """تجميد / فك تجميد مجموعة كاملة."""
+    _require_super_admin(current_user)
+    result = _admin_group_store.freeze_group(
+        group_id=str(group_id),
+        admin_username=current_user.username,
+        reason=payload.reason or '',
+        frozen=bool(payload.frozen),
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail='Group not found')
+    _add_audit_log(
+        db, current_user,
+        'admin_freeze_group' if payload.frozen else 'admin_unfreeze_group',
+        f"group={group_id} reason={payload.reason or '-'}",
+    )
+    _emit_admin_event('admin_group_frozen', {'group_id': group_id, 'frozen': payload.frozen})
+    return result
+
+
+@router.delete('/admin/groups/{group_id}')
+def admin_delete_group(
+    group_id: str,
+    reason: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """حذف مجموعة بالكامل بواسطة المدير."""
+    _require_primary_only(current_user)
+    ok = _admin_group_store.admin_delete_group(
+        group_id=str(group_id),
+        admin_username=current_user.username,
+        reason=reason or '',
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail='Group not found')
+    _add_audit_log(db, current_user, 'admin_delete_group', f"group={group_id} reason={reason or '-'}")
+    _emit_admin_event('admin_group_deleted', {'group_id': group_id})
+    return {'ok': True, 'group_id': group_id, 'deleted': True}
+
+
+@router.post('/admin/groups/{group_id}/messages/{message_id}/delete')
+def admin_delete_group_message(
+    group_id: str,
+    message_id: str,
+    payload: _AdminMessageDeletePayload = Body(default_factory=_AdminMessageDeletePayload),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """حذف رسالة داخل مجموعة."""
+    _require_super_admin(current_user)
+    ok = _admin_group_store.admin_delete_message(
+        group_id=str(group_id),
+        message_id=str(message_id),
+        admin_username=current_user.username,
+        reason=payload.reason or '',
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail='Group or message not found')
+    _add_audit_log(
+        db, current_user, 'admin_delete_group_message',
+        f"group={group_id} message={message_id} reason={payload.reason or '-'}",
+    )
+    _emit_admin_event('admin_group_message_deleted', {'group_id': group_id, 'message_id': message_id})
+    return {'ok': True, 'group_id': group_id, 'message_id': message_id, 'deleted': True}
+
+
+@router.post('/admin/groups/{group_id}/members/mute')
+def admin_mute_group_member(
+    group_id: str,
+    payload: _AdminGroupMemberMutePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """كتم / فك كتم عضو داخل مجموعة معينة."""
+    _require_super_admin(current_user)
+    ok = _admin_group_store.admin_mute_group_member(
+        group_id=str(group_id),
+        target_username=payload.username,
+        admin_username=current_user.username,
+        muted=bool(payload.muted),
+        reason=payload.reason or '',
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail='Group or member not found')
+    _add_audit_log(
+        db, current_user,
+        'admin_mute_group_member' if payload.muted else 'admin_unmute_group_member',
+        f"group={group_id} target={payload.username} reason={payload.reason or '-'}",
+    )
+    _emit_admin_event('admin_group_member_mute', {
+        'group_id': group_id, 'username': payload.username, 'muted': bool(payload.muted),
+    })
+    return {
+        'ok': True, 'group_id': group_id, 'username': payload.username,
+        'muted': bool(payload.muted),
+    }
+
+
+@router.delete('/admin/groups/{group_id}/members/{username}')
+def admin_remove_group_member(
+    group_id: str,
+    username: str,
+    reason: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """طرد عضو من مجموعة بواسطة المدير (بدون شرط أن يكون المدير عضواً)."""
+    _require_super_admin(current_user)
+    group = _admin_group_store.get_group(str(group_id)) if hasattr(_admin_group_store, 'get_group') else None
+    if group is None:
+        raise HTTPException(status_code=404, detail='Group not found')
+    members = getattr(group, 'members', {}) or {}
+    if username not in members:
+        raise HTTPException(status_code=404, detail='Member not found in group')
+    # حذف مباشر من قاموس الأعضاء
+    try:
+        members.pop(username, None)
+        if hasattr(_admin_group_store, '_save'):
+            _admin_group_store._save()
+        if hasattr(_admin_group_store, '_add_audit_log'):
+            _admin_group_store._add_audit_log(
+                str(group_id), current_user.username, 'admin_kick_member',
+                f"Super-admin removed {username}" + (f" — reason: {reason}" if reason else ''),
+            )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f'Failed to remove member: {exc}')
+    _add_audit_log(db, current_user, 'admin_group_kick_member',
+                   f"group={group_id} username={username} reason={reason or '-'}")
+    _emit_admin_event('admin_group_member_removed', {'group_id': group_id, 'username': username})
+    return {'ok': True, 'group_id': group_id, 'username': username, 'removed': True}
+
+
+@router.get('/admin/groups/{group_id}/messages')
+def admin_get_group_messages(
+    group_id: str,
+    limit: int = Query(200, ge=1, le=1000),
+    current_user: User = Depends(get_current_user),
+):
+    """رسائل المجموعة كاملة (رؤية إدارية)."""
+    _require_super_admin(current_user)
+    group = _admin_group_store.get_group(str(group_id)) if hasattr(_admin_group_store, 'get_group') else None
+    if group is None:
+        raise HTTPException(status_code=404, detail='Group not found')
+    msgs = []
+    if hasattr(_admin_group_store, '_messages'):
+        raw = _admin_group_store._messages.get(str(group_id), []) or []
+        for m in raw[-limit:]:
+            msgs.append({
+                'id': getattr(m, 'id', None),
+                'sender': getattr(m, 'sender_username', ''),
+                'content': getattr(m, 'content', ''),
+                'created_at': getattr(m, 'created_at', None),
+                'is_deleted': bool(getattr(m, 'is_deleted', False)),
+                'attachments': getattr(m, 'attachments', []),
+                'message_type': getattr(m, 'message_type', 'text'),
+            })
+    return {'items': msgs, 'total': len(msgs), 'is_frozen': bool(getattr(group, 'is_frozen', False))}

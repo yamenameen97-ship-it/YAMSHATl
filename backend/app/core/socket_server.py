@@ -454,6 +454,54 @@ async def send_heart_event(sid, data):
     await sio.emit('room_stats', {'room_id': room_id, 'viewer_count': room['viewer_count'], 'hearts_count': room['hearts_count']}, room=room_id)
 
 
+# ✅ v88.43: بث قلوب طائرة لحظية على الريلز (النقر المزدوج على الفيديو)
+# - يتلقّى الحدث من المتفاعلين، ويبثّ new_reel_heart لـ:
+#   1) صاحب الريل (غرفة username:<owner>) ليرى التفاعل لحظياً إذا كان يتابع الفيديو.
+#   2) غرفة الريل نفسه (reel:<id>) ليراها كل المشاهدين المتزامنين.
+@sio.on('send_reel_heart')
+async def send_reel_heart_event(sid, data):
+    token = (data or {}).get('token')
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
+    if user is None:
+        return
+    reel_id = str((data or {}).get('reel_id') or (data or {}).get('reelId') or '')
+    owner = str((data or {}).get('owner') or '').strip() or None
+    try:
+        count = int((data or {}).get('count') or 1)
+    except Exception:
+        count = 1
+    count = max(1, min(5, count))
+    if not reel_id:
+        return
+    if not await _enforce_realtime_security(sid, 'send_reel_heart', data or {}, session, user, room_id=reel_id):
+        return
+    # حد معدّل مرن لانفجار القلوب (في حدود معقولة لتجنب إساءة الاستخدام)
+    if not await allow_socket_message(
+        f'reel-heart:{user.id}:{reel_id}',
+        min_interval_seconds=0.15,
+        burst_limit=20,
+        window_seconds=8,
+    ):
+        return
+    payload = {
+        'reel_id': reel_id,
+        'count': count,
+        'from': user.username,
+        'ts': int(time.time() * 1000),
+    }
+    # بث لصاحب الريل ليراها لحظياً
+    if owner:
+        try:
+            await sio.emit('new_reel_heart', payload, room=f'username:{owner}')
+        except Exception:
+            pass
+    # بث لكل من يشاهد نفس الريل حالياً
+    try:
+        await sio.emit('new_reel_heart', payload, room=f'reel:{reel_id}')
+    except Exception:
+        pass
+
+
 @sio.on('chat_typing')
 async def chat_typing_event(sid, data):
     token = (data or {}).get('token')

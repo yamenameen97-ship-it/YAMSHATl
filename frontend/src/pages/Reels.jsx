@@ -8,6 +8,8 @@ import API from '../api/axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getReelsCache, saveReelsCache } from '../services/reelsEngine.js';
 import { getCurrentUsername } from '../utils/auth.js';
+// ✅ v88.43: بث القلوب الطائرة لصاحب الريل عبر Socket.IO ليراها لحظياً
+import socket from '../api/socket.js';
 // ✅ v59.13.16 FIX #1: ربط ReportModal بصفحة الريلز — كان موجوداً لكن غير مستخدم في الريلز
 import ReportModal from '../components/reports/ReportModal.jsx';
 
@@ -157,8 +159,11 @@ export default function Reels() {
   const [reelActionLoading, setReelActionLoading] = useState(false);
   const currentUsername = getCurrentUsername();
 
-  // ✅ v88.32: قلوب وردية طائرة شفافة عند الضغط المتكرر على الريل — تمر فوق أزرار التفاعل بشكل بطيء.
-  // حتى لو سبق أن أعجب المستخدم بالفيديو، الضغط المتكرر يدفق قلوباً جديدة ويراها المشتركون.
+  // ✅ v88.43: قلوب وردية طائرة شفافة عند النقر المزدوج على أي مكان في الريل — تصعد ببطء
+  // فوق أزرار التفاعل ويراها المشتركون في الوقت الحقيقي (لحظياً) كتفاعل من المشاهدين.
+  // - النقر المزدوج في أي مكان (سواء على الفيديو أو الأزرار أو الفراغ) يُطلق القلوب.
+  // - القلوب تصعد من أسفل أزرار التفاعل نحو الأعلى ببطء.
+  // - تُبَث لحظياً عبر Socket.IO (reel_heart) ليراها ناشر الريل ومشاهدوه الآخرون.
   const [floatingHearts, setFloatingHearts] = useState([]); // {id, reelId, left, drift, size, delay}
   const heartIdRef = useRef(0);
   const handleLikeRef = useRef(null); // نُعبّئه لاحقاً بعد تعريف handleLike لتفادي مشكلة ترتيب التعريف
@@ -170,55 +175,114 @@ export default function Reels() {
   const isMountedRef = useRef(true);
   useEffect(() => () => { isMountedRef.current = false; }, []);
 
+  // ✅ v88.43: إنشاء قلوب طائرة محلياً (تظهر لصاحب الحركة فوراً).
+  //   نستخدم مُعرِّفاً شديد الفرادة (perf.now + random) لتفادي أي تصادم بين الضغطات المتقاربة.
   const spawnFloatingHearts = useCallback((reel, count = 1) => {
     if (!reel) return;
     const items = [];
-    for (let n = 0; n < count; n += 1) {
+    const safeCount = Math.max(1, Math.min(5, Number(count) || 1));
+    for (let n = 0; n < safeCount; n += 1) {
       heartIdRef.current += 1;
-      const id = `h_${Date.now()}_${heartIdRef.current}`;
+      const rnd = Math.random().toString(36).slice(2, 8);
+      const id = `h_${Date.now()}_${heartIdRef.current}_${rnd}`;
       items.push({
         id,
         reelId: reel.id,
-        left: 35 + Math.random() * 30,
-        drift: (Math.random() * 40 - 20).toFixed(1),
-        size: 26 + Math.floor(Math.random() * 14),
-        delay: Math.floor(Math.random() * 120),
+        // مكان أفقي عشوائي حول العمود الأيمن (فوق أزرار التفاعل)
+        left: 8 + Math.random() * 24,
+        drift: (Math.random() * 60 - 30).toFixed(1),
+        size: 26 + Math.floor(Math.random() * 16),
+        delay: Math.floor(Math.random() * 140),
       });
     }
     setFloatingHearts((prev) => {
       const merged = [...prev, ...items];
-      return merged.length > 60 ? merged.slice(merged.length - 60) : merged;
+      return merged.length > 80 ? merged.slice(merged.length - 80) : merged;
     });
     const ids = items.map((it) => it.id);
     setTimeout(() => {
       if (!isMountedRef.current) return;
       setFloatingHearts((prev) => prev.filter((it) => !ids.includes(it.id)));
-    }, 3000);
+    }, 3200);
   }, []);
 
-  // معالج الضغط على الفيديو: ضغطة واحدة للتشغيل/الإيقاف، وضغطات متتالية لتدفق القلوب.
+  // ✅ v88.43: بث القلوب لصاحب الريل والمشاهدين الآخرين عبر Socket.IO لحظياً.
+  const emitHeartBurst = useCallback((reel, count = 1) => {
+    try {
+      if (!reel || !reel.id) return;
+      const payload = {
+        reel_id: String(reel.id),
+        owner: reel.username || reel.author?.username || null,
+        count: Math.max(1, Math.min(5, Number(count) || 1)),
+        ts: Date.now(),
+      };
+      // نستخدم واجهة socket.emit إن وُجدت، مع try/catch للأمان (offline / لم يتصل بعد).
+      if (socket && typeof socket.emit === 'function') {
+        socket.emit('send_reel_heart', payload);
+      }
+    } catch { /* لا شيء — مجرد تفاعل بصري لحظي */ }
+  }, []);
+
+  // ✅ v88.43: استقبال قلوب من مستخدمين آخرين على نفس الريل (broadcast) وعرضها.
+  useEffect(() => {
+    if (!socket || typeof socket.on !== 'function') return undefined;
+    const handler = (data) => {
+      if (!data || !isMountedRef.current) return;
+      const rid = String(data.reel_id || data.reelId || '');
+      if (!rid) return;
+      // ابحث عن الريل في القائمة الحالية بنفس الـ id ثم أطلق القلوب محلياً بدون إعادة بث.
+      setReels((prev) => {
+        const target = prev.find((r) => String(r.id) === rid);
+        if (target) {
+          spawnFloatingHearts(target, Math.max(1, Math.min(5, Number(data.count) || 1)));
+        }
+        return prev; // لا تغيير في المصفوفة نفسها
+      });
+    };
+    let dispose;
+    try {
+      dispose = socket.on('new_reel_heart', handler);
+    } catch { /* ignore */ }
+    return () => {
+      try {
+        if (typeof dispose === 'function') dispose();
+        else if (typeof socket.off === 'function') socket.off('new_reel_heart', handler);
+      } catch { /* ignore */ }
+    };
+  }, [spawnFloatingHearts]);
+
+  // ✅ v88.43: معالج النقر المزدوج في أي مكان من الريل.
+  //   - نستخدم كشف tap مزدوج يعمل على الفأرة واللمس.
+  //   - النقرة الأولى: تشغيل/إيقاف الفيديو (فقط إن جاءت النقرة من داخل منطقة الفيديو).
+  //   - النقرة الثانية خلال 350ms: قلوب طائرة + إعجاب (إن لم يكن مُعجباً) + بث Socket.
+  //   - النقرات المتتالية الإضافية: تدفق قلوب متواصل.
   const lastTapRef = useRef({ reelId: null, ts: 0, count: 0 });
-  const handleReelTap = useCallback((reel, i) => {
+  const handleReelTap = useCallback((reel, i, opts = {}) => {
     const v = videoRefs.current[i];
     const now = Date.now();
     const last = lastTapRef.current;
     const isSameReel = last.reelId === reel.id;
     const dt = now - last.ts;
+    const DOUBLE_TAP_MS = 350;
 
-    if (isSameReel && dt < 700) {
+    if (isSameReel && dt < DOUBLE_TAP_MS) {
+      // ضغطة مزدوجة أو ضغطات متتالية → قلوب طائرة + بث لحظي
       const c = Math.min(3, (last.count || 1) + 1);
       spawnFloatingHearts(reel, c);
+      emitHeartBurst(reel, c);
       lastTapRef.current = { reelId: reel.id, ts: now, count: c };
+      // إعجاب تلقائي عند أول ضغطة مزدوجة فقط
       if (!reel.is_liked && last.count === 1 && typeof handleLikeRef.current === 'function') {
         handleLikeRef.current(reel);
       }
     } else {
-      if (v) {
+      // ضغطة مفردة — نُشغّل/نوقف الفيديو فقط إذا جاءت من منطقة الفيديو نفسها
+      if (opts.fromVideo && v) {
         if (v.paused) v.play?.().catch(() => {}); else v.pause?.();
       }
       lastTapRef.current = { reelId: reel.id, ts: now, count: 1 };
     }
-  }, [spawnFloatingHearts]);
+  }, [spawnFloatingHearts, emitHeartBurst]);
 
   const openReelMenu = (reel) => {
     setMenuReel(reel);
@@ -353,6 +417,8 @@ export default function Reels() {
     try {
       await deleteReel(removedId);
       setReels((prev) => prev.filter((r) => r.id !== removedId));
+      // v88.41 — امسح الريل من الكاش المحلي (IndexedDB) بعد الحذف السحابي
+      forgetReel(removedId).catch(() => {});
       setMenuReel(null);
       pushToast?.({ type: 'success', title: 'تم حذف الريل' });
     } catch (error) {
@@ -362,14 +428,30 @@ export default function Reels() {
     }
   };
 
-  // Load feed + merge freshly published local cache so new reels appear instantly
+  // v88.41 — تدفّق جديد لتحميل الريلز:
+  //   1. نُظهر فوراً آخر 10 ريلز مُشاهدة من IndexedDB (تشغيل فوري دون انتظار الشبكة).
+  //   2. نذهب للخادم لجلب القائمة الكاملة من Cloudinary + Render DB.
+  //   3. ندمج النتيجتين ونحدّث الواجهة بالقائمة المُحدّثة.
   useEffect(() => {
     let cancelled = false;
+
+    // (1) قراءة فورية من localStorage (متزامنة — تظهر في أول render)
     const cachedItems = getReelsCache()?.items || [];
     const cachedNormalized = mergeReelLists(cachedItems, []);
     if (cachedNormalized.length) {
       setReels(cachedNormalized);
     }
+
+    // (2) قراءة غير متزامنة من IndexedDB لآخر 10 ريلز مُشاهدة فعلياً (دقيقة ودائمة محلياً)
+    (async () => {
+      try {
+        const recent = await getRecentReels();
+        if (cancelled || !Array.isArray(recent) || !recent.length) return;
+        setReels((prev) => (prev.length ? mergeReelLists(prev, recent) : mergeReelLists(recent, [])));
+      } catch { /* لا مشكلة — سنعتمد على جلب الشبكة */ }
+    })();
+
+    // (3) جلب القائمة الكاملة من Cloudinary + Render DB (المصدر الوحيد الحقيقي)
     (async () => {
       setIsLoading(true);
       try {
@@ -393,15 +475,27 @@ export default function Reels() {
         if (cancelled) return;
         const merged = mergeReelLists(items, cachedItems);
         setReels(merged);
-        saveReelsCache(merged);
+        // لا نحفظ في localStorage إلا أول 10 (حسب السياسة الجديدة v88.41)
+        saveReelsCache(merged.slice(0, 10));
       } catch {
-        if (!cancelled) setReels(cachedNormalized);
+        if (!cancelled) setReels((prev) => (prev.length ? prev : cachedNormalized));
       } finally {
         if (!cancelled) setIsLoading(false);
       }
     })();
+
     return () => { cancelled = true; };
   }, []);
+
+  // v88.41 — تسجيل مُشاهدة الريل الحالي في IndexedDB (فقط إذا بقي أكثر من 1.5 ثانية).
+  useEffect(() => {
+    const current = reels[activeIndex];
+    if (!current || !current.id) return;
+    const t = window.setTimeout(() => {
+      markReelWatched(current).catch(() => {});
+    }, 1500);
+    return () => window.clearTimeout(t);
+  }, [activeIndex, reels]);
 
   useEffect(() => {
     const handleReelsUpdated = () => {
@@ -706,7 +800,21 @@ export default function Reels() {
           )}
 
           {!isLoading && reels.map((reel, i) => (
-            <section key={reel.id} className="ym-reels-slide" aria-label="ريل">
+            <section
+              key={reel.id}
+              className="ym-reels-slide"
+              aria-label="ريل"
+              /* ✅ v88.43: التقاط النقر المزدوج في أي مكان على الشريحة (فيديو / أزرار / فراغ) */
+              onDoubleClick={(e) => {
+                // النقر المزدوج بالفأرة/اللمس السريع في أي مكان → قلوب طائرة
+                spawnFloatingHearts(reel, 2);
+                emitHeartBurst(reel, 2);
+                if (!reel.is_liked && typeof handleLikeRef.current === 'function') {
+                  handleLikeRef.current(reel);
+                }
+                lastTapRef.current = { reelId: reel.id, ts: Date.now(), count: 2 };
+              }}
+            >
               {/* Video / poster */}
               <div className="ym-reels-media">
                 {reel.media_url ? (
@@ -763,7 +871,7 @@ export default function Reels() {
                       console.warn('Reel video load error', reel.id, e.currentTarget?.error);
                     }}
                     onTimeUpdate={i === activeIndex ? handleTimeUpdate : undefined}
-                    onClick={() => handleReelTap(reel, i)}
+                    onClick={() => handleReelTap(reel, i, { fromVideo: true })}
                   />
                 ) : (
                   <div
@@ -809,8 +917,21 @@ export default function Reels() {
                 <span /><span /><span />
               </button>
 
-              {/* ✅ v88.32: طبقة القلوب الوردية الطائرة — تمر فوق أزرار التفاعل بشكل بطيء */}
-              {i === activeIndex ? (
+              {/* ✅ v88.43: طبقة اعتراض شفافة تلتقط النقر المزدوج في أي مكان من الريل حتى فوق الأزرار الشفافة/الفراغ */}
+              <div
+                className="ym-reels-tap-catcher"
+                aria-hidden
+                onClick={(e) => {
+                  // نتجنّب ابتلاع نقرة على عنصر تفاعلي (زر/رابط) → نتركها تصل لهدفها
+                  const t = e.target;
+                  const interactive = t && t.closest && t.closest('button, a, input, textarea, [role="button"], .ym-reels-actions, .ym-reels-mute, .ym-reels-more, .ym-reels-caption a');
+                  if (interactive) return;
+                  handleReelTap(reel, i, { fromVideo: false });
+                }}
+              />
+
+              {/* ✅ v88.43: طبقة القلوب الوردية الطائرة — تمر فوق أزرار التفاعل بشكل بطيء (ظاهرة لكل الشرائح لا الشريحة النشطة فقط) */}
+              {floatingHearts.some((h) => h.reelId === reel.id) ? (
                 <div className="ym-reels-hearts-layer" aria-hidden>
                   {floatingHearts.filter((h) => h.reelId === reel.id).map((h) => (
                     <span
@@ -981,7 +1102,7 @@ export default function Reels() {
                   onClick={() => reel.username && navigate(`/profile/${encodeURIComponent(reel.username)}`)}
                   aria-label={`فتح ملف ${reel.username || 'المستخدم'}`}
                 >
-                  <span className="ym-reels-username">{reel.username}</span>
+                  <span className="ym-reels-username">{reel.display_name || reel.full_name || reel.author_name || reel.user?.full_name || reel.user?.display_name || reel.username}</span>
                   {reel.is_verified && (
                     <span className="ym-reels-verified" aria-label="موثّق">
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="#8b5cf6">
@@ -1248,6 +1369,7 @@ export default function Reels() {
             height: 100%;
             object-fit: cover;
             background: #0a0612;
+            z-index: 1;
           }
           .ym-reels-poster {
             background-size: cover;
@@ -1582,16 +1704,29 @@ export default function Reels() {
             z-index: 5;
           }
 
-          /* ✅ v88.32: قلوب طائرة شفافة وردية بطيئة — تتدفق فوق أزرار التفاعل */
+          /* ✅ v88.43: طبقة التقاط النقر المزدوج شفافة تغطي الريل بالكامل (تحت الأزرار) */
+          .ym-reels-tap-catcher {
+            position: absolute;
+            inset: 0;
+            z-index: 3; /* فوق الفيديو (1) وتحت أزرار التفاعل (5) */
+            background: transparent;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+          }
+
+          /* ✅ v88.43: قلوب طائرة شفافة وردية بطيئة — تبدأ من أسفل أزرار التفاعل وتصعد للأعلى */
           .ym-reels-hearts-layer {
             position: absolute;
             inset-inline-end: 0;
-            bottom: 180px;
-            width: 100%;
-            height: 380px;
+            /* أسفل من تحت أزرار التفاعل — يتوافق مع .ym-reels-actions bottom:200px */
+            bottom: 90px;
+            width: min(320px, 55%);
+            height: 60vh;
+            max-height: 520px;
             pointer-events: none;
             overflow: visible;
-            z-index: 6; /* فوق أزرار التفاعل (5) */
+            z-index: 8; /* فوق أزرار التفاعل (5) وطبقة الالتقاط (3) */
           }
           .ym-reels-flying-heart {
             position: absolute;
@@ -1602,17 +1737,18 @@ export default function Reels() {
               0 0 14px rgba(255, 105, 180, 0.35);
             opacity: 0;
             transform: translateY(0) translateX(0) scale(.6);
-            animation: ym-reel-heart-rise 2.6s cubic-bezier(.22,.61,.36,1) forwards;
+            animation: ym-reel-heart-rise 2.8s cubic-bezier(.22,.61,.36,1) forwards;
             will-change: transform, opacity;
             filter: drop-shadow(0 2px 4px rgba(0,0,0,.25));
             user-select: none;
+            pointer-events: none;
           }
           @keyframes ym-reel-heart-rise {
             0%   { opacity: 0;   transform: translateY(20px)  translateX(0)              scale(.6) rotate(-6deg); }
-            15%  { opacity: .85; transform: translateY(-20px) translateX(calc(var(--drift, 0px) * .25)) scale(1)  rotate(2deg); }
-            55%  { opacity: .75; transform: translateY(-160px) translateX(calc(var(--drift, 0px) * .6))  scale(1.05) rotate(-3deg); }
-            85%  { opacity: .35; transform: translateY(-280px) translateX(var(--drift, 0px)) scale(1.1) rotate(4deg); }
-            100% { opacity: 0;   transform: translateY(-340px) translateX(var(--drift, 0px)) scale(1.15) rotate(0deg); }
+            12%  { opacity: .9;  transform: translateY(-20px) translateX(calc(var(--drift, 0px) * .2))  scale(1)    rotate(2deg); }
+            45%  { opacity: .75; transform: translateY(-180px) translateX(calc(var(--drift, 0px) * .55)) scale(1.05) rotate(-3deg); }
+            80%  { opacity: .35; transform: translateY(-320px) translateX(var(--drift, 0px)) scale(1.1)  rotate(4deg); }
+            100% { opacity: 0;   transform: translateY(-400px) translateX(var(--drift, 0px)) scale(1.15) rotate(0deg); }
           }
           .ym-action-group {
             display: flex;

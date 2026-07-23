@@ -371,15 +371,22 @@ export default function ProfilePage() {
   }, [searchParams, setSearchParams]);
 
   const handleProfileSaved = useCallback((updatedUser) => {
+    const nextUsername = String(updatedUser?.username || '').trim();
     setProfile((previous) => {
       if (!previous) return previous;
       const next = { ...previous, user: { ...(previous.user || {}), ...updatedUser, profile: { ...(previous.user?.profile || {}), ...(updatedUser?.profile || {}) } } };
       writeCachedProfile(next);
       return next;
     });
-    // ✅ v88.36: forceRefresh لضمان أحدث البيانات من الـ backend
+    // عند تغيير اسم المستخدم يصبح رابط الملف والكاش القديمان غير صالحين.
+    if (nextUsername && nextUsername !== username) {
+      try { window.localStorage.removeItem(PROFILE_CACHE_KEY); } catch { /* noop */ }
+      navigate(`/profile/${encodeURIComponent(nextUsername)}`, { replace: true });
+      return;
+    }
+    // إعادة قراءة المصدر السحابي بعد إقرار PATCH، لا الاعتماد على نسخة قديمة.
     loadProfile({ background: true, forceRefresh: true });
-  }, [loadProfile, writeCachedProfile]);
+  }, [loadProfile, writeCachedProfile, username, navigate, PROFILE_CACHE_KEY]);
 
   const handleAccountDeleted = useCallback(() => {
     clearStoredUser();

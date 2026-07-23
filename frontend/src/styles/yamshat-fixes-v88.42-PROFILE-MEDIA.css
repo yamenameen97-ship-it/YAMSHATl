@@ -1,0 +1,120 @@
+/* =====================================================================
+ * YAMSHAT v88.42 — PROFILE MEDIA (AVATAR / COVER) ROOT FIX
+ * =====================================================================
+ * الغرض:
+ *  1) استعادة "بست تعديل الأفاتار والغلاف" (المودال بمعاينة + اختيار + حفظ)
+ *     الذي كان يعمل في النسخ السابقة قبل أن تنكسر السلاسة في v88.34+.
+ *  2) ضمان استجابة زر "تعديل الغلاف" وزر الكاميرا 📷 على الأفاتار في
+ *     كل الحالات (سطح المكتب / موبايل / iOS Safari).
+ *  3) منع قاعدة v88.38 من إخفاء مودالات الأفاتار/الغلاف بواسطة visibility.
+ * =====================================================================
+ */
+
+/* [1] استثناء مودالات الغلاف والأفاتار من قاعدة الإخفاء في v88.38
+ *     كانت القاعدة السابقة تُخفي كل مودال بجانب "edit-profile"، مما
+ *     يجعل مودال الغلاف/الأفاتار يبدو كأنه لا يستجيب.
+ */
+body:has([data-yamshat-modal="cover-editor"]) [role="dialog"]:has([data-yamshat-modal="cover-editor"]),
+body:has([data-yamshat-modal="avatar-editor"]) [role="dialog"]:has([data-yamshat-modal="avatar-editor"]),
+[role="dialog"]:has([data-yamshat-modal="cover-editor"]),
+[role="dialog"]:has([data-yamshat-modal="avatar-editor"]) {
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 99997 !important;
+}
+
+[data-yamshat-modal="cover-editor"],
+[data-yamshat-modal="avatar-editor"] {
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 99997 !important;
+  position: relative !important;
+}
+
+/* [2] زر "تعديل الغلاف" (ymp-cover-edit-btn) — ضمان الاستجابة على الجوال */
+.ymp-cover-edit-btn,
+[data-yamshat-action="open-cover-editor"] {
+  z-index: 30 !important;
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: rgba(124, 58, 237, 0.35) !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* [3] زر الكاميرا 📷 على الأفاتار — يجب أن يفتح المودال فوراً */
+.ymp-avatar-edit-btn,
+[data-yamshat-action="open-avatar-editor"] {
+  z-index: 30 !important;
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: rgba(124, 58, 237, 0.35) !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* [4] معاينة الغلاف داخل المودال — نسب صحيحة على كل الأحجام */
+.ui-modal [data-yamshat-modal="cover-editor"] .ymp-cover-preview {
+  aspect-ratio: 16 / 9;
+  height: auto !important;
+  min-height: 160px;
+  max-height: 260px;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #1a1a1a;
+  margin-bottom: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.ui-modal [data-yamshat-modal="cover-editor"] .ymp-cover-preview img,
+.ui-modal [data-yamshat-modal="cover-editor"] .ymp-cover-preview .ymp-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* [5] معاينة الأفاتار داخل المودال — دائرة ممركزة */
+.ui-modal [data-yamshat-modal="avatar-editor"] .ymp-avatar-preview {
+  width: 200px;
+  height: 200px;
+  max-width: 60vw;
+  max-height: 60vw;
+  border-radius: 50%;
+  margin: 0 auto 16px;
+  overflow: hidden;
+  background: #1a1a1a;
+  border: 3px solid rgba(124, 58, 237, 0.4);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+}
+.ui-modal [data-yamshat-modal="avatar-editor"] .ymp-avatar-preview img,
+.ui-modal [data-yamshat-modal="avatar-editor"] .ymp-avatar-preview .ymp-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* [6] الأزرار داخل مودالات الأفاتار/الغلاف — قابلة للنقر ومتباعدة */
+[data-yamshat-modal="cover-editor"] button,
+[data-yamshat-modal="avatar-editor"] button {
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  min-height: 44px;
+  font-weight: 700;
+}
+
+/* [7] iOS Safari — safe area للأسفل */
+@supports (-webkit-touch-callout: none) {
+  [data-yamshat-modal="cover-editor"],
+  [data-yamshat-modal="avatar-editor"] {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0)) !important;
+  }
+}
+
+/* [8] منع طبقة الغطاء (backdrop) من ابتلاع النقر عندما يكون المودال مفتوحاً */
+.ui-modal-backdrop:has([data-yamshat-modal="cover-editor"]),
+.ui-modal-backdrop:has([data-yamshat-modal="avatar-editor"]) {
+  z-index: 99996 !important;
+  pointer-events: auto !important;
+}

@@ -448,6 +448,12 @@ import './styles/yamshat-fixes-v88.37-GROUP-NOTIF-SCROLL-ROOT.css';
 // ⚠️ يجب أن يبقى هذا آخر CSS import — يفوز في cascade على كل ما قبله.
 import './styles/yamshat-fixes-v88.38-EDIT-PROFILE-ROOT.css';
 
+// v88.42 PROFILE MEDIA ROOT FIX:
+//  - يستعيد بست تعديل الأفاتار والغلاف (مودال بمعاينة + اختيار + حفظ).
+//  - يستثني مودالات cover-editor/avatar-editor من قاعدة الإخفاء في v88.38.
+//  - يضمن استجابة أزرار 'تعديل الغلاف' و '📷' على الموبايل و iOS.
+import './styles/yamshat-fixes-v88.42-PROFILE-MEDIA.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

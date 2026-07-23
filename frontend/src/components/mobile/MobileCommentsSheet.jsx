@@ -411,7 +411,8 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           ) : (
             <ul className="ym-comment-list">
               {comments.map((c) => {
-                const author = c.author_name || c.username || c.user || 'مستخدم';
+                // v88.40: تفضيل الاسم الكامل العربي (الأول + الأب + اللقب) على username الإنجليزي
+                const author = c.display_name || c.full_name || c.author_name || c.username || c.user || 'مستخدم';
                 const avatar = resolveMediaUrl(c.user_avatar || c.avatar || c.author_avatar || '');
                 const txt = c.content || c.text || '';
                 return (

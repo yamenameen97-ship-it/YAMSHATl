@@ -21,6 +21,11 @@ class Group(Base):
     owner_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     members_count = Column(Integer, default=0, nullable=False)
     posts_count = Column(Integer, default=0, nullable=False)
+    # v88.46 — سيطرة إدارية خارقة: تجميد المجموعة كلياً بواسطة المدير العام
+    is_frozen = Column(Boolean, default=False, nullable=False, index=True)
+    frozen_at = Column(DateTime, nullable=True)
+    frozen_by = Column(String(150), nullable=True)          # username المدير الذي جمّد
+    frozen_reason = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -34,6 +39,7 @@ class Group(Base):
         Index('ix_groups_is_public', 'is_public'),
         Index('ix_groups_category', 'category'),
         Index('ix_groups_created_at', 'created_at'),
+        Index('ix_groups_is_frozen', 'is_frozen'),
     )
 
 

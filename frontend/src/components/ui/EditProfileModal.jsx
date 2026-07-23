@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Modal from './Modal.jsx';
+import { mergeStoredUser } from '../../utils/auth.js';
 import Button from './Button.jsx';
 import {
   deleteMyAccount,
@@ -139,10 +140,23 @@ export default function EditProfileModal({ open, onClose, user, onSaved, onDelet
         return;
       }
       const { data } = await updateMyProfile(payload);
-      setStatus('تم حفظ بيانات الحساب بنجاح.');
-      // حدّث الـ snapshot ليصير هو الأساس الجديد
-      setSnapshot((prev) => ({ ...prev, ...form }));
-      onSaved?.(data);
+      // الـ backend هو مصدر الحقيقة: نخزن الاستجابة المؤكدة في جلسة المستخدم حتى
+      // تبقى البيانات بعد الخروج والدخول وعلى جميع شاشات المنصة.
+      const confirmed = data && typeof data === 'object' ? data : {};
+      mergeStoredUser(confirmed);
+      const confirmedForm = normalizeUser(confirmed);
+      setForm(confirmedForm);
+      setSnapshot(confirmedForm);
+      const oldUsername = String(snapshot?.username || '').trim();
+      const newUsername = String(confirmed?.username || form?.username || '').trim();
+      const fullName = String(confirmed?.full_name || confirmed?.display_name || confirmed?.profile?.full_name || [confirmedForm.first_name, confirmedForm.father_name, confirmedForm.last_name].filter(Boolean).join(' ')).trim();
+      try {
+        if (oldUsername) window.localStorage.setItem(`yamshat:profile:fullname:${oldUsername}`, fullName);
+        if (newUsername) window.localStorage.setItem(`yamshat:profile:fullname:${newUsername}`, fullName);
+        window.dispatchEvent(new CustomEvent('yamshat:profile-updated', { detail: { user: confirmed, previousUsername: oldUsername } }));
+      } catch { /* لا نمنع نجاح الحفظ السحابي عند تعطل التخزين المحلي */ }
+      setStatus('تم حفظ البيانات ومزامنتها سحابياً بنجاح.');
+      onSaved?.(confirmed);
     } catch (err) {
       const detail = err?.response?.data?.detail;
       setError(

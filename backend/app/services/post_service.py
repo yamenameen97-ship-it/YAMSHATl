@@ -21,6 +21,7 @@ from app.models.post_preference import PostPreference
 from app.models.post_save import PostSave
 from app.models.post_share import PostShare
 from app.models.user import User
+from app.models.user_profile import UserProfile
 
 # v87.0 — نظام الإشعارات الذكي
 try:
@@ -152,8 +153,33 @@ def _share_url(post_id: int) -> str:
     return f'/post/{quote(str(post_id))}'
 
 
+def _resolve_display_name(db: Session, user: User | None) -> tuple[str, str]:
+    """v88.40: يعيد (full_name, display_name) من UserProfile.
+    - full_name = 'الاسم الأول + اسم الأب + اللقب' (كما في فيسبوك)
+    - display_name = full_name أو fallback إلى username إذا كانت الحقول فارغة
+    """
+    if user is None:
+        return '', 'مستخدم'
+    try:
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
+    except Exception:
+        profile = None
+    if profile is None:
+        return '', user.username or 'مستخدم'
+    parts = [
+        (profile.first_name or '').strip(),
+        (profile.father_name or '').strip(),
+        (profile.last_name or '').strip(),
+    ]
+    full_name = ' '.join(p for p in parts if p).strip()
+    display_name = full_name or (user.username or 'مستخدم')
+    return full_name, display_name
+
+
 def _serialize_post(db: Session, post: Post, current_user: User | None = None) -> dict:
     user = db.query(User).filter(User.id == post.user_id).first()
+    # v88.40: اسم العرض من UserProfile (ياسر حمود قاسم) بدل username الإنجليزي
+    author_full_name, author_display_name = _resolve_display_name(db, user)
     like_count = db.query(func.count(Like.id)).filter(Like.post_id == post.id).scalar() or 0
     comment_count = db.query(func.count(Comment.id)).filter(Comment.post_id == post.id).scalar() or 0
     media_list = normalize_media_list(_loads_list(post.media_json))
@@ -200,6 +226,11 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'id': post.id,
         'user_id': post.user_id,
         'username': user.username if user else (getattr(post, 'username', None) or 'unknown'),
+        # v88.40: اسم العرض العربي الكامل (ياسر حمود قاسم) — يُستهلك من الواجهة عبر display_name/full_name/author_name
+        'display_name': author_display_name,
+        'full_name': author_full_name,
+        'author_name': author_display_name,
+        'author_display_name': author_display_name,
         'avatar': user.avatar if user else (getattr(post, 'user_avatar', None) or None),
         'content': post.content,
         'content_html': post.content_html or '',

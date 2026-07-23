@@ -13,6 +13,7 @@ from app.models.comment import Comment
 from app.models.comment_like import CommentLike
 from app.models.post import Post
 from app.models.user import User
+from app.models.user_profile import UserProfile
 
 # v87.0 — نظام الإشعارات الذكي
 try:
@@ -65,8 +66,25 @@ def _comment_depth(db: Session, parent_id: int | None) -> int:
     return depth
 
 
+def _resolve_user_display(db: Session, user: User | None) -> tuple[str, str]:
+    """v88.40: (full_name, display_name) من UserProfile — ياسر حمود قاسم."""
+    if user is None:
+        return '', 'مستخدم'
+    try:
+        p = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
+    except Exception:
+        p = None
+    if p is None:
+        return '', user.username or 'مستخدم'
+    parts = [(p.first_name or '').strip(), (p.father_name or '').strip(), (p.last_name or '').strip()]
+    full_name = ' '.join(x for x in parts if x).strip()
+    return full_name, (full_name or user.username or 'مستخدم')
+
+
 def _serialize_comment(db: Session, comment: Comment, current_user: User | None = None) -> dict:
     user = db.query(User).filter(User.id == comment.user_id).first()
+    # v88.40: اسم العرض من UserProfile
+    _full_name, _display_name = _resolve_user_display(db, user)
     replies_count = db.query(Comment).filter(Comment.parent_id == comment.id, Comment.is_hidden.is_(False)).count()
     liked_by_me = False
     if current_user is not None:
@@ -78,6 +96,10 @@ def _serialize_comment(db: Session, comment: Comment, current_user: User | None 
         'id': comment.id,
         'user_id': comment.user_id,
         'username': user.username if user else (getattr(comment, 'username', None) or 'unknown'),
+        # v88.40: اسم العرض الكامل (الأول + الأب + اللقب)
+        'display_name': _display_name,
+        'full_name': _full_name,
+        'author_name': _display_name,
         'avatar': user.avatar if user else None,
         'post_id': comment.post_id,
         'parent_id': comment.parent_id,

@@ -15,6 +15,7 @@ from app.core.media_urls import normalize_media_url
 from app.db.bootstrap import initialize_database
 from app.models.stories_reels import Reel, ReelComment, ReelLike, ReelView, SavedReel
 from app.models.user import User
+from app.models.user_profile import UserProfile
 # v88.28 — خدمة تخزين سحابي دائم للريلز
 try:
     from app.services.reels_storage_service import persist_reel_media, rehost_reel_url
@@ -171,10 +172,28 @@ def _serialize_reel(db: Session, reel: Reel, current_user: User | None = None) -
     except Exception:
         pass
 
+    # v88.40: اسم العرض العربي الكامل من UserProfile (ياسر حمود قاسم)
+    _owner_full_name = ''
+    _owner_display_name = owner.username if owner else 'unknown'
+    try:
+        if owner is not None:
+            _op = db.query(UserProfile).filter(UserProfile.user_id == owner.id).first()
+            if _op is not None:
+                _parts = [(_op.first_name or '').strip(), (_op.father_name or '').strip(), (_op.last_name or '').strip()]
+                _owner_full_name = ' '.join(p for p in _parts if p).strip()
+                if _owner_full_name:
+                    _owner_display_name = _owner_full_name
+    except Exception:
+        pass
+
     payload = {
         'id': reel.id,
         'user_id': reel.user_id,
         'username': owner.username if owner else 'unknown',
+        # v88.40: اسم العرض الكامل للواجهة
+        'display_name': _owner_display_name,
+        'full_name': _owner_full_name,
+        'author_name': _owner_display_name,
         'user_avatar': owner.avatar_url if owner else '',
         'video_url': video_url,
         'media_url': video_url,
@@ -197,7 +216,9 @@ def _serialize_reel(db: Session, reel: Reel, current_user: User | None = None) -
         'user': {
             'id': owner.id if owner else reel.user_id,
             'username': owner.username if owner else 'unknown',
-            'full_name': owner.full_name if owner else 'unknown',
+            # v88.40: تفضيل اسم الملف (الأول + الأب + اللقب) على username
+            'full_name': _owner_display_name,
+            'display_name': _owner_display_name,
             'avatar_url': owner.avatar_url if owner else '',
         },
     }
@@ -271,12 +292,19 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
             except Exception:
                 detected_duration = 0
         else:
-            # مسار احتياطي: JSON بدون ملف (رابط خارجي جاهز)
-            if file is not None and hasattr(file, 'filename'):
-                upload_payload = save_upload(file)
-                video_url = str(upload_payload.get('media_url') or upload_payload.get('file_url') or upload_payload.get('url') or '').strip()
-                storage_type = str(upload_payload.get('storage') or 'local')
-            if thumbnail is not None and hasattr(thumbnail, 'filename'):
+            # v88.41 — لا نسمح بحفظ ريل بملف على القرص المحلي بعد اليوم:
+            # قرص Render غير دائم، فأي ريل يُحفظ محلياً يختفي عند إعادة النشر.
+            # إذا وصلنا إلى هنا ومعنا ملف، فهذا يعني أن Cloudinary غير مُهيّأ أو معطّل.
+            if file is not None and hasattr(file, 'filename') and file.filename:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        'التخزين السحابي غير مُفعَّل حالياً على الخادم. '
+                        'يجب ضبط مفاتيح Cloudinary (CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET) '
+                        'في متغيّرات بيئة Render قبل رفع الريلز، وإلا ستُفقد الملفات عند إعادة النشر.'
+                    ),
+                )
+            if thumbnail is not None and hasattr(thumbnail, 'filename') and thumbnail.filename:
                 thumb_payload = save_upload(thumbnail)
                 thumbnail_url = str(thumb_payload.get('media_url') or thumb_payload.get('file_url') or thumb_payload.get('url') or '').strip()
     else:

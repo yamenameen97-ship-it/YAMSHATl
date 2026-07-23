@@ -44,6 +44,10 @@ class User(Base):
     two_factor_method = Column(String(40), default='email', nullable=False)
     suspicious_login_count = Column(Integer, default=0, nullable=False)
     banned_at = Column(DateTime, nullable=True)
+    # v88.46 — كتم على مستوى الشات فقط (system-wide chat mute) دون حظر كامل للحساب
+    chat_muted_until = Column(DateTime, nullable=True, index=True)
+    chat_muted_by = Column(String(150), nullable=True)      # username المدير الذي كتم
+    chat_muted_reason = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     
     # Phone Verification Fields
@@ -63,3 +67,14 @@ class User(Base):
     @property
     def avatar_url(self) -> str:
         return self.avatar or ''
+
+    # v88.46 — خاصية مساعدة لفحص كتم الشات على مستوى النظام
+    @property
+    def is_chat_muted(self) -> bool:
+        """هل هذا المستخدم مكتوم عن الشات على مستوى النظام حالياً؟"""
+        if not self.chat_muted_until:
+            return False
+        try:
+            return datetime.utcnow() < self.chat_muted_until
+        except Exception:
+            return False

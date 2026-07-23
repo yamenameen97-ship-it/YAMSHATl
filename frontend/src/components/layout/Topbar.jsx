@@ -45,8 +45,9 @@ function Topbar() {
   const unreadInboxCount = useChatStore(selectUnreadTotal);
   const toggleTheme = useAppStore((state) => state.toggleTheme);
   const theme = useAppStore((state) => state.theme);
-  const currentUsername = getCurrentUsername();
-  const session = getStoredUserSnapshot();
+  const liveSession = useAppStore((state) => state.session);
+  const session = liveSession || getStoredUserSnapshot();
+  const currentUsername = session?.username || session?.user || getCurrentUsername();
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const menuRef = useRef(null);

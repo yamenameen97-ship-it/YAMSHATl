@@ -4,7 +4,14 @@ import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Input from '../../components/ui/Input.jsx';
 import { useToast } from '../../components/admin/ToastProvider.jsx';
-import { escalateReport, getAdminReportsSummary, updateReportStatus } from '../../api/admin.js';
+import {
+  escalateReport,
+  getAdminReports,
+  getAdminReportDetails,
+  getAdminReportsSummary,
+  takeReportAction,
+  updateReportStatus,
+} from '../../api/admin.js';
 import socket from '../../api/socket.js';
 
 const ROW_HEIGHT = 94;
@@ -207,17 +214,61 @@ export default function AdminReports() {
     setActivityLog((prev) => [{ id: `${Date.now()}-${prev.length}`, title, description, tone, at: new Date().toISOString() }, ...prev].slice(0, 12));
   }, []);
 
+  // v88.44 — Load actual reports from /admin/reports (real Report model data)
   const loadReports = useCallback(async () => {
     try {
       setLoading(true);
-      const { data } = await getAdminReportsSummary();
-      const normalized = normalizeReports(data);
+      const { data } = await getAdminReports({
+        status: filters.status === 'all' ? undefined : filters.status,
+        priority: filters.severity === 'all' ? undefined : filters.severity,
+        search: filters.search,
+        page_size: 100,
+      });
+      // data.items comes from serialize_report — real report objects
+      const rawItems = Array.isArray(data?.items) ? data.items : [];
+      const normalized = rawItems.map((item, index) => ({
+        id: String(item.id ?? `REP-${index}`),
+        type: item.reason_label || item.reason || 'بلاغ عام',
+        target: `${item.target_type} #${item.target_id}`,
+        targetType: item.target_type || 'content',
+        targetId: item.target_id,
+        targetTypeRaw: item.target_type,
+        reporter: item.reporter?.username || `user_${item.reporter?.id || '?'}`,
+        reporterId: item.reporter?.id,
+        severity: item.priority || 'normal',
+        status: item.status || 'pending',
+        score: item.duplicate_count >= 5 ? 95 : item.duplicate_count >= 3 ? 80 : 60,
+        queue: item.target_type || 'general',
+        reason: item.details || item.reason_label || item.reason || 'لا يوجد وصف إضافي.',
+        reasonRaw: item.reason,
+        reasonLabel: item.reason_label,
+        details: item.details,
+        priority: item.priority,
+        snapshot: item.snapshot || {},
+        targetOwner: item.target_owner,
+        handledBy: item.handled_by,
+        handledAt: item.handled_at,
+        moderatorNotes: item.moderator_notes,
+        actionTaken: item.action_taken,
+        duplicateCount: item.duplicate_count || 0,
+        slaMinutes: 20 + index * 3,
+        createdAt: item.created_at || new Date(Date.now() - index * 11 * 60 * 1000).toISOString(),
+        updatedAt: item.updated_at,
+        raw: item,
+      }));
       setReports(normalized);
       setActiveReportId((prev) => prev || normalized[0]?.id || '');
       setRemovals((prev) => prev.length ? prev : seedRemovalRegistry(normalized));
       setAppeals((prev) => prev.length ? prev : seedAppealsRegistry(normalized));
     } catch (error) {
-      setReports([]);
+      // Fallback to summary endpoint
+      try {
+        const { data: summaryData } = await getAdminReportsSummary();
+        const normalized = normalizeReports({ items: [], ...summaryData });
+        setReports(normalized);
+      } catch {
+        setReports([]);
+      }
       setActiveReportId('');
       setRemovals([]);
       setAppeals([]);
@@ -225,7 +276,7 @@ export default function AdminReports() {
     } finally {
       setLoading(false);
     }
-  }, [pushToast]);
+  }, [pushToast, filters.status, filters.severity, filters.search]);
 
   useEffect(() => {
     loadReports();
@@ -309,12 +360,18 @@ export default function AdminReports() {
     try {
       setBusyId(report.id);
       patchReport(report.id, { status: 'resolved' });
-      await updateReportStatus(report.id, 'resolved');
+      // v88.44: Use admin endpoint action 'dismiss' to resolve
+      await takeReportAction(report.id, 'dismiss', 'تم اعتماد البلاغ وإغلاقه من لوحة الإدارة.');
       pushActivity('report_resolved', `${report.id} تم اعتماده`, '#22c55e');
       pushToast({ type: 'success', title: 'تم اعتماد القرار', description: `${report.id} تم إنهاؤه بنجاح.` });
     } catch (error) {
-      patchReport(report.id, { status: report.status });
-      pushToast({ type: 'error', title: 'تعذر تحديث الحالة', description: error?.response?.data?.detail || error?.message });
+      // Fallback to legacy endpoint
+      try {
+        await updateReportStatus(report.id, 'resolved');
+      } catch (err2) {
+        patchReport(report.id, { status: report.status });
+        pushToast({ type: 'error', title: 'تعذر تحديث الحالة', description: err2?.response?.data?.detail || err2?.message });
+      }
     } finally {
       setBusyId('');
     }
@@ -324,23 +381,82 @@ export default function AdminReports() {
     try {
       setBusyId(report.id);
       patchReport(report.id, { status: 'escalated', severity: report.severity === 'critical' ? 'critical' : 'high' });
-      await escalateReport(report.id);
+      // v88.44: Use admin endpoint action 'escalate'
+      await takeReportAction(report.id, 'escalate', 'تم تصعيد البلاغ من لوحة الإدارة.');
       createAppealRecord(report, 'تم التصعيد وفتح قناة مراجعة أعلى للحالة.');
       pushActivity('report_escalated', `${report.id} تم تصعيده`, '#ef4444');
       pushToast({ type: 'warning', title: 'تم التصعيد', description: `${report.id} دخل مسار الإدارة العليا.` });
     } catch (error) {
-      patchReport(report.id, { status: report.status, severity: report.severity });
-      pushToast({ type: 'error', title: 'تعذر التصعيد', description: error?.response?.data?.detail || error?.message });
+      // Fallback to legacy endpoint
+      try {
+        await escalateReport(report.id);
+      } catch (err2) {
+        patchReport(report.id, { status: report.status, severity: report.severity });
+        pushToast({ type: 'error', title: 'تعذر التصعيد', description: err2?.response?.data?.detail || err2?.message });
+      }
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  // v88.44 — New action: remove content directly from report
+  const handleRemoveContentReport = async (report) => {
+    try {
+      setBusyId(report.id);
+      patchReport(report.id, { status: 'resolved' });
+      await takeReportAction(report.id, 'remove_content', 'تم حذف المحتوى المبلّغ عنه من لوحة الإدارة.');
+      createRemovalRecord(report, 'remove_content');
+      createAppealRecord(report, 'تم حذف المحتوى المبلّغ عنه ويمكن لصاحب المحتوى إرسال اعتراض خلال 48 ساعة.');
+      pushActivity('content_removed', `${report.id} تم حذف المحتوى`, '#f97316');
+      pushToast({ type: 'info', title: 'تم حذف المحتوى', description: `${report.target} تمت إزالته بنجاح.` });
+    } catch (error) {
+      patchReport(report.id, { status: report.status });
+      pushToast({ type: 'error', title: 'تعذر حذف المحتوى', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  // v88.44 — New action: warn user from report
+  const handleWarnUser = async (report) => {
+    try {
+      setBusyId(report.id);
+      await takeReportAction(report.id, 'warn_user', 'تم إرسال تحذير للمستخدم من لوحة الإدارة.');
+      patchReport(report.id, { status: 'resolved' });
+      pushActivity('user_warned', `${report.id} تم تحذير المستخدم`, '#facc15');
+      pushToast({ type: 'warning', title: 'تم إرسال التحذير', description: 'تم إرسال إشعار تحذير لصاحب المحتوى.' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر إرسال التحذير', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  // v88.44 — New action: ban user from report
+  const handleBanUser = async (report) => {
+    try {
+      setBusyId(report.id);
+      await takeReportAction(report.id, 'ban_user', 'تم حظر المستخدم من لوحة الإدارة.');
+      patchReport(report.id, { status: 'resolved' });
+      pushActivity('user_banned', `${report.id} تم حظر المستخدم`, '#ef4444');
+      pushToast({ type: 'error', title: 'تم حظر المستخدم', description: 'تم حظر حساب صاحب المحتوى.' });
+    } catch (error) {
+      pushToast({ type: 'error', title: 'تعذر حظر المستخدم', description: error?.response?.data?.detail || error?.message });
     } finally {
       setBusyId('');
     }
   };
 
   const handleRemoveContent = useCallback((report) => {
-    patchReport(report.id, { status: report.status === 'resolved' ? 'resolved' : 'investigating' });
-    createRemovalRecord(report, report.targetType === 'account' ? 'account_restriction' : 'remove_content');
-    createAppealRecord(report, 'تم حذف المحتوى ويمكن لصاحب المحتوى إرسال اعتراض خلال 48 ساعة.');
-    pushToast({ type: 'info', title: 'تم تسجيل إزالة محتوى', description: `${report.target} تمت إضافته لسجل الإزالة.` });
+    // v88.44: Actually call the backend to remove content
+    if (report.id && !report.id.startsWith('REP-')) {
+      handleRemoveContentReport(report);
+    } else {
+      patchReport(report.id, { status: report.status === 'resolved' ? 'resolved' : 'investigating' });
+      createRemovalRecord(report, report.targetType === 'account' ? 'account_restriction' : 'remove_content');
+      createAppealRecord(report, 'تم حذف المحتوى ويمكن لصاحب المحتوى إرسال اعتراض خلال 48 ساعة.');
+      pushToast({ type: 'info', title: 'تم تسجيل إزالة محتوى', description: `${report.target} تمت إضافته لسجل الإزالة.` });
+    }
   }, [createAppealRecord, createRemovalRecord, patchReport, pushToast]);
 
   const updateAppeal = useCallback((appealId, decision, nextStatus = 'closed') => {
@@ -362,8 +478,14 @@ export default function AdminReports() {
     const originalStatus = report.status;
     try {
       setBusyId(report.id);
-      patchReport(report.id, { status: 'investigating' });
-      await updateReportStatus(report.id, 'investigating');
+      patchReport(report.id, { status: 'reviewing' });
+      // v88.44: Use admin reports endpoint to update status
+      try {
+        await updateReportStatus(report.id, 'reviewing');
+      } catch {
+        // If legacy endpoint fails, try admin action
+        await takeReportAction(report.id, 'escalate', 'تحويل للمراجعة اليدوية.');
+      }
       pushActivity('manual_review', `${report.id} دخل المراجعة اليدوية`, '#3b82f6');
       pushToast({ type: 'success', title: 'تم تحويل البلاغ للمراجعة', description: `${report.id} أصبح قيد التحقيق.` });
     } catch (error) {
@@ -395,6 +517,8 @@ export default function AdminReports() {
     { key: 'temporary_ban', title: 'حظر مؤقت', description: 'تسجيل قيد مؤقت وربطه بالبلاغ المحدد', tone: '#ef4444', action: () => handleTemporaryBan(activeReport) },
     { key: 'remove_content', title: 'إخفاء المحتوى', description: 'إزالة فورية للمحتوى وربطه بسجل الإزالة', tone: '#f97316', action: () => handleRemoveContent(activeReport) },
     { key: 'manual_review', title: 'مراجعة يدوية', description: 'تحويل البلاغ المحدد إلى حالة التحقيق', tone: '#3b82f6', action: () => handleManualReview(activeReport) },
+    { key: 'warn_user', title: 'تحذير المستخدم', description: 'إرسال إشعار تحذير لصاحب المحتوى المبلّغ عنه', tone: '#facc15', action: () => activeReport ? handleWarnUser(activeReport) : pushToast({ type: 'warning', title: 'اختر بلاغًا أولًا', description: 'حدد بلاغًا من القائمة.' }) },
+    { key: 'ban_user', title: 'حظر المستخدم', description: 'حظر دائم لحساب صاحب المحتوى المبلّغ عنه', tone: '#dc2626', action: () => activeReport ? handleBanUser(activeReport) : pushToast({ type: 'warning', title: 'اختر بلاغًا أولًا', description: 'حدد بلاغًا من القائمة.' }) },
     { key: 'open_appeal', title: 'فتح استئناف', description: 'إنشاء اعتراض مرتبط مباشرة بالبلاغ الحالي', tone: '#8b5cf6', action: () => activeReport ? createAppealRecord(activeReport, 'تم إنشاء استئناف يدوي من صندوق الأدوات.') : pushToast({ type: 'warning', title: 'اختر بلاغًا أولًا', description: 'حدد بلاغًا من القائمة لفتح الاستئناف.' }) },
   ];
 
@@ -550,10 +674,25 @@ export default function AdminReports() {
                       <div style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }}><div style={{ color: '#64748b', fontSize: 12 }}>المسار</div><div style={{ color: '#f8fafc', marginTop: 4 }}>{activeReport.queue}</div></div>
                       <div style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.04)' }}><div style={{ color: '#64748b', fontSize: 12 }}>SLA</div><div style={{ color: '#f8fafc', marginTop: 4 }}>{activeReport.slaMinutes} دقيقة</div></div>
                     </div>
+                    {/* v88.44: Show snapshot content if available */}
+                    {activeReport.snapshot && Object.keys(activeReport.snapshot).length > 1 ? (
+                      <div style={{ borderRadius: 14, padding: 12, marginTop: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                        <div style={{ color: '#94a3b8', fontSize: 11, marginBottom: 6 }}>محتوى البلاغ (snapshot):</div>
+                        {activeReport.snapshot.content ? <div style={{ color: '#e2e8f0', fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{activeReport.snapshot.content}</div> : null}
+                        {activeReport.snapshot.username ? <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>@{activeReport.snapshot.username}</div> : null}
+                      </div>
+                    ) : null}
+
+                    {activeReport.duplicateCount > 0 ? (
+                      <div style={{ color: '#f97316', fontSize: 12, marginTop: 10 }}>⚠️ تم الإبلاغ عن هذا المحتوى {activeReport.duplicateCount} مرة</div>
+                    ) : null}
+
                     <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
                       <Button variant="success" loading={busyId === activeReport.id && activeReport.status !== 'escalated'} onClick={() => handleResolve(activeReport)}>اعتماد البلاغ</Button>
-                      <Button variant="danger" onClick={() => handleRemoveContent(activeReport)}>إزالة المحتوى</Button>
+                      <Button variant="danger" loading={busyId === activeReport.id} onClick={() => handleRemoveContent(activeReport)}>إزالة المحتوى</Button>
                       <Button loading={busyId === activeReport.id && activeReport.status === 'escalated'} onClick={() => handleEscalate(activeReport)}>تصعيد فوري</Button>
+                      <Button variant="warning" loading={busyId === activeReport.id} onClick={() => handleWarnUser(activeReport)}>تحذير المستخدم</Button>
+                      <Button variant="danger" loading={busyId === activeReport.id} onClick={() => handleBanUser(activeReport)}>حظر المستخدم</Button>
                       <Button variant="secondary" onClick={() => createAppealRecord(activeReport, 'تم إنشاء استئناف يدوي من شاشة البلاغات.')}>فتح استئناف</Button>
                     </div>
                   </div>

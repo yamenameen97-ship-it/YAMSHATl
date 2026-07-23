@@ -223,7 +223,18 @@ export default function ProfileHeader({
     fileInputRef.current?.click();
   }, []);
 
+  // ✅ v88.42 ROOT FIX: عند الضغط على أيقونة الكاميرا على الأفاتار
+  // يجب أن يُفتح **المودال أولاً** (بست معاينة + اختيار صورة + حفظ)
+  // تماماً كما في النسخ السابقة، بدلاً من فتح منتقي الملفات مباشرة.
   const openAvatarPicker = useCallback((event) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    // نفتح المودال — والمستخدم يضغط "اختيار صورة" داخل المودال ثم "حفظ"
+    setShowAvatarCropper(true);
+  }, []);
+
+  // ✅ v88.42: زر منتقي الملفات داخل مودال الأفاتار
+  const openAvatarFilePicker = useCallback((event) => {
     event?.preventDefault();
     event?.stopPropagation();
     avatarInputRef.current?.click();
@@ -255,6 +266,7 @@ export default function ProfileHeader({
     reader.onload = (event) => {
       setAvatarImage(event.target?.result);
       setAvatarImageError(false);
+      // v88.42: المودال مفتوح مسبقاً — لا نعيد فتحه
       setShowAvatarCropper(true);
     };
     reader.onerror = () => alert('حدث خطأ في قراءة الملف');
@@ -283,7 +295,8 @@ export default function ProfileHeader({
   };
 
   const applyCrop = async () => {
-    if (!avatarFile || isSavingAvatar) return;
+    if (!avatarFile) { alert('اختر صورة شخصية أولاً'); return; }
+    if (isSavingAvatar) return;
     setIsSavingAvatar(true);
     try {
       const avatarUrl = await uploadImageAndResolveUrl(avatarFile, avatarImage);
@@ -523,7 +536,14 @@ export default function ProfileHeader({
         )}
 
         {isOwnProfile && (
-          <button className="ymp-cover-edit-btn" onClick={openCoverEditor} type="button">
+          <button
+            className="ymp-cover-edit-btn"
+            onClick={openCoverEditor}
+            onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); setShowCoverEditor(true); }}
+            type="button"
+            data-yamshat-action="open-cover-editor"
+            data-build="v88.42"
+          >
             ✏️ تعديل الغلاف
           </button>
         )}
@@ -559,7 +579,10 @@ export default function ProfileHeader({
               type="button"
               className="ymp-avatar-edit-btn"
               onClick={openAvatarPicker}
+              onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); setShowAvatarCropper(true); }}
               aria-label="تغيير الصورة الشخصية"
+              data-yamshat-action="open-avatar-editor"
+              data-build="v88.42"
             >
               📷
             </button>
@@ -796,9 +819,18 @@ export default function ProfileHeader({
         </div>
       )}
 
-      {/* Cover Editor Modal */}
-      <Modal open={showCoverEditor} onClose={() => setShowCoverEditor(false)} title="تعديل الغلاف">
-        <div style={{ padding: 20 }} dir="rtl">
+      {/* Cover Editor Modal — v88.42 ROOT FIX: بست موحد بمعاينة + اختيار صورة + حفظ */}
+      <Modal
+        open={showCoverEditor}
+        onClose={() => { if (!isSavingCover) setShowCoverEditor(false); }}
+        title="تعديل الغلاف"
+      >
+        <div
+          style={{ padding: 20 }}
+          dir="rtl"
+          data-yamshat-modal="cover-editor"
+          data-build="v88.42"
+        >
           <div className="ymp-cover-preview">
             {coverImage ? (
               <OptimizedImage src={resolveMediaUrl(coverImage)} alt="معاينة الغلاف" className="ymp-cover-img" />
@@ -806,17 +838,52 @@ export default function ProfileHeader({
               <FallbackCover />
             )}
           </div>
-          <Button onClick={openCoverPicker} preventRepeat={false} style={{ width: '100%', marginBottom: 10 }}>
-            اختيار صورة
+          <div style={{ fontSize: 12, color: '#a5a1b9', textAlign: 'center', marginBottom: 10 }}>
+            الحد الأقصى 5MB • JPG / PNG / WEBP
+          </div>
+          <Button
+            onClick={openCoverPicker}
+            preventRepeat={false}
+            style={{ width: '100%', marginBottom: 10 }}
+          >
+            📷 اختيار صورة
           </Button>
-          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleCoverUpload} style={{ display: 'none' }} />
-          <Button onClick={saveCoverImage} loading={isSavingCover} disabled={!coverFile} style={{ width: '100%' }}>حفظ</Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleCoverUpload}
+            style={{ display: 'none' }}
+          />
+          <Button
+            onClick={saveCoverImage}
+            loading={isSavingCover}
+            disabled={!coverFile || isSavingCover}
+            style={{ width: '100%' }}
+          >
+            {isSavingCover ? 'جارٍ الحفظ...' : '💾 حفظ'}
+          </Button>
+          {coverFile ? (
+            <div style={{ marginTop: 10, textAlign: 'center', color: '#22c55e', fontSize: 12, fontWeight: 700 }}>
+              ✓ تم اختيار الصورة — اضغط "حفظ" لتحديث الغلاف
+            </div>
+          ) : null}
         </div>
       </Modal>
 
-      {/* Avatar Cropper Modal */}
-      <Modal open={showAvatarCropper} onClose={() => setShowAvatarCropper(false)} title="تعديل الصورة الشخصية">
-        <div style={{ padding: 20 }} dir="rtl">
+      {/* Avatar Editor Modal — v88.42 ROOT FIX: يُفتح فوراً عند الضغط على 📷
+          يحتوي بست موحد: معاينة + اختيار صورة + حفظ (تماماً كالنسخ السابقة) */}
+      <Modal
+        open={showAvatarCropper}
+        onClose={() => { if (!isSavingAvatar) setShowAvatarCropper(false); }}
+        title="تعديل الصورة الشخصية"
+      >
+        <div
+          style={{ padding: 20 }}
+          dir="rtl"
+          data-yamshat-modal="avatar-editor"
+          data-build="v88.42"
+        >
           <div className="ymp-avatar-preview">
             {avatarImage ? (
               <OptimizedImage src={resolveMediaUrl(avatarImage)} alt="معاينة الصورة" className="ymp-avatar-img" />
@@ -824,7 +891,29 @@ export default function ProfileHeader({
               <FallbackAvatar name={fullName} />
             )}
           </div>
-          <Button onClick={applyCrop} loading={isSavingAvatar} disabled={!avatarFile} style={{ width: '100%' }}>تطبيق</Button>
+          <div style={{ fontSize: 12, color: '#a5a1b9', textAlign: 'center', marginBottom: 10 }}>
+            الحد الأقصى 2MB • JPG / PNG / WEBP
+          </div>
+          <Button
+            onClick={openAvatarFilePicker}
+            preventRepeat={false}
+            style={{ width: '100%', marginBottom: 10 }}
+          >
+            📷 اختيار / تغيير الصورة
+          </Button>
+          <Button
+            onClick={applyCrop}
+            loading={isSavingAvatar}
+            disabled={!avatarFile || isSavingAvatar}
+            style={{ width: '100%' }}
+          >
+            {isSavingAvatar ? 'جارٍ الحفظ...' : '💾 حفظ'}
+          </Button>
+          {avatarFile ? (
+            <div style={{ marginTop: 10, textAlign: 'center', color: '#22c55e', fontSize: 12, fontWeight: 700 }}>
+              ✓ تم اختيار الصورة — اضغط "حفظ" لتحديث صورتك
+            </div>
+          ) : null}
         </div>
       </Modal>
 

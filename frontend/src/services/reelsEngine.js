@@ -79,9 +79,12 @@ export function getReelsCache() {
   return readStorage(STORAGE_KEYS.reelsCache, { items: [], updatedAt: null });
 }
 
+// v88.41 — نُقلّص الحد المحلي من 80 إلى 10 عناصر (بحسب سياسة "آخر 10 ريلز مُشاهدة").
+// التخزين الحقيقي والدائم صار على Cloudinary + قاعدة بيانات Render. هذا مجرد كاش
+// سريع للـ UI حتى تظهر الشاشة فوراً عند العودة إلى صفحة الريلز.
 export function saveReelsCache(items = []) {
   writeStorage(STORAGE_KEYS.reelsCache, {
-    items: Array.isArray(items) ? items.slice(0, 80) : [],
+    items: Array.isArray(items) ? items.slice(0, 10) : [],
     updatedAt: new Date().toISOString(),
   });
 }

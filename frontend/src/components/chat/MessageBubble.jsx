@@ -610,7 +610,7 @@ function MessageBubble({
         onMouseUp={handleMouseUp}
       >
         <motion.div
-          className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'} ${shouldGlow ? 'search-hit' : ''} ${showToolbar ? 'toolbar-open' : ''} ${isVoiceOnly ? 'is-voice-only' : ''} ${isMediaOnly ? 'is-media-only' : ''} ${isImageOnly ? 'is-image-only' : ''} ${isVideoOnly ? 'is-video-only' : ''}`}
+          className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'} ${shouldGlow ? 'search-hit' : ''} ${showToolbar ? 'toolbar-open' : ''} ${isVoiceOnly ? 'is-voice-only' : ''} ${isMediaOnly ? 'is-media-only' : ''} ${isImageOnly ? 'is-image-only' : ''} ${isVideoOnly ? 'is-video-only' : ''} ${(message?.type === 'call' || message?.call) ? 'is-call-only' : ''}`}
           layout={!reduceMotion}
         >
           <button

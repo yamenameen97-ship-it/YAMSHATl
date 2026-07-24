@@ -235,6 +235,8 @@ export default function CallExperience({
         sheetLifecycleRef.current.sawActive = true;
       } else if (sheetLifecycleRef.current.sawActive && sheetLifecycleRef.current.mounted) {
         // Real end-of-call (not the priming null) → close the sheet.
+        // ✅ v88.56 — أطلق حدث سجل المكالمة عندما يُنهي الطرف الآخر (remote hangup / decline)
+        try { emitCallEndedEvent('remote'); } catch (_) { /* noop */ }
         onClose?.();
       }
     });
@@ -383,7 +385,48 @@ export default function CallExperience({
     if (mode !== 'video') return;
     const n = !cameraEnabled; setCameraEnabled(n); svcToggleCamera(n);
   };
-  const handleHangup = () => { svcEndCall('hangup'); onClose?.(); };
+
+  // ✅ v88.56 (2026-07-24) — CALL RECORDS IN CHAT
+  // عند إنهاء المكالمة نُطلق حدث "yamshat:call-ended" بتفاصيل كافية لكي
+  // يستمع له Chat.jsx فيُدرج فقاعة سجل المكالمة داخل الدردشة تلقائيّاً.
+  // - إذا كانت المدة > 0 نحسبها كـ answered
+  // - إذا كانت المدة = 0 وكنّا المتصلين (caller) → canceled / no_answer
+  // - إذا كانت المدة = 0 وكنّا المتلقّين (callee)     → missed
+  const emitCallEndedEvent = (reason = 'hangup') => {
+    try {
+      const startedAt = callState?.startedAt || 0;
+      const duration = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+      const isCaller = !incomingInvite;
+      const direction = isCaller ? 'outgoing' : 'incoming';
+      let status;
+      if (duration > 0) status = 'answered';
+      else if (isCaller) status = 'canceled';
+      else status = 'missed';
+      // بعض حالات الرفض/عدم الرد تُمرَّر من reason
+      if (reason === 'declined') status = 'declined';
+      if (reason === 'missed') status = 'missed';
+
+      const now = new Date();
+      const detail = {
+        peer: callTarget,
+        mode: callState?.mode || mode,           // 'voice' | 'video'
+        direction,                                // 'outgoing' | 'incoming'
+        status,                                   // 'answered' | 'missed' | 'canceled' | 'declined'
+        duration_sec: duration,
+        startedAt: startedAt || Date.now(),
+        endedAt: Date.now(),
+        time: now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        reason,
+      };
+      window.dispatchEvent(new CustomEvent('yamshat:call-ended', { detail }));
+    } catch (_) { /* noop */ }
+  };
+
+  const handleHangup = () => {
+    emitCallEndedEvent('hangup');
+    svcEndCall('hangup');
+    onClose?.();
+  };
   const reconnect = () => {
     setReconnectCount((p) => p + 1);
     setStreamError(null);

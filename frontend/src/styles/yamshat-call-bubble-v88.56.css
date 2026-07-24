@@ -1,0 +1,39 @@
+/* ============================================================================
+ * YAMSHAT v88.56 — CALL RECORDS IN CHAT (2026-07-24)
+ * ----------------------------------------------------------------------------
+ * تنسيقات فقاعة سجل المكالمة داخل الدردشة (مطابقة للصورة المرجعية):
+ *  - مكالمة صادرة (أخضر)
+ *  - مكالمة واردة (بنفسجي/رمادي هادئ)
+ *  - مكالمة فائتة صوت/فيديو (أحمر)
+ *
+ * تُخفي الميتا الافتراضية لفقاعة MessageBubble عندما تكون الرسالة من نوع call
+ * لأن CallBubble يحتوي على وقته الخاص ولا نريد تكرار العرض.
+ * ========================================================================= */
+
+html body .yam-bubble.is-call-only {
+  background: transparent !important;
+  padding: 2px !important;
+  border: none !important;
+  box-shadow: none !important;
+  min-width: 240px;
+  max-width: 340px;
+}
+
+html body .yam-bubble.is-call-only .bubble-meta,
+html body .yam-bubble.is-call-only .bubble-text,
+html body .yam-bubble.is-call-only .bubble-forwarded-label,
+html body .yam-bubble.is-call-only .yam-bubble-more {
+  display: none !important;
+}
+
+html body .yam-bubble.is-call-only .yam-call-bubble {
+  width: 100%;
+}
+
+/* على الشاشات الصغيرة نمنح الفقاعة عرضاً كافياً */
+@media (max-width: 480px) {
+  html body .yam-bubble.is-call-only {
+    min-width: 220px;
+    max-width: 300px;
+  }
+}

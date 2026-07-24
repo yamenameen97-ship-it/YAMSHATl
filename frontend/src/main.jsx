@@ -308,6 +308,7 @@ import './styles/yamshat-fixes-v86.6-DASHBOARD-USERS-SCROLL.css';
 //   • تحييد .audio-waveform الافتراضية داخل الـ pill
 import './styles/yamshat-fixes-v87.6-CHAT-MEDIA-VOICE-WHATSAPP.css';
 
+import './styles/yamshat-call-bubble-v88.56.css';
 // v87.9 — Buttons & Menus Global Polish
 // تحسين شامل لكل الأزرار والقوائم في جميع الصفحات (ظلال، انتقالات، تركيز واضح،
 // تنظيم مجموعات الأزرار، شكل احترافي لكل من BottomNav / Tabs / Dropdowns / Chips)

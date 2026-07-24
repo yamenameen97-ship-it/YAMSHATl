@@ -512,6 +512,136 @@ export default function Chat() {
     };
   }, [applyMessagePatch, peer, reconcileOptimisticMessage, currentUser]);
 
+  // ✅ v88.56 (2026-07-24) — CALL RECORDS IN CHAT
+  // يستمع لحدث إنهاء المكالمة القادم من CallExperience ثمّ يدرج رسالة من نوع 'call' داخل الدردشة
+  // يظهر فيها CallBubble تلقائيّاً (مكالمة صادرة / واردة / فائتة — صوت / فيديو) تماماً كما في الصورة المرجعية.
+  // — يُحفظ السجلّ محليّاً في localStorage تحت مفتاح خاص بالطرف (peer) لكي يظل مرئيّاً بعد إعادة فتح الدردشة.
+  useEffect(() => {
+    if (!peer) return undefined;
+
+    const CALL_LOG_KEY = (peerName) => `yamshat.callLog.${peerName}`;
+
+    const persistCallRecord = (peerName, record) => {
+      try {
+        const raw = localStorage.getItem(CALL_LOG_KEY(peerName));
+        const arr = raw ? JSON.parse(raw) : [];
+        arr.push(record);
+        // احتفظ بآخر 200 سجلّ فقط لتجنّب تضخّم التخزين
+        const trimmed = arr.slice(-200);
+        localStorage.setItem(CALL_LOG_KEY(peerName), JSON.stringify(trimmed));
+      } catch (_) { /* noop */ }
+    };
+
+    const handleCallEnded = (event) => {
+      const detail = event?.detail || {};
+      const peerName = detail.peer || peer;
+      if (!peerName || peerName !== peer) return;
+
+      const isOutgoing = detail.direction === 'outgoing';
+      const now = new Date();
+      const callId = `call-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`;
+
+      const callMsg = normalizeChatMessage({
+        id: callId,
+        client_id: callId,
+        sender: isOutgoing ? currentUser : peerName,
+        receiver: isOutgoing ? peerName : currentUser,
+        content: '',
+        message: '',
+        type: 'call',
+        created_at: now.toISOString(),
+        time: detail.time || now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        // حمولة المكالمة للـ CallBubble
+        call: {
+          id: callId,
+          mode: detail.mode || 'voice',                 // 'voice' | 'video'
+          direction: detail.direction || 'outgoing',    // 'outgoing' | 'incoming'
+          status: detail.status || 'answered',          // answered/missed/canceled/declined
+          duration_sec: Number(detail.duration_sec || 0),
+          startedAt: detail.startedAt || null,
+          endedAt: detail.endedAt || Date.now(),
+          time: detail.time || now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        },
+        isMe: isOutgoing,
+        status: MESSAGE_LIFECYCLE.SENT,
+      });
+
+      // أدرج السجلّ فوريّاً داخل المحادثة المفتوحة
+      applyIncomingMessage(callMsg, currentUser, { peer: peerName, skipUnreadIncrement: true, limit: 250 });
+      // وحدّث ملخّص الخيط (last_message)
+      const summaryText = (() => {
+        const isVideo = detail.mode === 'video';
+        const missed = ['missed', 'canceled', 'declined'].includes(detail.status);
+        if (missed) return isVideo ? '📹 مكالمة فيديو فائتة' : '📞 مكالمة فائتة';
+        if (isOutgoing) return isVideo ? '📹 مكالمة فيديو صادرة' : '📞 مكالمة صادرة';
+        return isVideo ? '📹 مكالمة فيديو واردة' : '📞 مكالمة واردة';
+      })();
+      try {
+        hydrateThreads([
+          {
+            username: peerName,
+            last_message: summaryText,
+            last_message_type: 'call',
+            last_message_at: callMsg.created_at,
+          },
+        ]);
+      } catch (_) { /* noop */ }
+
+      // احفظ السجلّ محليّاً حتّى يبقى بعد إعادة الفتح
+      persistCallRecord(peerName, {
+        id: callId,
+        sender: callMsg.sender,
+        receiver: callMsg.receiver,
+        type: 'call',
+        created_at: callMsg.created_at,
+        time: callMsg.time,
+        call: callMsg.call,
+        isMe: isOutgoing,
+      });
+    };
+
+    // إعادة الاتصال من فقاعة سجلّ المكالمة
+    const handleCallback = (event) => {
+      const msg = event?.detail || {};
+      const isVideo = msg?.call?.mode === 'video';
+      setCallMode(isVideo ? 'video' : 'voice');
+    };
+
+    window.addEventListener('yamshat:call-ended', handleCallEnded);
+    window.addEventListener('yamshat:callback', handleCallback);
+
+    // عند فتح الدردشة — أعد حقن السجلّات المحفوظة محليّاً
+    try {
+      const raw = localStorage.getItem(CALL_LOG_KEY(peer));
+      if (raw) {
+        const arr = JSON.parse(raw) || [];
+        arr.forEach((rec) => {
+          const msg = normalizeChatMessage({
+            id: rec.id,
+            client_id: rec.id,
+            sender: rec.sender,
+            receiver: rec.receiver,
+            content: '',
+            message: '',
+            type: 'call',
+            created_at: rec.created_at,
+            time: rec.time,
+            call: rec.call,
+            isMe: rec.isMe,
+            status: MESSAGE_LIFECYCLE.SENT,
+          });
+          applyIncomingMessage(msg, currentUser, { peer, skipUnreadIncrement: true, limit: 250 });
+        });
+      }
+    } catch (_) { /* noop */ }
+
+    return () => {
+      window.removeEventListener('yamshat:call-ended', handleCallEnded);
+      window.removeEventListener('yamshat:callback', handleCallback);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peer, currentUser]);
+
   const handleSend = async (payload) => {
     const text = payload?.text?.trim() || '';
     const mediaUrl = payload?.media_url || '';

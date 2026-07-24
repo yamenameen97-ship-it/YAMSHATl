@@ -811,18 +811,76 @@ def audit_reels_storage(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """يُرجع إحصائية سريعة: كم ريلز محفوظ سحابياً وكم محلياً."""
+    """يُرجع إحصائية سريعة + تشخيصاً تفصيلياً (v88.57): كم ريلز سحابي، كم محلي،
+    وأي مفاتيح Cloudinary مفقودة تحديداً، وأمثلة على روابط الريلز الأخيرة.
+    """
     if not getattr(current_user, 'role', '') in ('admin', 'superadmin'):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='admin only')
+
     total = db.query(Reel).filter(Reel.is_deleted.is_(False)).count()
     cloud = db.query(Reel).filter(
         Reel.is_deleted.is_(False),
         Reel.storage_type == 'cloudinary',
     ).count()
+
+    # v88.57 — تشخيص تفصيلي لمفاتيح Cloudinary
+    import os as _os
+    _missing = []
+    for _key in ('CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'):
+        if not (_os.getenv(_key) or '').strip():
+            _missing.append(_key)
+
+    # v88.57 — عيّنة من آخر 5 ريلز لمعاينة رابط التخزين
+    recent_samples = []
+    try:
+        for r in db.query(Reel).filter(Reel.is_deleted.is_(False)).order_by(Reel.id.desc()).limit(5).all():
+            url = str(getattr(r, 'video_url', '') or '')
+            recent_samples.append({
+                'id': r.id,
+                'storage_type': getattr(r, 'storage_type', 'local'),
+                'has_public_id': bool(getattr(r, 'cloudinary_video_public_id', None) or getattr(r, 'cloudinary_public_id', None)),
+                'url_prefix': url[:60] + ('…' if len(url) > 60 else ''),
+                'is_cloudinary_url': 'res.cloudinary.com' in url,
+            })
+    except Exception:
+        pass
+
     return {
         'ok': True,
         'total_reels': total,
         'cloudinary': cloud,
         'local_or_persistent': total - cloud,
         'cloudinary_configured': _cloud_is_configured(),
+        # v88.57 — الحقول التشخيصية الجديدة
+        'cloudinary_missing_env_keys': _missing,
+        'cloudinary_cloud_name': (_os.getenv('CLOUDINARY_CLOUD_NAME') or '').strip() or None,
+        'cloudinary_folder': (_os.getenv('CLOUDINARY_FOLDER') or 'yamshat').strip(),
+        'recent_samples': recent_samples,
+        'diagnosis': (
+            'Cloudinary مربوط ويعمل ✅' if not _missing else
+            f"⚠️ مفاتيح Cloudinary الناقصة في Render env: {', '.join(_missing)} — أضفها ثم أعد نشر الخدمة."
+        ),
+    }
+
+
+# v88.57 — endpoint تشخيصي عام (بدون بيانات ريلز) مفيد قبل تشغيل storage-audit
+@router.get('/admin/cloud-health')
+def reels_cloud_health(current_user: User = Depends(get_current_user)):
+    """فحص سريع لصحة ربط Cloudinary فقط، دون لمس قاعدة البيانات."""
+    if not getattr(current_user, 'role', '') in ('admin', 'superadmin'):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='admin only')
+    import os as _os
+    keys = ('CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET')
+    present = {k: bool((_os.getenv(k) or '').strip()) for k in keys}
+    missing = [k for k, v in present.items() if not v]
+    return {
+        'ok': not missing,
+        'cloudinary_configured': _cloud_is_configured(),
+        'env_present': present,
+        'missing_keys': missing,
+        'folder': (_os.getenv('CLOUDINARY_FOLDER') or 'yamshat').strip(),
+        'hint': (
+            'كل شيء تمام — يمكنك رفع ريلز الآن.' if not missing else
+            'أضف المفاتيح الناقصة في Render Dashboard → Environment ثم أعد النشر.'
+        ),
     }

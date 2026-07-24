@@ -164,6 +164,9 @@
         "src/components/chat/PressToRecordMic.jsx",
         "src/components/stories/UserPickerModal.jsx",
         "src/components/feed/ImageViewerModal.jsx",
+        "src/components/admin/TrendingDashboardCard.jsx",
+        "src/components/notifications/AdminAlertNotificationCard.jsx",
+        "src/components/notifications/RestrictionNotificationCard.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

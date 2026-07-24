@@ -188,11 +188,14 @@ export default function Reels() {
       items.push({
         id,
         reelId: reel.id,
-        // مكان أفقي عشوائي حول العمود الأيمن (فوق أزرار التفاعل)
-        left: 8 + Math.random() * 24,
-        drift: (Math.random() * 60 - 30).toFixed(1),
-        size: 26 + Math.floor(Math.random() * 16),
-        delay: Math.floor(Math.random() * 140),
+        // ✅ v88.55: توسيع منطقة الانتشار الأفقي حتى تكون القلوب الكبيرة موزعة ومرئية
+        left: 6 + Math.random() * 34,
+        // ✅ v88.55: تعزيز الانحراف الأفقي ليكون واضحاً مع الحركة البطيئة
+        drift: (Math.random() * 90 - 45).toFixed(1),
+        // ✅ v88.55: زيادة الحجم بشكل كبير — من 26-42px إلى 64-96px ليلاحظها المستخدم بوضوح على الجوال
+        size: 64 + Math.floor(Math.random() * 32),
+        // ✅ v88.55: تأخير أطول قليلاً بين القلوب المتزامنة لإحساس أكثر طبيعية مع البطء الجديد
+        delay: Math.floor(Math.random() * 220),
       });
     }
     setFloatingHearts((prev) => {
@@ -200,10 +203,11 @@ export default function Reels() {
       return merged.length > 80 ? merged.slice(merged.length - 80) : merged;
     });
     const ids = items.map((it) => it.id);
+    // ✅ v88.55: زيادة زمن التنظيف ليتوافق مع المدة الجديدة (5.5s + هامش)
     setTimeout(() => {
       if (!isMountedRef.current) return;
       setFloatingHearts((prev) => prev.filter((it) => !ids.includes(it.id)));
-    }, 3200);
+    }, 6500);
   }, []);
 
   // ✅ v88.43: بث القلوب لصاحب الريل والمشاهدين الآخرين عبر Socket.IO لحظياً.
@@ -1741,15 +1745,16 @@ export default function Reels() {
             touch-action: manipulation;
           }
 
-          /* ✅ v88.43: قلوب طائرة شفافة وردية بطيئة — تبدأ من أسفل أزرار التفاعل وتصعد للأعلى */
+          /* ✅ v88.55: قلوب طائرة كبيرة بطيئة ملحوظة على الجوال — تبدأ من أسفل أزرار التفاعل وتصعد للأعلى ببطء واضح */
           .ym-reels-hearts-layer {
             position: absolute;
             inset-inline-end: 0;
             /* أسفل من تحت أزرار التفاعل — يتوافق مع .ym-reels-actions bottom:200px */
             bottom: 90px;
-            width: min(320px, 55%);
-            height: 60vh;
-            max-height: 520px;
+            /* ✅ v88.55: توسيع منطقة القلوب لتستوعب الحجم الجديد الكبير على الجوال */
+            width: min(420px, 78%);
+            height: 70vh;
+            max-height: 620px;
             pointer-events: none;
             overflow: visible;
             z-index: 8; /* فوق أزرار التفاعل (5) وطبقة الالتقاط (3) */
@@ -1758,23 +1763,39 @@ export default function Reels() {
             position: absolute;
             bottom: 0;
             color: #ff8fd0;
+            /* ✅ v88.55: توهج أقوى للقلوب الكبيرة ليصبح مرئياً وجذاباً */
             text-shadow:
-              0 0 6px rgba(255, 143, 208, 0.55),
-              0 0 14px rgba(255, 105, 180, 0.35);
+              0 0 10px rgba(255, 143, 208, 0.75),
+              0 0 22px rgba(255, 105, 180, 0.55),
+              0 0 34px rgba(255, 105, 180, 0.28);
             opacity: 0;
             transform: translateY(0) translateX(0) scale(.6);
-            animation: ym-reel-heart-rise 2.8s cubic-bezier(.22,.61,.36,1) forwards;
+            /* ✅ v88.55: زيادة مدة الحركة من 2.8s → 5.5s ليلاحظها المستخدم عند النقر المزدوج */
+            animation: ym-reel-heart-rise 5.5s cubic-bezier(.22,.61,.36,1) forwards;
             will-change: transform, opacity;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,.25));
+            filter: drop-shadow(0 3px 8px rgba(0,0,0,.35));
             user-select: none;
             pointer-events: none;
+            /* منع أي وراثة تصغّر الحجم */
+            line-height: 1;
           }
+          /* ✅ v88.55: حركة صعود بطيئة + ارتفاع أقل + مراحل ثبات ليمكث القلب مرئياً وقتاً أطول */
           @keyframes ym-reel-heart-rise {
-            0%   { opacity: 0;   transform: translateY(20px)  translateX(0)              scale(.6) rotate(-6deg); }
-            12%  { opacity: .9;  transform: translateY(-20px) translateX(calc(var(--drift, 0px) * .2))  scale(1)    rotate(2deg); }
-            45%  { opacity: .75; transform: translateY(-180px) translateX(calc(var(--drift, 0px) * .55)) scale(1.05) rotate(-3deg); }
-            80%  { opacity: .35; transform: translateY(-320px) translateX(var(--drift, 0px)) scale(1.1)  rotate(4deg); }
-            100% { opacity: 0;   transform: translateY(-400px) translateX(var(--drift, 0px)) scale(1.15) rotate(0deg); }
+            0%   { opacity: 0;   transform: translateY(20px)  translateX(0)                                       scale(.65) rotate(-6deg); }
+            10%  { opacity: 1;   transform: translateY(-10px) translateX(calc(var(--drift, 0px) * .1))            scale(1)    rotate(2deg); }
+            30%  { opacity: 1;   transform: translateY(-70px) translateX(calc(var(--drift, 0px) * .3))            scale(1.08) rotate(-2deg); }
+            55%  { opacity: .9;  transform: translateY(-140px) translateX(calc(var(--drift, 0px) * .55))          scale(1.12) rotate(3deg); }
+            80%  { opacity: .55; transform: translateY(-220px) translateX(calc(var(--drift, 0px) * .85))          scale(1.15) rotate(-3deg); }
+            100% { opacity: 0;   transform: translateY(-300px) translateX(var(--drift, 0px))                     scale(1.2)  rotate(0deg); }
+          }
+          /* ✅ v88.55: على شاشات الجوال الصغيرة (< 640px) نضاعف الحجم قليلاً للتأكد من الوضوح */
+          @media (max-width: 640px) {
+            .ym-reels-flying-heart {
+              /* الحد الأدنى المضمون على الجوال حتى لو أعطاه JS حجماً صغيراً */
+              min-width: 1em;
+              /* إبطاء إضافي على الجوال ليتماشى مع النقر السريع بالإصبع */
+              animation-duration: 6s;
+            }
           }
           .ym-action-group {
             display: flex;

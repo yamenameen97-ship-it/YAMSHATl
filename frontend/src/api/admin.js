@@ -12,6 +12,10 @@ export const updateAdminUser = (userId, data) => API.patch(`/admin/users/${userI
 export const banAdminUser = (userId, restore = false) => API.post(`/admin/users/${userId}/ban`, null, { params: { restore } });
 export const toggleAdminShadowBan = (userId, enabled = true) => API.post(`/admin/users/${userId}/shadow-ban`, null, { params: { enabled } });
 export const deleteAdminUser = (userId) => API.delete(`/admin/users/${userId}`);
+// v88.50 — Subscribers insights dashboard (top engaged / followed / active / dormant / used)
+export const getAdminUsersInsights = (params = {}) => API.get('/admin/users/insights', { params, cache: true, cacheTtlMs: 20_000 });
+export const getAdminUserPosts = (userId, limit = 20) => API.get(`/admin/users/${userId}/posts`, { params: { limit }, cache: false, forceRefresh: true });
+export const adminSearchAndBan = (query, reason = '') => API.post('/admin/users/search-and-ban', { query, reason });
 export const getAdminPosts = (params) => API.get('/admin/posts', { params });
 export const createAdminPost = (data) => API.post('/admin/posts', data);
 export const updateAdminPost = (postId, data) => API.put(`/admin/posts/${postId}`, data);
@@ -21,6 +25,11 @@ export const getAdminRbac = () => API.get('/admin/rbac', { cache: true, cacheTtl
 export const getAdminNotifications = (limit = 40) => API.get('/admin/notifications', { params: { limit }, cache: true, cacheTtlMs: 10_000 });
 export const markAdminNotificationRead = (notificationId) => API.post(`/admin/notifications/${notificationId}/read`);
 export const broadcastAdminNotification = (data) => API.post('/admin/notifications/broadcast', data);
+// v88.54 — تنبيه إداري باسم "ادارة النظام" لشخص محدد أو للكل + رد المستخدم
+// data: { body, target: 'all'|'user', user_id?, username?, target_role? }
+export const sendAdminAlert = (data) => API.post('/admin/notifications/admin-alert', data);
+export const replyToAdminAlert = (notificationId, message) =>
+  API.post(`/admin/notifications/${encodeURIComponent(notificationId)}/admin-alert-reply`, { message });
 // ⛔ تم حذف جميع دوال إدارة غرف البث (live_room) — نظام البث ملغى نهائياً.
 // إذا احتاجت أي مكوّنة قديمة لهذه الدوال ترجع بمصفوفات/كائنات فارغة تجنّباً للأخطاء.
 export const getAdminLiveOverview = () => Promise.resolve({ data: { rooms: [], total: 0 } });
@@ -82,6 +91,34 @@ export const getAdminReelComments = (reelId, params) => API.get(`/admin/reels/${
 export const deleteAdminReelComment = (commentId) => API.delete(`/admin/reels/comments/${commentId}`);
 export const toggleHideAdminReelComment = (commentId, hidden = true) => API.post(`/admin/reels/comments/${commentId}/hide`, { hidden });
 export const getAdminReelReports = (reelId, params) => API.get(`/admin/reels/${reelId}/reports`, { params, cache: false, forceRefresh: true });
+
+// ============================================================
+// v88.48 — Stories Management (Admin Panel)
+// ============================================================
+// GET    /admin/stories                       → قائمة كل الستوريات لجميع المستخدمين
+// GET    /admin/stories/summary               → إحصائيات عامة
+// GET    /admin/stories/{id}                  → تفاصيل ستوري + المشاهدات والردود والبلاغات
+// DELETE /admin/stories/{id}?reason=...       → حذف ستوري بواسطة المدير
+// POST   /admin/stories/{id}/highlight        → تفعيل/إلغاء Highlight
+// POST   /admin/stories/{id}/warn             → إرسال تحذير لصاحب الستوري
+// POST   /admin/stories/{id}/ban-user         → حظر صاحب الستوري
+// GET    /admin/stories/{id}/reports          → البلاغات على ستوري محدد
+export const getAdminStories = (params) =>
+  API.get('/admin/stories', { params, cache: false, forceRefresh: true });
+export const getAdminStoriesSummary = () =>
+  API.get('/admin/stories/summary', { cache: false, forceRefresh: true });
+export const getAdminStoryDetail = (storyId) =>
+  API.get(`/admin/stories/${storyId}`, { cache: false, forceRefresh: true });
+export const deleteAdminStory = (storyId, reason = '') =>
+  API.delete(`/admin/stories/${storyId}`, { params: { reason } });
+export const toggleAdminStoryHighlight = (storyId, title = '') =>
+  API.post(`/admin/stories/${storyId}/highlight`, title ? { title } : {});
+export const warnAdminStoryOwner = (storyId, reason = '') =>
+  API.post(`/admin/stories/${storyId}/warn`, { reason });
+export const banAdminStoryOwner = (storyId, reason = '') =>
+  API.post(`/admin/stories/${storyId}/ban-user`, { reason });
+export const getAdminStoryReports = (storyId, params) =>
+  API.get(`/admin/stories/${storyId}/reports`, { params, cache: false, forceRefresh: true });
 
 // ============================================================
 // v88.46 — Admin Chat & Group Super-Control API (Stage 2)

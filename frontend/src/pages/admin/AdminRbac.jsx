@@ -114,14 +114,14 @@ export default function AdminRbac() {
         <Card className="hero-card">
           <span className="badge">RBAC</span>
           <h2>مصفوفة الصلاحيات والأدوار</h2>
-          <p className="muted">تم ربط الصفحة بواجهة RBAC الحقيقية وإضافة Assign / Remove Role مباشرة على المستخدمين مع تحديث حي فور التنفيذ.</p>
+          <p className="muted">تم ربط الصفحة بواجهة الصلاحيات الحقيقية وإضافة تعيين / إزالة الدور مباشرة على المستخدمين مع تحديث حي فور التنفيذ.</p>
           <div className="action-row wide">
             <Button loading={loading} disabled={loading} onClick={loadRbac}>تحديث الصلاحيات</Button>
             <Button variant="secondary" loading={userLoading} disabled={userLoading} onClick={loadUsers}>تحديث المستخدمين</Button>
           </div>
         </Card>
         <Card>
-          <span className="badge">Current Role</span>
+          <span className="badge">الدور الحالي</span>
           <h2>{rbac.current_role || '—'}</h2>
           <p className="muted">الصلاحيات الحالية للحساب المعتمد داخل لوحة التحكم.</p>
         </Card>
@@ -129,7 +129,7 @@ export default function AdminRbac() {
 
       <section className="two-column-grid">
         <Card>
-          <div className="card-head"><h3 className="section-title">Current Permissions</h3></div>
+          <div className="card-head"><h3 className="section-title">الصلاحيات الحالية</h3></div>
           {(rbac.current_permissions || []).length ? (
             <div className="badge-wrap">
               {(rbac.current_permissions || []).map((permission) => <span key={permission} className="glass-chip">{permission}</span>)}
@@ -158,7 +158,7 @@ export default function AdminRbac() {
       </section>
 
       <Card>
-        <div className="card-head"><h3 className="section-title">Roles & Permissions Matrix</h3></div>
+        <div className="card-head"><h3 className="section-title">مصفوفة الأدوار والصلاحيات</h3></div>
         {(rbac.roles || []).length ? (
           <div className="rbac-grid role-grid">
             {(rbac.roles || []).map((role) => (
@@ -178,7 +178,7 @@ export default function AdminRbac() {
       <Card>
         <div className="card-head split">
           <div>
-            <h3 className="section-title">Assign / Remove Role</h3>
+            <h3 className="section-title">تعيين / إزالة الدور</h3>
             <p className="muted no-margin">تعديل مباشر لدور المستخدم مع تحديث الصلاحيات فوراً بعد نجاح العملية.</p>
           </div>
           <Input label="بحث مستخدم" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="اسم المستخدم أو البريد" />
@@ -198,8 +198,8 @@ export default function AdminRbac() {
                   <th>المستخدم</th>
                   <th>الدور الحالي</th>
                   <th>صلاحيات الدور</th>
-                  <th>Assign Role</th>
-                  <th>Remove Role</th>
+                  <th>تعيين دور</th>
+                  <th>إزالة دور</th>
                 </tr>
               </thead>
               <tbody>

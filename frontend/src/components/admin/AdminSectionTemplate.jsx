@@ -123,7 +123,7 @@ export default function AdminSectionTemplate({
           <Card className="admin-mini-list-card">
             <div className="card-head split">
               <h3 className="section-title">بطاقات المتابعة</h3>
-              <span className="badge">Live</span>
+              <span className="badge">مباشر</span>
             </div>
             <div className="queue-grid compact-cards">
               {asideItems.length ? asideItems.map((item, index) => (
@@ -139,7 +139,7 @@ export default function AdminSectionTemplate({
           <Card className="admin-mini-list-card">
             <div className="card-head split">
               <h3 className="section-title">{timelineTitle}</h3>
-              <span className="badge">Feed</span>
+              <span className="badge">الخلاصة</span>
             </div>
             <div className="admin-activity-list">
               {timelineItems.length ? timelineItems.map((item, index) => (

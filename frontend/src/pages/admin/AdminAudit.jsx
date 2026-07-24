@@ -145,7 +145,7 @@ export default function AdminAudit() {
         <Card style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ color: '#60a5fa', fontSize: 13, marginBottom: 8 }}>Admin Activity Log • Tracking • Audit System</div>
+              <div style={{ color: '#60a5fa', fontSize: 13, marginBottom: 8 }}>سجل نشاط المدير • التتبع • نظام التدقيق</div>
               <h2 style={{ margin: 0, color: '#f8fafc' }}>سجل نشاط الأدمن</h2>
               <p style={{ margin: '10px 0 0', color: '#94a3b8', maxWidth: 760 }}>
                 شاشة مخصصة لتتبع كل حركة إدارية مع فلترة حسب النطاق والخطورة، ومناسبة للمراجعة السريعة والتدقيق الأمني.
@@ -209,7 +209,7 @@ export default function AdminAudit() {
 
           <Card style={{ padding: 18, display: 'grid', gap: 16 }}>
             <div>
-              <h3 style={{ marginTop: 0, color: '#f8fafc' }}>Tracking summary</h3>
+              <h3 style={{ marginTop: 0, color: '#f8fafc' }}>ملخص التتبع</h3>
               <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>تفصيل النشاط حسب كل نطاق إداري.</div>
             </div>
             {breakdown.map(([scope, count]) => (
@@ -224,12 +224,12 @@ export default function AdminAudit() {
               </div>
             ))}
             <div style={{ borderRadius: 18, padding: 16, background: 'rgba(15,23,42,0.78)', border: '1px solid rgba(148,163,184,0.12)' }}>
-              <h4 style={{ marginTop: 0, color: '#f8fafc' }}>Audit system notes</h4>
+              <h4 style={{ marginTop: 0, color: '#f8fafc' }}>ملاحظات نظام التدقيق</h4>
               <ul style={{ margin: 0, paddingInlineStart: 18, color: '#cbd5e1', lineHeight: 1.9, fontSize: 14 }}>
                 <li>فلترة حسب مستوى الخطورة والنطاق.</li>
-                <li>استقبال مباشر عبر socket لسجلات audit الجديدة.</li>
+                <li>استقبال مباشر عبر الاتصال المباشر لسجلات التدقيق الجديدة.</li>
                 <li>مناسب لتتبع الإجراءات الحرجة أثناء التشغيل المباشر.</li>
-                <li>قابل للربط مع التصدير وSIEM لاحقًا بدون تغيير الواجهة.</li>
+                <li>قابل للربط مع التصدير وأنظمة إدارة المعلومات الأمنية لاحقًا بدون تغيير الواجهة.</li>
               </ul>
             </div>
           </Card>

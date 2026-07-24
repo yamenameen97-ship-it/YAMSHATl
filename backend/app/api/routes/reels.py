@@ -257,6 +257,13 @@ def get_reels_feed(
 
 @router.post('', status_code=status.HTTP_201_CREATED)
 async def create_reel(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # v88.53: منع رفع الريلز إذا كان المستخدم محظوراً (reels_ban)
+    from app.services.restriction_service import is_user_restricted
+    if is_user_restricted(db, current_user.id, 'reels_ban'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='حسابك محظور من رفع الريلز من قبل الإدارة. راجع الإشعارات لإرسال طلب مراجعة.',
+        )
     content_type = str(request.headers.get('content-type') or '').lower()
     caption = ''
     category = 'general'

@@ -10,6 +10,9 @@ import {
   getAdminBanHistory,
   getAdminUser,
   getAdminUsers,
+  getAdminUsersInsights,
+  getAdminUserPosts,
+  adminSearchAndBan,
   toggleAdminShadowBan,
   updateAdminUser,
 } from '../../api/admin.js';
@@ -122,6 +125,15 @@ export default function AdminUsers() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [banHistory, setBanHistory] = useState([]);
   const [busyAction, setBusyAction] = useState('');
+  // v88.50 — subscribers insights + user posts
+  const [insights, setInsights] = useState({ top_engaged: [], top_followed: [], most_active: [], most_used: [], dormant_users: [] });
+  const [insightsTab, setInsightsTab] = useState('top_engaged');
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [userPosts, setUserPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [quickBanQuery, setQuickBanQuery] = useState('');
+  const [quickBanReason, setQuickBanReason] = useState('');
+  const [quickBanBusy, setQuickBanBusy] = useState(false);
 
   const mergeUser = useCallback((userId, patch) => {
     setUsers((prev) => prev.map((item) => item.id === userId ? { ...item, ...patch } : item));
@@ -167,6 +179,69 @@ export default function AdminUsers() {
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
+  // v88.50 — Load subscribers insights (top engaged / followed / active / dormant / used)
+  const loadInsights = useCallback(async () => {
+    try {
+      setInsightsLoading(true);
+      const { data } = await getAdminUsersInsights({ limit: 10, dormant_days: 30 });
+      setInsights({
+        top_engaged: Array.isArray(data?.top_engaged) ? data.top_engaged : [],
+        top_followed: Array.isArray(data?.top_followed) ? data.top_followed : [],
+        most_active: Array.isArray(data?.most_active) ? data.most_active : [],
+        most_used: Array.isArray(data?.most_used) ? data.most_used : [],
+        dormant_users: Array.isArray(data?.dormant_users) ? data.dormant_users : [],
+      });
+    } catch (error) {
+      pushToast({ type: 'warning', title: 'تعذر تحميل تحليلات المشتركين', description: error?.response?.data?.detail || 'لا يمكن جلب المؤشرات الآن.' });
+    } finally {
+      setInsightsLoading(false);
+    }
+  }, [pushToast]);
+
+  useEffect(() => { loadInsights(); }, [loadInsights]);
+
+  // v88.50 — Load a specific user's posts when selection changes
+  useEffect(() => {
+    if (!selectedId) { setUserPosts([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        setPostsLoading(true);
+        const { data } = await getAdminUserPosts(selectedId, 20);
+        if (!cancelled) setUserPosts(Array.isArray(data?.items) ? data.items : []);
+      } catch {
+        if (!cancelled) setUserPosts([]);
+      } finally {
+        if (!cancelled) setPostsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedId]);
+
+  // v88.50 — Quick search-and-ban action
+  const handleQuickBan = useCallback(async () => {
+    const q = quickBanQuery.trim();
+    if (!q) {
+      pushToast({ type: 'warning', title: 'أدخل اسم المستخدم أو البريد', description: 'لا يمكن البحث بحقل فارغ.' });
+      return;
+    }
+    try {
+      setQuickBanBusy(true);
+      const { data } = await adminSearchAndBan(q, quickBanReason);
+      if (data?.ambiguous) {
+        pushToast({ type: 'info', title: `${data.matches?.length || 0} نتائج مطابقة`, description: 'اختر المستخدم المحدد من الجدول لتنفيذ الحظر.' });
+      } else if (data?.banned) {
+        pushToast({ type: 'success', title: 'تم حظر المستخدم', description: `${data.banned.username} • ${data.banned.email}` });
+        setQuickBanQuery(''); setQuickBanReason('');
+        loadUsers();
+      }
+    } catch (error) {
+      pushToast({ type: 'warning', title: 'تعذر تنفيذ الحظر', description: error?.response?.data?.detail || 'تأكد من صحة البحث.' });
+    } finally {
+      setQuickBanBusy(false);
+    }
+  }, [quickBanQuery, quickBanReason, pushToast, loadUsers]);
 
   useEffect(() => {
     const refresh = () => loadUsers();
@@ -379,7 +454,7 @@ export default function AdminUsers() {
         <Card style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ color: '#60a5fa', fontSize: 13, marginBottom: 8 }}>User actions • Ban system • Content removal • Appeal-ready workflows</div>
+              <div style={{ color: '#60a5fa', fontSize: 13, marginBottom: 8 }}>إجراءات المستخدم • نظام الحظر • حذف المحتوى • تدفقات الطعون</div>
               <h2 style={{ margin: 0, color: '#f8fafc' }}>إدارة المستخدمين والإجراءات</h2>
               <p style={{ margin: '10px 0 0', color: '#94a3b8', maxWidth: 820 }}>
                 تم استكمال شاشة المستخدمين لتشمل إجراءات سريعة على الحساب، Shadow Ban، الحظر والاسترجاع، إزالة المحتوى، وسجل تدقيق مرتبط بكل مستخدم بدل شاشة ثابتة ناقصة.
@@ -387,7 +462,7 @@ export default function AdminUsers() {
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <Button variant="secondary" onClick={loadUsers} loading={loading}>تحديث</Button>
-              <Button onClick={exportUsers}>تصدير CSV</Button>
+              <Button onClick={exportUsers}>تصدير ملف CSV</Button>
             </div>
           </div>
         </Card>
@@ -411,7 +486,7 @@ export default function AdminUsers() {
         <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.55fr) minmax(340px, 0.9fr)', gap: 18 }}>
           <Card style={{ padding: 18, minWidth: 0 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 16 }}>
-              <Input label="بحث" value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} placeholder="الاسم / المعرف / الإيميل / IP" />
+              <Input label="بحث" value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} placeholder="الاسم / المعرف / البريد الإلكتروني / عنوان الإنترنت" />
               <label className="field select-field"><span className="field-label">الحالة</span><select className="input" value={filters.status} onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}><option value="all">الكل</option><option value="active">نشط</option><option value="flagged">مراقب</option><option value="frozen">مجمّد</option><option value="banned">محظور</option></select></label>
               <label className="field select-field"><span className="field-label">الدور</span><select className="input" value={filters.role} onChange={(event) => setFilters((prev) => ({ ...prev, role: event.target.value }))}><option value="all">الكل</option>{Array.from(new Set(users.map((item) => item.role))).map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
               <label className="field select-field"><span className="field-label">المخاطر</span><select className="input" value={filters.risk} onChange={(event) => setFilters((prev) => ({ ...prev, risk: event.target.value }))}><option value="all">الكل</option><option value="high">مرتفع</option><option value="medium">متوسط</option><option value="low">منخفض</option></select></label>
@@ -423,7 +498,7 @@ export default function AdminUsers() {
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <Button size="small" variant="secondary" onClick={() => applyBulkAction('bulk_flag')}>تمييز جماعي</Button>
                   <Button size="small" variant="danger" onClick={() => applyBulkAction('bulk_ban')}>حظر جماعي</Button>
-                  <Button size="small" onClick={() => applyBulkAction('bulk_shadow')}>Shadow Ban</Button>
+                  <Button size="small" onClick={() => applyBulkAction('bulk_shadow')}>حظر صامت</Button>
                 </div>
               ) : null}
             </div>
@@ -519,7 +594,7 @@ export default function AdminUsers() {
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <Button size="small" variant="secondary" onClick={() => handleLocalAction(selectedUser, 'warn')}>تحذير</Button>
                     <Button size="small" onClick={() => handleLocalAction(selectedUser, 'freeze')}>تجميد مؤقت</Button>
-                    <Button size="small" variant="secondary" onClick={() => handleLocalAction(selectedUser, 'strike')}>إضافة Strike</Button>
+                    <Button size="small" variant="secondary" onClick={() => handleLocalAction(selectedUser, 'strike')}>إضافة مخالفة</Button>
                     <Button size="small" variant="danger" onClick={() => handleLocalAction(selectedUser, 'remove_content')}>إزالة محتوى</Button>
                     <Button size="small" variant={selectedUser.shadowBanned ? 'success' : 'secondary'} loading={busyAction === `shadow-${selectedUser.id}`} onClick={() => handleShadowBan(selectedUser, !selectedUser.shadowBanned)}>
                       {selectedUser.shadowBanned ? 'إلغاء Shadow Ban' : 'Shadow Ban'}
@@ -578,6 +653,147 @@ export default function AdminUsers() {
           </Card>
         </section>
 
+        {/* v88.50 — Subscribers insights panel: top engaged / followed / active / most used / dormant */}
+        <Card style={{ padding: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div>
+              <div style={{ color: '#a78bfa', fontSize: 13, marginBottom: 6 }}>رؤى المشتركين • إصدار 88.50</div>
+              <h3 style={{ margin: 0, color: '#f8fafc' }}>مؤشرات المشتركين على المنصة</h3>
+              <p style={{ margin: '6px 0 0', color: '#94a3b8', fontSize: 13 }}>الأكثر تفاعلاً • الأكثر متابعة • الأكثر استخداماً • الأكثر نشاطاً • الحسابات الخاملة</p>
+            </div>
+            <Button variant="secondary" onClick={loadInsights} loading={insightsLoading}>تحديث المؤشرات</Button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            {[
+              { key: 'top_engaged', label: `الأكثر تفاعلاً (${insights.top_engaged.length})`, color: '#f472b6' },
+              { key: 'top_followed', label: `الأكثر متابعة (${insights.top_followed.length})`, color: '#60a5fa' },
+              { key: 'most_active', label: `الأكثر نشاطاً (${insights.most_active.length})`, color: '#22d3ee' },
+              { key: 'most_used', label: `الأكثر استخداماً (${insights.most_used.length})`, color: '#34d399' },
+              { key: 'dormant_users', label: `الخاملون (${insights.dormant_users.length})`, color: '#fbbf24' },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setInsightsTab(tab.key)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 999,
+                  border: `1px solid ${insightsTab === tab.key ? tab.color : 'rgba(148,163,184,0.25)'}`,
+                  background: insightsTab === tab.key ? `${tab.color}22` : 'rgba(15,23,42,0.6)',
+                  color: insightsTab === tab.key ? tab.color : '#cbd5e1',
+                  cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                }}
+              >{tab.label}</button>
+            ))}
+          </div>
+
+          <div className="table-shell">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>المستخدم</th>
+                  <th>الدور</th>
+                  <th>
+                    {insightsTab === 'top_engaged' ? 'درجة التفاعل'
+                      : insightsTab === 'top_followed' ? 'المتابعون'
+                      : insightsTab === 'most_active' ? 'النشاط (30 يوم)'
+                      : insightsTab === 'most_used' ? 'آخر دخول'
+                      : 'أيام الخمول'}
+                  </th>
+                  <th>تفاصيل</th>
+                  <th>إجراء</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(insights[insightsTab] || []).map((item, idx) => (
+                  <tr key={item.id}>
+                    <td style={{ color: '#94a3b8' }}>{idx + 1}</td>
+                    <td>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <strong style={{ color: '#f8fafc' }}>{item.username}</strong>
+                        <span style={{ color: '#94a3b8', fontSize: 12 }}>{item.email}</span>
+                      </div>
+                    </td>
+                    <td>{roleLabel(item.role)}</td>
+                    <td>
+                      {insightsTab === 'top_engaged' && <strong style={{ color: '#f472b6' }}>{item.engagement_score ?? 0}</strong>}
+                      {insightsTab === 'top_followed' && <strong style={{ color: '#60a5fa' }}>{Number(item.followers_count || 0).toLocaleString('ar-EG')}</strong>}
+                      {insightsTab === 'most_active' && <strong style={{ color: '#22d3ee' }}>{item.activity_score ?? 0}</strong>}
+                      {insightsTab === 'most_used' && <span style={{ color: '#34d399' }}>{item.last_login_at ? new Date(item.last_login_at).toLocaleString('ar-EG') : '—'}</span>}
+                      {insightsTab === 'dormant_users' && <strong style={{ color: '#fbbf24' }}>{item.days_idle ?? '—'} يوم</strong>}
+                    </td>
+                    <td style={{ color: '#94a3b8', fontSize: 12 }}>
+                      {insightsTab === 'top_engaged' && `👍 ${item.likes_given || 0} • 💬 ${item.comments_made || 0} • ✉ ${item.messages_sent || 0}`}
+                      {insightsTab === 'top_followed' && `يتابع ${Number(item.following_count || 0).toLocaleString('ar-EG')}`}
+                      {insightsTab === 'most_active' && `منشورات: ${item.posts_30d || 0} • ريلز: ${item.reels_30d || 0}`}
+                      {insightsTab === 'most_used' && `منذ ${item.created_at ? new Date(item.created_at).toLocaleDateString('ar-EG') : '—'}`}
+                      {insightsTab === 'dormant_users' && `آخر دخول: ${item.last_login_at ? new Date(item.last_login_at).toLocaleDateString('ar-EG') : 'لم يسجل'}`}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <Button size="small" variant="secondary" onClick={() => openUser({ id: String(item.id), username: item.username })}>عرض السجل</Button>
+                        <Button size="small" variant="danger" onClick={() => handleBanToggle({ id: String(item.id), username: item.username, status: 'active', shadowBanned: false, appealOpen: false }, false)}>حظر</Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!(insights[insightsTab] || []).length ? (
+                  <tr><td colSpan="6" className="table-empty">لا توجد بيانات لهذه الفئة الآن.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        {/* v88.50 — Quick search & ban (direct action from search) */}
+        <Card style={{ padding: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div>
+              <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 6 }}>حظر سريع • بحث وحظر فوري</div>
+              <h3 style={{ margin: 0, color: '#f8fafc' }}>حظر مستخدم بالبحث المباشر</h3>
+              <p style={{ margin: '6px 0 0', color: '#94a3b8', fontSize: 13 }}>ابحث بالاسم أو البريد وسينفذ الحظر تلقائياً إذا وُجد تطابق واحد فقط.</p>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 2fr) auto', gap: 10, alignItems: 'end' }}>
+            <Input label="اسم المستخدم / البريد" value={quickBanQuery} onChange={(e) => setQuickBanQuery(e.target.value)} placeholder="مثال: ahmed@example.com أو ahmed_ali" />
+            <Input label="سبب الحظر (اختياري)" value={quickBanReason} onChange={(e) => setQuickBanReason(e.target.value)} placeholder="سبام / إساءة / خرق" />
+            <Button variant="danger" loading={quickBanBusy} onClick={handleQuickBan}>بحث وحظر</Button>
+          </div>
+        </Card>
+
+        {/* v88.50 — Selected user's posts timeline */}
+        {selectedUser ? (
+          <Card style={{ padding: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div>
+                <div style={{ color: '#22d3ee', fontSize: 13, marginBottom: 6 }}>الخط الزمني للمستخدم</div>
+                <h3 style={{ margin: 0, color: '#f8fafc' }}>منشورات المستخدم: {selectedUser.username}</h3>
+                <p style={{ margin: '6px 0 0', color: '#94a3b8', fontSize: 13 }}>آخر {userPosts.length} منشور مباشرة من قاعدة البيانات.</p>
+              </div>
+              {postsLoading ? <div style={{ color: '#94a3b8', fontSize: 12 }}>جاري التحميل…</div> : null}
+            </div>
+            {userPosts.length ? (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {userPosts.map((post) => (
+                  <div key={post.id} style={{ borderRadius: 16, padding: 14, background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                      <strong style={{ color: '#f8fafc' }}>منشور #{post.id}</strong>
+                      <span style={{ color: '#64748b', fontSize: 12 }}>{post.created_at ? new Date(post.created_at).toLocaleString('ar-EG') : '—'}</span>
+                    </div>
+                    {post.content ? <div style={{ color: '#cbd5e1', fontSize: 13, marginTop: 8, whiteSpace: 'pre-wrap' }}>{post.content.slice(0, 220)}{post.content.length > 220 ? '…' : ''}</div> : null}
+                    {post.image_url ? <div style={{ color: '#60a5fa', fontSize: 12, marginTop: 6 }}>🖼 {post.image_url}</div> : null}
+                    <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 6 }}>👍 {post.likes || 0} • 💬 {post.comments || 0} • تفاعل: {post.engagement || 0}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: '#94a3b8', fontSize: 13 }}>لا توجد منشورات لهذا المستخدم أو لم يتم التحميل بعد.</div>
+            )}
+          </Card>
+        ) : null}
+
         <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 18 }}>
           <Card style={{ padding: 18 }}>
             <h3 style={{ marginTop: 0, color: '#f8fafc' }}>توزيع الأدوار</h3>
@@ -606,7 +822,7 @@ export default function AdminUsers() {
                   <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>{new Date(item.created_at || item.timestamp || Date.now()).toLocaleString('ar-EG')}</div>
                 </div>
               )) : (
-                <div style={{ color: '#94a3b8', fontSize: 13 }}>لا توجد بيانات ban history من الخادم حاليًا، لكن نظام الحظر داخل الشاشة أصبح جاهزًا للعمل.</div>
+                <div style={{ color: '#94a3b8', fontSize: 13 }}>لا توجد بيانات سجل حظر من الخادم حاليًا، لكن نظام الحظر داخل الشاشة أصبح جاهزًا للعمل.</div>
               )}
             </div>
           </Card>

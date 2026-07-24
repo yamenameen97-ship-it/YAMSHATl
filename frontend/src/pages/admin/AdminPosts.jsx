@@ -479,7 +479,7 @@ export default function AdminPosts() {
       <Modal open={mediaReviewOpen} title="معاينة الوسائط" onClose={() => setMediaReviewOpen(false)}>
         {currentMedia ? (
           <div className="media-review-container" style={{ display: 'grid', gap: 12 }}>
-            <img src={currentMedia.image_url} alt="Post content" className="review-img" style={{ width: '100%', borderRadius: 14 }} />
+            <img src={currentMedia.image_url} alt="محتوى المنشور" className="review-img" style={{ width: '100%', borderRadius: 14 }} />
             <div className="modal-actions">
               <Button variant="secondary" onClick={() => setMediaReviewOpen(false)}>إغلاق</Button>
               <Button className="danger" onClick={() => { setMediaReviewOpen(false); setDeleteTarget(currentMedia); }}>حذف هذا المنشور</Button>

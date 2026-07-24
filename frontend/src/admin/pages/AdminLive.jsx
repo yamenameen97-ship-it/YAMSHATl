@@ -212,7 +212,7 @@ export default function AdminLive() {
                 <span className="metric-value">{stream.bitrate}</span>
               </div>
               <div className="metric-item">
-                <span className="metric-label">🎬 FPS:</span>
+                <span className="metric-label">🎬 إطار/ثانية:</span>
                 <span className="metric-value">{stream.fps}</span>
               </div>
             </div>

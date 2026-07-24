@@ -169,7 +169,7 @@ export default function AdminReports() {
   return (
     <div className="admin-reports-page">
       <Card className="reports-header-card">
-        <h2>نظام البلاغات الذكي (Smart Moderation)</h2>
+        <h2>نظام البلاغات الذكي</h2>
         <p className="muted">تصنيف ذكي للبلاغات، إدارة الأولويات، وسجل تدقيق شامل.</p>
         
         <div className="automation-banner mt-4">
@@ -377,7 +377,7 @@ export default function AdminReports() {
           </div>
 
           <div className="detail-section mt-4">
-            <h4>سجل التدقيق (Admin Audit Log)</h4>
+            <h4>سجل تدقيق المدير</h4>
             {selectedReport?.auditLog.length > 0 ? (
               <div className="audit-timeline">
                 {selectedReport.auditLog.map((log, i) => (

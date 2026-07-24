@@ -27,11 +27,12 @@ from app.models.app_setting import AppSetting
 from app.models.audit_log import AuditLog
 from app.models.comment import Comment
 from app.models.comment_like import CommentLike
+from app.models.follow import Follow
 from app.models.message import Message
 from app.models.notification import Notification
 from app.models.post import Post
 from app.models.report import Report, ReportEvent
-from app.models.stories_reels import Reel, ReelComment, ReelLike, ReelView, SavedReel
+from app.models.stories_reels import Reel, ReelComment, ReelLike, ReelView, SavedReel, Story, StoryReply, StoryView
 from app.models.user import User
 from app.models.user_wallet import UserWallet
 from app.services.auth_service import register_user
@@ -57,6 +58,8 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         'settings.manage',
         'notifications.manage',
         'search.global',
+        'stories.view',
+        'stories.moderate',
     ],
     'moderator': [
         'dashboard.view',
@@ -73,6 +76,8 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         'reports.export',
         'notifications.manage',
         'search.global',
+        'stories.view',
+        'stories.moderate',
     ],
     'user': [],
 }
@@ -147,6 +152,25 @@ class BroadcastPayload(BaseModel):
     body: str = Field(min_length=2, max_length=500)
     type: str = Field(default='SYSTEM', max_length=50)
     target_role: str | None = None
+
+
+# v88.54 — تنبيه إداري "ادارة النظام" لمستخدم محدّد أو للكل
+# ===========================================================
+# يُرسل عنوان الإشعار كـ "ادارة النظام" (لا يظهر اسم حساب الأدمن).
+# على جهاز المستخدم يُعرض كإشعار قابل للفتح والقراءة مع زر "الرد" الذي
+# يفتح فقاعة كتابة → عند الضغط "ارسال" يختفي الإشعار من عنده. إذا لم يردّ
+# يبقى الإشعار مقيّداً لديه حتى يحذفه بنفسه.
+class AdminAlertPayload(BaseModel):
+    body: str = Field(min_length=1, max_length=1000)
+    # target: 'all' | 'user' — الوضع الافتراضي إرسال للكل
+    target: str = Field(default='all', max_length=16)
+    user_id: int | None = None
+    username: str | None = None
+    target_role: str | None = None
+
+
+class AdminAlertReplyPayload(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
 
 
 class BulkDeletePayload(BaseModel):
@@ -833,6 +857,173 @@ def list_users(
     }
 
 
+@router.get('/users/insights')
+def get_users_insights(
+    limit: int = Query(default=10, ge=1, le=50),
+    dormant_days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return leaderboards for admin subscribers dashboard:
+    - top_engaged: users with highest (likes given + comments authored + messages sent)
+    - top_followed: users with the largest follower base
+    - most_active: users with the most posts + latest activity
+    - dormant: users idle for `dormant_days` (default 30)
+    - most_used: users with the most sessions/logins (falls back to activity if no session model)
+    """
+    _require_permission(current_user, 'users.view')
+
+    now = datetime.utcnow()
+    dormant_cutoff = now - timedelta(days=dormant_days)
+
+    # 1) Top engaged (likes + comments + messages authored)
+    from app.models.like import Like
+    like_counts = dict(
+        db.query(Like.user_id, func.count(Like.id))
+        .group_by(Like.user_id).all()
+    )
+    comment_counts = dict(
+        db.query(Comment.user_id, func.count(Comment.id))
+        .group_by(Comment.user_id).all()
+    )
+    message_counts = {}
+    try:
+        message_counts = dict(
+            db.query(Message.sender_id, func.count(Message.id))
+            .group_by(Message.sender_id).all()
+        )
+    except Exception:
+        message_counts = {}
+
+    engagement_map = {}
+    for uid, cnt in like_counts.items():
+        engagement_map[uid] = engagement_map.get(uid, 0) + int(cnt or 0)
+    for uid, cnt in comment_counts.items():
+        engagement_map[uid] = engagement_map.get(uid, 0) + int(cnt or 0)
+    for uid, cnt in message_counts.items():
+        engagement_map[uid] = engagement_map.get(uid, 0) + int(cnt or 0)
+
+    top_engaged_ids = sorted(engagement_map.items(), key=lambda x: x[1], reverse=True)[:limit]
+    engaged_users = db.query(User).filter(User.id.in_([uid for uid, _ in top_engaged_ids])).all() if top_engaged_ids else []
+    engaged_map = {u.id: u for u in engaged_users}
+    top_engaged = [
+        {
+            **_serialize_user(engaged_map[uid]),
+            'engagement_score': int(score),
+            'likes_given': int(like_counts.get(uid, 0)),
+            'comments_made': int(comment_counts.get(uid, 0)),
+            'messages_sent': int(message_counts.get(uid, 0)),
+        }
+        for uid, score in top_engaged_ids if uid in engaged_map
+    ]
+
+    # 2) Top followed (largest follower base)
+    top_followed_users = (
+        db.query(User)
+        .order_by(User.followers_count.desc().nullslast())
+        .limit(limit)
+        .all()
+    )
+    top_followed = [
+        {**_serialize_user(u), 'followers_count': int(u.followers_count or 0)}
+        for u in top_followed_users if (u.followers_count or 0) > 0
+    ]
+
+    # 3) Most active (posts + reels count, last 30 days)
+    activity_since = now - timedelta(days=30)
+    post_counts = dict(
+        db.query(Post.user_id, func.count(Post.id))
+        .filter(Post.created_at >= activity_since)
+        .group_by(Post.user_id).all()
+    )
+    reel_counts = {}
+    try:
+        reel_counts = dict(
+            db.query(Reel.user_id, func.count(Reel.id))
+            .filter(Reel.created_at >= activity_since)
+            .group_by(Reel.user_id).all()
+        )
+    except Exception:
+        reel_counts = {}
+
+    activity_map = {}
+    for uid, cnt in post_counts.items():
+        activity_map[uid] = activity_map.get(uid, 0) + int(cnt or 0)
+    for uid, cnt in reel_counts.items():
+        activity_map[uid] = activity_map.get(uid, 0) + int(cnt or 0)
+
+    top_active_ids = sorted(activity_map.items(), key=lambda x: x[1], reverse=True)[:limit]
+    active_users = db.query(User).filter(User.id.in_([uid for uid, _ in top_active_ids])).all() if top_active_ids else []
+    active_map = {u.id: u for u in active_users}
+    most_active = [
+        {
+            **_serialize_user(active_map[uid]),
+            'activity_score': int(score),
+            'posts_30d': int(post_counts.get(uid, 0)),
+            'reels_30d': int(reel_counts.get(uid, 0)),
+        }
+        for uid, score in top_active_ids if uid in active_map
+    ]
+
+    # 4) Dormant users (last_login_at < cutoff or never logged after registration)
+    dormant_query = (
+        db.query(User)
+        .filter(
+            or_(
+                User.last_login_at.is_(None),
+                User.last_login_at < dormant_cutoff,
+            ),
+            User.is_active.is_(True),
+            User.created_at < dormant_cutoff,
+        )
+        .order_by(User.last_login_at.asc().nullsfirst())
+        .limit(limit)
+    )
+    dormant_users_rows = dormant_query.all()
+    dormant_users = []
+    for u in dormant_users_rows:
+        base = _serialize_user(u)
+        if u.last_login_at:
+            days_idle = (now - u.last_login_at).days
+        elif u.created_at:
+            days_idle = (now - u.created_at).days
+        else:
+            days_idle = None
+        base['days_idle'] = days_idle
+        dormant_users.append(base)
+
+    # 5) Most used (by suspicious_login_count as a proxy for session activity)
+    most_used_users = (
+        db.query(User)
+        .filter(User.last_login_at.isnot(None))
+        .order_by(User.last_login_at.desc())
+        .limit(limit)
+        .all()
+    )
+    most_used = [
+        {
+            **_serialize_user(u),
+            'last_login_at': u.last_login_at.isoformat() if u.last_login_at else None,
+        }
+        for u in most_used_users
+    ]
+
+    return {
+        'generated_at': now.isoformat(),
+        'dormant_days': dormant_days,
+        'top_engaged': top_engaged,
+        'top_followed': top_followed,
+        'most_active': most_active,
+        'most_used': most_used,
+        'dormant_users': dormant_users,
+        'totals': {
+            'engaged_tracked': len(engagement_map),
+            'active_tracked': len(activity_map),
+            'dormant_count': dormant_query.count() if hasattr(dormant_query, 'count') else len(dormant_users),
+        },
+    }
+
+
 @router.get('/users/{user_id}')
 def get_user_detail(
     user_id: int,
@@ -844,6 +1035,121 @@ def get_user_detail(
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
     return {'user': _enrich_user_records(db, [user])[0]}
+
+
+@router.get('/users/{user_id}/posts')
+def get_user_posts_admin(
+    user_id: int,
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return recent posts for a specific user (admin review — full timeline)."""
+    _require_permission(current_user, 'users.view')
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+
+    rows = (
+        db.query(
+            Post.id,
+            Post.content,
+            Post.image_url,
+            Post.created_at,
+            Post.user_id,
+            User.username.label('username'),
+            func.count(func.distinct(Comment.id)).label('comment_count'),
+        )
+        .join(User, User.id == Post.user_id)
+        .outerjoin(Comment, Comment.post_id == Post.id)
+        .filter(Post.user_id == user_id)
+        .group_by(Post.id, User.username)
+        .order_by(Post.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    class _Row:
+        pass
+
+    serialized = []
+    for row in rows:
+        r = _Row()
+        r.id = row.id
+        r.content = row.content
+        r.image_url = row.image_url
+        r.created_at = row.created_at
+        r.user_id = row.user_id
+        r.username = row.username
+        r.like_count = 0
+        r.comment_count = int(row.comment_count or 0)
+        serialized.append(_serialize_post_row(db, r))
+
+    return {
+        'user_id': user_id,
+        'username': user.username,
+        'total': len(serialized),
+        'items': serialized,
+    }
+
+
+@router.post('/users/search-and-ban')
+def admin_search_and_ban(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Search a user by keyword and ban them directly in one action.
+    Body: { query: str, reason?: str }
+    """
+    _require_permission(current_user, 'users.ban')
+    query_text = str(payload.get('query') or '').strip()
+    reason = str(payload.get('reason') or '').strip()
+    if not query_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Search query is required')
+
+    matches = (
+        db.query(User)
+        .filter(
+            or_(
+                User.username.ilike(f'%{query_text}%'),
+                User.email.ilike(f'%{query_text}%'),
+                User.full_name.ilike(f'%{query_text}%') if hasattr(User, 'full_name') else User.username.ilike(f'%{query_text}%'),
+            )
+        )
+        .limit(5)
+        .all()
+    )
+
+    if not matches:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='No user matched the search')
+
+    if len(matches) > 1:
+        return {
+            'ambiguous': True,
+            'matches': [_serialize_user(u) for u in matches],
+            'message': 'Multiple users found. Please pick one and call /users/{id}/ban directly.',
+        }
+
+    target = matches[0]
+    if target.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='You cannot ban yourself')
+    _guard_user_management(current_user, target)
+
+    target.is_active = False
+    target.banned_at = datetime.utcnow()
+    db.commit()
+    db.refresh(target)
+
+    _add_audit_log(
+        db, current_user, 'user_banned_via_search', 'user', target.id,
+        f'Banned {target.username} via admin search. Reason: {reason or "unspecified"}',
+        {'user_id': target.id, 'search_query': query_text, 'reason': reason},
+    )
+    enriched = _enrich_user_records(db, [target])[0]
+    _emit_admin_event('admin:user_status_changed', {'user': enriched})
+
+    return {'ambiguous': False, 'banned': enriched}
 
 
 @router.post('/users', status_code=status.HTTP_201_CREATED)
@@ -1791,6 +2097,556 @@ def list_reel_reports_admin(
     }
 
 
+# ============================================================
+# v88.48 — Stories Management (Admin Panel)
+# ============================================================
+# GET    /admin/stories                       → قائمة كل الستوريات (شامل جميع المستخدمين)
+# GET    /admin/stories/summary               → إحصائيات عامة للستوريات
+# GET    /admin/stories/{story_id}            → تفاصيل ستوري + المشاهدات والردود
+# DELETE /admin/stories/{story_id}            → حذف ستوري (بواسطة المدير) + سبب
+# POST   /admin/stories/{story_id}/highlight  → تفعيل/إلغاء Highlight بواسطة المدير
+# POST   /admin/stories/{story_id}/warn       → إرسال تحذير لصاحب الستوري
+# POST   /admin/stories/{story_id}/ban-user   → حظر صاحب الستوري
+# GET    /admin/stories/{story_id}/reports    → البلاغات على ستوري محدد
+# ============================================================
+
+# v88.49: البلاغات المفتوحة فعلياً في هذا النظام هي pending + escalated
+# (النظام لا يستخدم reviewing/open — القيم الحقيقية: pending / dismissed / resolved / escalated).
+OPEN_REPORT_STATUSES = ('pending', 'escalated')
+
+
+def _serialize_story_admin(db: Session, story: Story) -> dict[str, Any]:
+    """Serialize a story for the admin panel (owner info + reports + counts).
+
+    v88.49: مقاومة أخطاء — كل استعلام مغلّف في try لضمان ألا يفشل الـ serializer
+    وينهار كامل الـ /admin/stories عندما تكون جداول البلاغات فارغة أو target_id
+    مخزّناً بصيغة غير رقمية.
+    """
+    try:
+        owner = db.query(User).filter(User.id == story.user_id).first()
+    except Exception:
+        owner = None
+
+    reports_count = 0
+    pending_reports = 0
+    try:
+        reports_count = db.query(func.count(Report.id)).filter(
+            Report.target_type == 'story',
+            Report.target_id == str(story.id),
+        ).scalar() or 0
+        pending_reports = db.query(func.count(Report.id)).filter(
+            Report.target_type == 'story',
+            Report.target_id == str(story.id),
+            Report.status.in_(OPEN_REPORT_STATUSES),
+        ).scalar() or 0
+    except Exception:
+        reports_count = 0
+        pending_reports = 0
+
+    media_url = str(story.media_url or '')
+    media_type = str(story.media_type or 'image')
+    return {
+        'id': str(story.id),
+        'user_id': int(story.user_id),
+        'username': owner.username if owner else f'user_{story.user_id}',
+        'user_email': getattr(owner, 'email', '') if owner else '',
+        'user_avatar': getattr(owner, 'avatar_url', '') if owner else '',
+        'is_user_banned': (not bool(getattr(owner, 'is_active', True))) if owner else False,
+        'media_url': media_url,
+        'media': media_url,
+        'media_type': media_type,
+        'type': 'video' if media_type == 'video' else 'image',
+        'caption': story.caption or '',
+        'privacy': story.privacy or 'friends',
+        'music': story.music or '',
+        'filter_name': story.filter_name or '',
+        'countdown_at': story.countdown_at or '',
+        'highlight': bool(story.highlight),
+        'highlight_title': story.highlight_title or '',
+        'is_close_friends': bool(story.is_close_friends),
+        'views_count': int(story.views_count or 0),
+        'replies_count': int(story.replies_count or 0),
+        'reactions_count': int(story.reactions_count or 0),
+        'reports_count': int(reports_count),
+        'pending_reports_count': int(pending_reports),
+        'created_at': story.created_at.isoformat() if story.created_at else None,
+        'expires_at': story.expires_at.isoformat() if story.expires_at else None,
+    }
+
+
+@router.get('/stories')
+def list_admin_stories(
+    search: str = Query(default=''),
+    privacy: str | None = Query(default=None),
+    media_type: str | None = Query(default=None),
+    highlight: bool | None = Query(default=None),
+    only_reported: bool = Query(default=False),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """v88.48: List ALL stories across users for admin moderation.
+
+    الفارق عن /stories: هذا الـ endpoint يعرض جميع القصص لجميع المستخدمين
+    (بصلاحية admin) بدون فلترة الخصوصية أو الحظر، ليتمكن المدير العام
+    من مراقبة ومعالجة الستوريات المسيئة أو المزعجة.
+    """
+    _require_permission(current_user, 'stories.view')
+
+    query = db.query(Story)
+    if privacy and privacy != 'all':
+        query = query.filter(Story.privacy == privacy)
+    if media_type and media_type != 'all':
+        query = query.filter(Story.media_type == media_type)
+    if highlight is not None:
+        query = query.filter(Story.highlight == bool(highlight))
+
+    term = (search or '').strip()
+    if term:
+        like_pattern = f'%{term}%'
+        # ابحث بالـ caption أو بالـ username (عبر JOIN)
+        query = query.outerjoin(User, User.id == Story.user_id).filter(
+            or_(
+                Story.caption.ilike(like_pattern),
+                User.username.ilike(like_pattern),
+            )
+        )
+
+    # v88.49: فلترة الستوريات التي عليها بلاغات مفتوحة
+    # الحالات المفتوحة الفعلية في نظامنا: pending + escalated (لا يوجد reviewing/open).
+    # نحمي أنفسنا من target_id غير رقمي بتصفية الأرقام فقط.
+    if only_reported:
+        try:
+            reported_ids_rows = db.query(Report.target_id).filter(
+                Report.target_type == 'story',
+                Report.status.in_(OPEN_REPORT_STATUSES),
+            ).distinct().all()
+        except Exception:
+            reported_ids_rows = []
+        reported_ids: list[int] = []
+        for row in reported_ids_rows:
+            raw = row[0]
+            if raw is None:
+                continue
+            try:
+                reported_ids.append(int(str(raw).strip()))
+            except (TypeError, ValueError):
+                continue
+        if reported_ids:
+            query = query.filter(Story.id.in_(reported_ids))
+        else:
+            # لا توجد بلاغات مفتوحة أصلاً — أعد قائمة فارغة (مع pagination correct)
+            return {
+                'items': [],
+                'total': 0,
+                'page': page,
+                'page_size': page_size,
+            }
+
+    try:
+        total = query.count()
+    except Exception:
+        total = 0
+
+    rows = (
+        query.order_by(Story.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    items = [_serialize_story_admin(db, s) for s in rows]
+    return {
+        'items': items,
+        'total': int(total),
+        'page': page,
+        'page_size': page_size,
+    }
+
+
+@router.get('/stories/summary')
+def stories_summary_admin(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """v88.48: Aggregate metrics across ALL stories."""
+    _require_permission(current_user, 'stories.view')
+
+    now = datetime.utcnow()
+    active_q = db.query(Story).filter(
+        or_(Story.expires_at == None, Story.expires_at > now)  # noqa: E711
+    )
+    stories_count = int(active_q.count())
+    highlights_count = int(db.query(Story).filter(Story.highlight == True).count())  # noqa: E712
+    total_views = int(db.query(func.coalesce(func.sum(Story.views_count), 0)).scalar() or 0)
+    total_replies = int(db.query(func.coalesce(func.sum(Story.replies_count), 0)).scalar() or 0)
+    total_reactions = int(db.query(func.coalesce(func.sum(Story.reactions_count), 0)).scalar() or 0)
+
+    try:
+        reported_open = int(db.query(func.count(Report.id)).filter(
+            Report.target_type == 'story',
+            Report.status.in_(OPEN_REPORT_STATUSES),
+        ).scalar() or 0)
+    except Exception:
+        reported_open = 0
+
+    # top 5 users by stories count
+    top_rows = (
+        db.query(User.username, func.count(Story.id).label('cnt'))
+        .outerjoin(Story, Story.user_id == User.id)
+        .group_by(User.username)
+        .order_by(func.count(Story.id).desc())
+        .limit(5)
+        .all()
+    )
+    top_users = [{'username': u or 'unknown', 'stories': int(c or 0)} for u, c in top_rows if (c or 0) > 0]
+
+    return {
+        'stories_count': stories_count,
+        'highlights_count': highlights_count,
+        'total_views': total_views,
+        'total_replies': total_replies,
+        'total_reactions': total_reactions,
+        'reported_open': reported_open,
+        'top_users': top_users,
+    }
+
+
+@router.get('/stories/{story_id}')
+def get_story_detail_admin(
+    story_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """v88.48: Full story detail — includes viewers list and replies."""
+    _require_permission(current_user, 'stories.view')
+    story = db.query(Story).filter(Story.id == story_id).first()
+    if story is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Story not found')
+
+    view_rows = (
+        db.query(StoryView).filter(StoryView.story_id == story.id)
+        .order_by(StoryView.viewed_at.desc()).limit(200).all()
+    )
+    reply_rows = (
+        db.query(StoryReply).filter(StoryReply.story_id == story.id)
+        .order_by(StoryReply.created_at.desc()).limit(200).all()
+    )
+
+    # Reports on this story
+    from app.services.report_service import serialize_report
+    report_rows = (
+        db.query(Report).filter(
+            Report.target_type == 'story',
+            Report.target_id == str(story.id),
+        ).order_by(Report.created_at.desc()).all()
+    )
+
+    return {
+        'story': _serialize_story_admin(db, story),
+        'viewers': [
+            {
+                'user_id': int(v.user_id),
+                'username': v.username or f'user_{v.user_id}',
+                'viewed_at': v.viewed_at.isoformat() if v.viewed_at else None,
+            }
+            for v in view_rows
+        ],
+        'replies': [
+            {
+                'id': int(r.id),
+                'user_id': int(r.user_id),
+                'username': r.username or f'user_{r.user_id}',
+                'reply_type': r.reply_type or 'text',
+                'content': r.content or '',
+                'created_at': r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in reply_rows
+        ],
+        'reports': [serialize_report(db, r) for r in report_rows],
+    }
+
+
+@router.delete('/stories/{story_id}')
+def delete_story_admin(
+    story_id: int,
+    reason: str = Query(default=''),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """v88.48/v88.49: Admin hard-delete of a story.
+
+    - يحذف كل السجلات المرتبطة: StoryView, StoryReply
+    - يُقفل (يحلّ) البلاغات المفتوحة على الستوري بعد الحذف (status='resolved')
+    - يحاول حذف الوسائط من Cloudinary
+    - يُرسل إشعاراً داخلياً لصاحب الستوري (Notification + Socket)
+    - يبثّ حدث admin:story_deleted لباقي الإدارة
+    - يسجّل Audit log مع السبب
+    """
+    _require_permission(current_user, 'stories.moderate')
+    story = db.query(Story).filter(Story.id == story_id).first()
+    if story is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Story not found')
+
+    owner_id = int(story.user_id)
+    media_url = story.media_url
+    was_highlight = bool(story.highlight)
+    reason_text = (reason or '').strip()[:500] or 'مخالفة سياسة المحتوى'
+
+    # 1) نظّف كل السجلات التابعة (views + replies)
+    try:
+        db.query(StoryView).filter(StoryView.story_id == story.id).delete(synchronize_session=False)
+        db.query(StoryReply).filter(StoryReply.story_id == story.id).delete(synchronize_session=False)
+    except Exception:
+        db.rollback()
+
+    # 2) احذف الستوري نفسه
+    try:
+        db.delete(story)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Failed to delete story')
+
+    # 3) v88.49: أغلق البلاغات المفتوحة على هذا الستوري تلقائياً (status='resolved')
+    #    الحقول الفعلية في Report: handled_by_user_id / handled_at / moderator_notes / action_taken
+    resolved_reports = 0
+    try:
+        pending_reports = db.query(Report).filter(
+            Report.target_type == 'story',
+            Report.target_id == str(story_id),
+            Report.status.in_(OPEN_REPORT_STATUSES),
+        ).all()
+        for rep in pending_reports:
+            rep.status = 'resolved'
+            rep.action_taken = 'content_removed'
+            rep.handled_by_user_id = current_user.id
+            rep.handled_at = datetime.utcnow()
+            existing_notes = (rep.moderator_notes or '').strip()
+            note_addition = f'story removed by admin: {reason_text}'
+            rep.moderator_notes = (
+                f'{existing_notes} | {note_addition}' if existing_notes else note_addition
+            )[:2000]
+            resolved_reports += 1
+        if resolved_reports:
+            db.commit()
+    except Exception:
+        db.rollback()
+        resolved_reports = 0
+
+    # 4) حاول حذف الوسائط من Cloudinary (soft-fail)
+    try:
+        from app.services.story_db_service import _delete_media_safely as _story_media_delete
+        _story_media_delete(media_url or '')
+    except Exception:
+        pass
+
+    # 5) إشعار داخلي لصاحب الستوري (Notification row) + Socket
+    try:
+        owner_notification = Notification(
+            user_id=owner_id,
+            type='SYSTEM',
+            title='تم حذف ستوريك من الإدارة',
+            body=f'قامت الإدارة بحذف ستوريك بسبب: {reason_text}',
+            data={
+                'story_id': story_id,
+                'action': 'story_removed',
+                'reason': reason_text,
+                'was_highlight': was_highlight,
+            },
+        )
+        db.add(owner_notification)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    try:
+        emit_user_event_background(owner_id, 'story:removed_by_admin', {
+            'story_id': story_id,
+            'reason': reason_text,
+        })
+    except Exception:
+        pass
+
+    # 6) Audit log + بثّ لباقي الإدارة
+    _add_audit_log(
+        db, current_user, 'story_deleted', 'story', story_id,
+        f'تم حذف الستوري رقم {story_id} بواسطة المدير.',
+        {
+            'story_id': story_id,
+            'owner_id': owner_id,
+            'reason': reason_text,
+            'was_highlight': was_highlight,
+            'resolved_reports': resolved_reports,
+        },
+    )
+    _emit_admin_event('admin:story_deleted', {
+        'story_id': story_id,
+        'owner_id': owner_id,
+        'resolved_reports': resolved_reports,
+    })
+
+    return {
+        'ok': True,
+        'deleted': True,
+        'story_id': story_id,
+        'owner_id': owner_id,
+        'resolved_reports': resolved_reports,
+    }
+
+
+@router.post('/stories/{story_id}/highlight')
+def toggle_story_highlight_admin(
+    story_id: int,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """v88.48: Toggle highlight flag from admin panel (bypass ownership check)."""
+    _require_permission(current_user, 'stories.moderate')
+    story = db.query(Story).filter(Story.id == story_id).first()
+    if story is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Story not found')
+
+    story.highlight = not bool(story.highlight)
+    title = str(payload.get('title') or '').strip()[:80]
+    if story.highlight:
+        if title:
+            story.highlight_title = title
+        story.expires_at = None
+    else:
+        story.highlight_title = None
+        # v88.49: احمِ حساب expires_at من قيم None
+        base = story.created_at or datetime.utcnow()
+        try:
+            hours = int(getattr(story, 'auto_delete_hours', None) or 24)
+        except (TypeError, ValueError):
+            hours = 24
+        story.expires_at = base + timedelta(hours=hours)
+
+    try:
+        db.commit()
+        db.refresh(story)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Failed to toggle highlight')
+
+    _add_audit_log(
+        db, current_user, 'story_highlight_toggled', 'story', story_id,
+        f"تم {'تفعيل' if story.highlight else 'إلغاء'} Highlight للستوري {story_id}.",
+        {'story_id': story_id, 'highlight': bool(story.highlight)},
+    )
+    _emit_admin_event('admin:story_updated', {'story_id': story_id})
+    return {'ok': True, 'story': _serialize_story_admin(db, story)}
+
+
+@router.post('/stories/{story_id}/warn')
+def warn_story_owner_admin(
+    story_id: int,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """v88.48: Send an in-app warning notification to the story owner."""
+    _require_permission(current_user, 'stories.moderate')
+    story = db.query(Story).filter(Story.id == story_id).first()
+    if story is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Story not found')
+
+    reason = str(payload.get('reason') or payload.get('message') or 'تم رصد مخالفة على الستوري.').strip()[:500]
+    owner_id = int(story.user_id)
+
+    # حفظ إشعار داخلي
+    try:
+        notification = Notification(
+            user_id=owner_id,
+            type='SYSTEM',
+            title='تحذير من الإدارة',
+            body=reason,
+            data={'story_id': story_id, 'action': 'warn'},
+        )
+        db.add(notification)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    try:
+        emit_user_event_background(owner_id, 'story:warned_by_admin', {
+            'story_id': story_id,
+            'reason': reason,
+        })
+    except Exception:
+        pass
+
+    _add_audit_log(
+        db, current_user, 'story_owner_warned', 'story', story_id,
+        f'تم إرسال تحذير لصاحب الستوري {story_id}.',
+        {'story_id': story_id, 'owner_id': owner_id, 'reason': reason},
+    )
+    return {'ok': True, 'story_id': story_id, 'owner_id': owner_id}
+
+
+@router.post('/stories/{story_id}/ban-user')
+def ban_story_owner_admin(
+    story_id: int,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """v88.48: Ban the owner of a specific story directly from admin panel."""
+    _require_permission(current_user, 'users.ban')
+    story = db.query(Story).filter(Story.id == story_id).first()
+    if story is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Story not found')
+
+    owner = db.query(User).filter(User.id == story.user_id).first()
+    if owner is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Owner not found')
+    if owner.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot ban yourself")
+
+    reason = str(payload.get('reason') or '').strip()[:500]
+    owner.is_active = False
+    owner.banned_at = datetime.utcnow()
+    db.commit()
+
+    _add_audit_log(
+        db, current_user, 'user_banned', 'user', owner.id,
+        f'تم حظر المستخدم {owner.username} بسبب ستوري {story_id}.',
+        {'story_id': story_id, 'owner_id': owner.id, 'reason': reason},
+    )
+    _emit_admin_event('admin:user_banned', {'user_id': owner.id, 'story_id': story_id})
+    return {'ok': True, 'user_id': int(owner.id), 'story_id': story_id}
+
+
+@router.get('/stories/{story_id}/reports')
+def list_story_reports_admin(
+    story_id: int,
+    include_resolved: bool = Query(default=True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """v88.48: Reports filed against a specific story."""
+    _require_permission(current_user, 'reports.view')
+    story = db.query(Story).filter(Story.id == story_id).first()
+    if story is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Story not found')
+
+    q = db.query(Report).filter(
+        Report.target_type == 'story',
+        Report.target_id == str(story_id),
+    )
+    if not include_resolved:
+        q = q.filter(Report.status.in_(['pending', 'reviewing']))
+    rows = q.order_by(Report.created_at.desc()).all()
+    from app.services.report_service import serialize_report
+    return {
+        'story': _serialize_story_admin(db, story),
+        'reports': [serialize_report(db, r) for r in rows],
+        'total': len(rows),
+    }
+
+
 @router.post('/reports/{report_id}/action')
 def take_report_action_admin(
     report_id: int,
@@ -1999,6 +2855,204 @@ def broadcast_notification(
         },
     )
     return {'message': 'Broadcast sent', 'recipients': created}
+
+
+# v88.54 — إرسال تنبيه إداري باسم "ادارة النظام" (لشخص محدد أو للكل)
+# ============================================================
+# type = 'ADMIN_ALERT' — يظهر عند المشترك كبطاقة خاصة مع زر "الرد".
+# لا يظهر أي اسم لحساب الأدمن — العنوان دائماً "ادارة النظام".
+@router.post('/notifications/admin-alert')
+def send_admin_alert(
+    payload: AdminAlertPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_permission(current_user, 'notifications.manage')
+
+    target = (payload.target or 'all').lower().strip()
+    recipients: list[User] = []
+
+    if target == 'user':
+        target_user = None
+        if payload.user_id:
+            target_user = db.query(User).filter(User.id == payload.user_id).first()
+        elif payload.username:
+            uname = payload.username.strip().lstrip('@')
+            target_user = db.query(User).filter(
+                (User.username == uname) | (User.email == uname)
+            ).first()
+        if target_user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+        recipients = [target_user]
+    else:
+        users_query = db.query(User).filter(User.is_active.is_(True))
+        if payload.target_role:
+            users_query = users_query.filter(User.role == payload.target_role.lower())
+        recipients = users_query.all()
+
+    title = 'ادارة النظام'
+    body = payload.body.strip()
+    created = 0
+    realtime_batch: list[tuple[int, dict[str, Any]]] = []
+
+    for user in recipients:
+        notif_data = {
+            'admin_alert': True,
+            'sender_label': 'ادارة النظام',
+            'sender_admin_id': current_user.id,
+            'reply_status': 'pending',
+            'screen': 'notifications',
+            'path': '/notifications',
+        }
+        notification = Notification(
+            user_id=user.id,
+            type='ADMIN_ALERT',
+            title=title,
+            body=body,
+            data=notif_data,
+        )
+        db.add(notification)
+        db.flush()
+        realtime_batch.append((
+            user.id,
+            {
+                'id': notification.id,
+                'type': 'ADMIN_ALERT',
+                'notification_type': 'ADMIN_ALERT',
+                'title': title,
+                'message': body,
+                'text': body,
+                'body': body,
+                'created_at': notification.created_at.isoformat() if notification.created_at else datetime.utcnow().isoformat(),
+                'seen': False,
+                'is_read': False,
+                'screen': 'notifications',
+                'path': '/notifications',
+                'data': notif_data,
+                'payload': notif_data,
+            },
+        ))
+        created += 1
+
+    db.commit()
+    _add_audit_log(
+        db,
+        current_user,
+        'admin_alert_sent',
+        'notification',
+        'admin_alert',
+        f'تم إرسال تنبيه ادارة النظام إلى {created} مستخدم.',
+        {'target': target, 'user_id': payload.user_id, 'target_role': payload.target_role},
+    )
+
+    for target_user_id, realtime_payload in realtime_batch:
+        emit_user_event_background(target_user_id, 'new_notification', realtime_payload)
+
+    _emit_admin_event(
+        'admin:alert_sent',
+        {
+            'title': title,
+            'body': body,
+            'type': 'ADMIN_ALERT',
+            'recipients': created,
+            'target': target,
+            'created_at': datetime.utcnow().isoformat(),
+        },
+    )
+    return {'ok': True, 'message': 'Admin alert sent', 'recipients': created}
+
+
+# v88.54 — استقبال رد المستخدم على تنبيه "ادارة النظام"
+# ============================================================
+# عند الرد: نحفظ الرد في بيانات الإشعار (data.reply_status='replied'),
+# نرسل إشعار داخلي إلى الأدمن المُرسِل, ثم نحذف الإشعار من عند المستخدم
+# (لا يعود ظاهراً لديه). إذا لم يرد ولم يحذف يبقى الإشعار مقيّداً في قائمته.
+@router.post('/notifications/{notification_id}/admin-alert-reply')
+def reply_to_admin_alert(
+    notification_id: int,
+    payload: AdminAlertReplyPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    notification = (
+        db.query(Notification)
+        .filter(
+            Notification.id == notification_id,
+            Notification.user_id == current_user.id,
+        )
+        .first()
+    )
+    if notification is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Notification not found')
+    if notification.type != 'ADMIN_ALERT':
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Not an admin alert')
+
+    reply_text = payload.message.strip()
+    if not reply_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Reply cannot be empty')
+
+    prev_data = notification.data if isinstance(notification.data, dict) else {}
+    sender_admin_id = prev_data.get('sender_admin_id')
+    original_body = notification.body
+
+    # نحاول إخطار الأدمن المُرسِل برد المستخدم — كإشعار داخلي بنوع خاص
+    reply_payload = {
+        'admin_alert_reply': True,
+        'from_user_id': current_user.id,
+        'from_username': current_user.username,
+        'source_notification_id': notification.id,
+        'original_body': original_body,
+        'reply': reply_text,
+        'screen': 'notifications',
+        'path': '/admin/notifications',
+    }
+
+    if sender_admin_id:
+        try:
+            admin_notif = Notification(
+                user_id=int(sender_admin_id),
+                type='ADMIN_ALERT_REPLY',
+                title=f'رد من @{current_user.username or current_user.id}',
+                body=reply_text[:500],
+                data=reply_payload,
+            )
+            db.add(admin_notif)
+            db.flush()
+            emit_user_event_background(int(sender_admin_id), 'new_notification', {
+                'id': admin_notif.id,
+                'type': 'ADMIN_ALERT_REPLY',
+                'notification_type': 'ADMIN_ALERT_REPLY',
+                'title': admin_notif.title,
+                'message': admin_notif.body,
+                'text': admin_notif.body,
+                'body': admin_notif.body,
+                'created_at': admin_notif.created_at.isoformat() if admin_notif.created_at else datetime.utcnow().isoformat(),
+                'seen': False,
+                'is_read': False,
+                'data': reply_payload,
+                'payload': reply_payload,
+            })
+        except Exception:  # noqa: BLE001
+            pass
+
+    # حذف الإشعار من عند المستخدم بعد الرد (يختفي فوراً كما هو مطلوب)
+    try:
+        db.delete(notification)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
+    _emit_admin_event(
+        'admin:alert_reply',
+        {
+            'from_user_id': current_user.id,
+            'from_username': current_user.username,
+            'reply': reply_text[:200],
+            'source_notification_id': notification_id,
+            'created_at': datetime.utcnow().isoformat(),
+        },
+    )
+    return {'ok': True, 'message': 'Reply sent', 'removed': True}
 
 
 @router.get('/analytics/dashboard')

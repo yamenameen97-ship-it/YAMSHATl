@@ -279,7 +279,7 @@ export default function AdminGroups() {
         <Card>
           <div className="card-head split">
             <div>
-              <h3 className="section-title">Groups Hub — سيطرة المدير الكاملة</h3>
+              <h3 className="section-title">مركز المجموعات — سيطرة المدير الكاملة</h3>
               <p className="muted">تجميد، حذف، كتم أعضاء، وحذف رسائل بدون الحاجة لأن يكون المدير عضواً في المجموعة.</p>
             </div>
             <div className="action-row">
@@ -301,11 +301,11 @@ export default function AdminGroups() {
             <div className="queue-card compact admin-tone-blue">
               <span className="queue-label">صاحب المجموعة الأولى</span>
               <strong>{groups[0]?.owner_username || '—'}</strong>
-              <p>مستخرج مباشرة من الـ backend.</p>
+              <p>مستخرج مباشرة من الخادم.</p>
             </div>
             <div className="queue-card compact admin-tone-amber">
               <span className="queue-label">حالة السيطرة</span>
-              <strong>Super-Admin</strong>
+              <strong>مدير أعلى</strong>
               <p>تقدر تجمّد أي مجموعة أو تحذفها فوراً.</p>
             </div>
           </div>
@@ -413,7 +413,7 @@ export default function AdminGroups() {
             <Card className="admin-mini-list-card">
               <div className="card-head split">
                 <h3 className="section-title">آخر المجموعات</h3>
-                <span className="badge">Feed</span>
+                <span className="badge">الخلاصة</span>
               </div>
               <div className="admin-activity-list">
                 {groups.slice(0, 6).map((group) => (
@@ -432,7 +432,7 @@ export default function AdminGroups() {
             <Card className="admin-mini-list-card">
               <div className="card-head split">
                 <h3 className="section-title">مؤشرات سريعة</h3>
-                <span className="badge">Live</span>
+                <span className="badge">مباشر</span>
               </div>
               <div className="queue-grid compact-cards">
                 {groups.slice(0, 3).map((group) => (
@@ -456,7 +456,7 @@ export default function AdminGroups() {
             <span className="field-label">وصف المجموعة</span>
             <textarea className="input textarea" rows="4" value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} placeholder="اكتب وصف مختصر للمجموعة" />
           </label>
-          <Input label="أعضاء مبدئيون" hint="افصل الأسماء بفاصلة" value={form.members} onChange={(event) => setForm((prev) => ({ ...prev, members: event.target.value }))} placeholder="ahmed, sara, nour" />
+          <Input label="أعضاء مبدئيون" hint="افصل الأسماء بفاصلة" value={form.members} onChange={(event) => setForm((prev) => ({ ...prev, members: event.target.value }))} placeholder="أحمد، سارة، نور" />
           <div className="modal-actions">
             <Button variant="secondary" onClick={() => setCreateOpen(false)}>إلغاء</Button>
             <Button onClick={handleCreate} loading={saving}>{saving ? 'جارٍ الإنشاء...' : 'إنشاء المجموعة'}</Button>

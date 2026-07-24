@@ -247,7 +247,7 @@ export default function AdminUsers() {
             <h2>إدارة المستخدمين والصلاحيات</h2>
             <p className="muted">نظام صلاحيات متدرج، مراقبة سلوك المستخدمين، وأدوات حظر متقدمة.</p>
           </div>
-          <Button onClick={handleExport} variant="secondary">تصدير المستخدمين (CSV)</Button>
+          <Button onClick={handleExport} variant="secondary">تصدير المستخدمين (ملف CSV)</Button>
         </div>
         
         <div className="filters-row mt-4">
@@ -366,7 +366,7 @@ export default function AdminUsers() {
               <code>{selectedUser?.fingerprint}</code>
             </div>
             <div className="summary-item">
-              <label>عنوان IP</label>
+              <label>عنوان الإنترنت</label>
               <code>{selectedUser?.ip}</code>
             </div>
             <div className="summary-item">
@@ -383,7 +383,7 @@ export default function AdminUsers() {
 
           {selectedUser?.bannedIPs.length > 0 && (
             <div className="banned-list mt-4">
-              <h4>عناوين IP المحظورة</h4>
+              <h4>عناوين الإنترنت المحظورة</h4>
               <div className="banned-items">
                 {selectedUser.bannedIPs.map((ip, i) => (
                   <span key={i} className="banned-item">{ip}</span>
@@ -494,11 +494,11 @@ export default function AdminUsers() {
       <Modal 
         open={actionModal === 'ban_ip'} 
         onClose={() => setActionModal(null)} 
-        title="حظر عنوان IP"
+        title="حظر عنوان الإنترنت"
         size="small"
       >
         <div className="action-form">
-          <p>هل تريد حظر عنوان IP: <code>{selectedUser?.ip}</code>؟</p>
+          <p>هل تريد حظر عنوان الإنترنت: <code>{selectedUser?.ip}</code>؟</p>
           <div className="button-group mt-4">
             <Button variant="danger" onClick={() => handleBanIP(selectedUser.id, selectedUser.ip)}>تأكيد الحظر</Button>
             <Button variant="secondary" onClick={() => setActionModal(null)}>إلغاء</Button>

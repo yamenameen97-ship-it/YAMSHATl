@@ -149,7 +149,14 @@ async def delete_group(group_id: str, current_user: User = Depends(get_current_u
 # 👥 الأعضاء
 # ============================================================
 @router.post('/{group_id}/join')
-async def join_group(group_id: str, current_user: User = Depends(get_current_user)):
+async def join_group(group_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # v88.53: منع الانضمام للمجموعات إذا كان المستخدم محظوراً (groups_join_ban)
+    from app.services.restriction_service import is_user_restricted
+    if is_user_restricted(db, current_user.id, 'groups_join_ban'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='حسابك محظور من الانضمام إلى أي مجموعة من قبل الإدارة. راجع الإشعارات لإرسال طلب مراجعة.',
+        )
     result = group_store.join_group(group_id, current_user.username)
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Group not found or banned')
@@ -159,8 +166,8 @@ async def join_group(group_id: str, current_user: User = Depends(get_current_use
 
 
 @router.post('/group/{groupId}/join')
-async def join_group_legacy(groupId: int, current_user: User = Depends(get_current_user)):
-    return await join_group(str(groupId), current_user)
+async def join_group_legacy(groupId: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return await join_group(str(groupId), current_user, db)
 
 
 @router.post('/{group_id}/leave')

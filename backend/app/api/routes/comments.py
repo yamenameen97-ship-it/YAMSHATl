@@ -14,6 +14,7 @@ from app.schemas.comment import CommentCreate
 # رغم أنها مخزّنة في قاعدة البيانات. الحل: عدم استدعاء rank_comments هنا نهائياً؛
 # الترتيب يتم داخل get_comments (newest/oldest/popular).
 from app.services.ai_service import moderate_comment, detect_spam
+from app.services.restriction_service import is_user_restricted
 from app.services.comment_service import (
     create_comment,
     delete_comment,
@@ -35,6 +36,12 @@ def create(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # v88.53: منع التعليق إذا كان المستخدم مكتوماً من الإدارة
+    if is_user_restricted(db, current_user.id, 'comment_mute'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='حسابك مكتوم من التعليق من قبل الإدارة. راجع الإشعارات لإرسال طلب مراجعة.',
+        )
     # ✅ v87.8: moderate_comment async و detect_spam يرجّع dict (دائماً truthy).
     # من غير الآمن استدعاؤهما مباشرة في route sync، لذلك نتعامل معهما بحذر.
     try:

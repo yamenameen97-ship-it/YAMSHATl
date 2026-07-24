@@ -4,6 +4,8 @@ import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import { getNotifications, markNotificationRead, markNotificationsRead } from '../api/notifications.js';
+import RestrictionNotificationCard, { isRestrictionNotification } from '../components/notifications/RestrictionNotificationCard.jsx';
+import AdminAlertNotificationCard, { isAdminAlertNotification } from '../components/notifications/AdminAlertNotificationCard.jsx';
 import { useNotificationStore } from '../store/notificationStore.js';
 import { maybeShowBrowserNotification, normalizeNotification, ensureNotificationPermission } from '../utils/notificationCenter.js';
 import { redirectToAppPath } from '../utils/router.js';
@@ -399,13 +401,30 @@ export default function Notifications() {
             </Card>
           ) : (
             filteredItems.map((notification) => (
-              <NotificationRow
-                key={notification.id}
-                notification={notification}
-                markRead={markRead}
-                removeNotification={removeNotification}
-                deepLinking={settings.deepLinking}
-              />
+              isAdminAlertNotification(notification) ? (
+                // v88.54 — تنبيه "ادارة النظام" مع زر الرد وفقاعة كتابة
+                <AdminAlertNotificationCard
+                  key={notification.id}
+                  notification={notification}
+                  onHide={(id) => removeNotification(id)}
+                  onRead={(id) => markRead(id)}
+                />
+              ) : isRestrictionNotification(notification) ? (
+                // v88.53 — إشعارات القيود الإدارية (كتم/حظر) مع زر طلب مراجعة
+                <RestrictionNotificationCard
+                  key={notification.id}
+                  notification={notification}
+                  onHide={(id) => removeNotification(id)}
+                />
+              ) : (
+                <NotificationRow
+                  key={notification.id}
+                  notification={notification}
+                  markRead={markRead}
+                  removeNotification={removeNotification}
+                  deepLinking={settings.deepLinking}
+                />
+              )
             ))
           )}
         </div>

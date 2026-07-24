@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout.jsx';
+import TrendingDashboardCard from '../../components/admin/TrendingDashboardCard.jsx';
 import { getAdminDashboardLive } from '../../api/admin.js';
 
 /**
@@ -23,7 +24,7 @@ import { getAdminDashboardLive } from '../../api/admin.js';
 // ============ Fallback (يظهر فقط أثناء التحميل أو إذا فشل الاتصال) ============
 const FALLBACK_STAT_CARDS = [
   { id: 'users',    label: 'إجمالي المستخدمين', value: '—', trend: '+0.0%', icon: '👥', tone: '#8b5cf6' },
-  { id: 'live',     label: 'البثوث المباشرة',   value: '—', trend: '+0.0%', icon: '📡', tone: '#ef4444' },
+  { id: 'trending', label: 'التريندات النشطة',  value: '—', trend: '+0.0%', icon: '🔥', tone: '#ef4444' },
   { id: 'views',    label: 'المشاهدات الكلية',  value: '—', trend: '+0.0%', icon: '👁', tone: '#ef4444' },
   { id: 'revenue',  label: 'الإيرادات',         value: '—', trend: '+0.0%', icon: '$',  tone: '#10b981' },
   { id: 'posts',    label: 'المنشورات',         value: '—', trend: '+0.0%', icon: '🎁', tone: '#f59e0b' },
@@ -53,7 +54,8 @@ const FALLBACK_AUDIENCE = [
 // ربط كل بطاقة بصفحتها التفصيلية
 const STAT_TARGETS = {
   users:    '/admin/users',
-  live:     '/admin/live',
+  trending: '/admin/trending',
+  live:     '/admin/trending', // إعادة توجيه أي رابط قديم لصفحة التريندات
   views:    '/admin/reports',
   revenue:  '/admin/reports',
   posts:    '/admin/posts',
@@ -376,38 +378,9 @@ export default function AdminDashboard() {
 
         {/* ====== الصف 2: إدارة البثوث + إدارة المنشورات + إدارة الشات ====== */}
         <div className="ls-row ls-row-3">
-          <ClickableCard to="/admin/live" navigate={navigate} ariaLabel="فتح صفحة إدارة البثوث الكاملة">
-            <div className="ls-card-head">
-              <h3>📡 إدارة البثوث</h3>
-              <span className="ls-open-hint">عرض الكل ›</span>
-            </div>
-            <div className="ls-table-wrap">
-              <table className="ls-table">
-                <thead>
-                  <tr>
-                    <th>التاريخ</th>
-                    <th>المستخدم</th>
-                    <th>عنوان البث</th>
-                    <th>المشاهدات</th>
-                    <th>الحالة</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {previewLive.length === 0 ? (
-                    <tr><td colSpan={5} className="ls-empty-row">لا توجد بثوث بعد</td></tr>
-                  ) : previewLive.map((r) => (
-                    <tr key={r.id}>
-                      <td>{r.date}</td>
-                      <td>{r.user}</td>
-                      <td className="ls-ellipsis">{r.title}</td>
-                      <td>{r.views ?? r.viewers ?? '—'}</td>
-                      <td><span className="ls-status ls-status-live">إنهاء</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </ClickableCard>
+          {/* 🔥 v88.51 — استُبدل صندوق "إدارة البثوث" بصندوق "التريندات الآن".
+              الصندوق يعرض قمّة التريند العالمي + بارز الدول ويومض عند وصول trending:new. */}
+          <TrendingDashboardCard onOpen={() => navigate('/admin/trending')} />
 
           <ClickableCard to="/admin/posts" navigate={navigate} ariaLabel="فتح صفحة إدارة المنشورات الكاملة">
             <div className="ls-card-head">

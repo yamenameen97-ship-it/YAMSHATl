@@ -225,7 +225,7 @@ export default function AdminPosts() {
         <div className="rules-grid mt-4">
           <div className="rule-chip">حظر تلقائي (AI > 0.9)</div>
           <div className="rule-chip">تبليغ تلقائي (AI > 0.7)</div>
-          <div className="rule-chip">كلمات محظورة (Regex)</div>
+          <div className="rule-chip">كلمات محظورة (تعبير نمطي)</div>
           <div className="rule-chip">روابط مريبة</div>
         </div>
       </Card>
@@ -373,7 +373,7 @@ export default function AdminPosts() {
                 {post.flags > 0 && <span className="flags-count">🚩 {post.flags} بلاغات</span>}
               </div>
               <div className="actions">
-                <Button size="small" variant="secondary" onClick={() => handleAIScan(post.id)}>فحص AI</Button>
+                <Button size="small" variant="secondary" onClick={() => handleAIScan(post.id)}>فحص بالذكاء الاصطناعي</Button>
                 {post.status !== 'approved' && (
                   <Button size="small" variant="primary" onClick={() => handlePostAction(post.id, 'approve')}>موافقة</Button>
                 )}

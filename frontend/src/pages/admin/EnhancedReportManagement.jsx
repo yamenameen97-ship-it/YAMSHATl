@@ -116,7 +116,7 @@ const ReportViewer = ({ report, onClose, onAction }) => {
           <div style={styles.section}>
             <h3>المحتوى المبلّغ عنه</h3>
             {report.contentType === 'image' && (
-              <img src={report.contentUrl} alt="Content" style={styles.contentImage} />
+              <img src={report.contentUrl} alt="محتوى" style={styles.contentImage} />
             )}
             {report.contentType === 'video' && (
               <video src={report.contentUrl} controls style={styles.contentVideo} />

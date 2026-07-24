@@ -24,11 +24,11 @@ export default function AdminSidebar({ collapsed, permissions = [], role = 'user
     <aside className={`admin-sidebar admin-reference-sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="admin-brand admin-reference-brand">
         <div className="brand-logo brand-logo-reference">
-          <BrandLogo size={38} alt="Yamshat Admin" className="brand-logo-reference-image" />
+          <BrandLogo size={38} alt="يمشات - لوحة التحكم" className="brand-logo-reference-image" />
         </div>
         {!collapsed ? (
           <div>
-            <strong>Yamshat Admin</strong>
+            <strong>يمشات - لوحة التحكم</strong>
             <span>لوحة تحكم موحّدة</span>
           </div>
         ) : null}

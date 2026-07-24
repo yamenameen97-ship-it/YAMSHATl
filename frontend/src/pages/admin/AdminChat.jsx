@@ -314,7 +314,7 @@ export default function AdminChat() {
             <div className="adm-chat-stat">
               <span className="adm-chat-stat-dot adm-chat-stat-dot-info" />
               <strong>مفعّل</strong>
-              <span>الإشراف الفوري + NSFW</span>
+              <span>الإشراف الفوري + فلتر المحتوى غير اللائق</span>
             </div>
           </div>
           <div className="adm-chat-toolbar-right">

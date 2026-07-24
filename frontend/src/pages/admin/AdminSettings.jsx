@@ -195,9 +195,9 @@ export default function AdminSettings() {
 
       <section className="dashboard-hero-grid small-gap">
         <Card className="hero-card">
-          <span className="badge">System Preferences</span>
+          <span className="badge">تفضيلات النظام</span>
           <h2>توحيد إعدادات المنصة والإشعارات والإدارة</h2>
-          <p className="muted">تم ربط الحفظ والـ reset مع الـ API الحقيقي، مع مزامنة مباشرة لو الإعدادات اتغيرت من جلسة أدمن تانية.</p>
+          <p className="muted">تم ربط الحفظ وإعادة الضبط مع واجهة الخادم الحقيقية، مع مزامنة مباشرة لو الإعدادات تغيرت من جلسة مدير أخرى.</p>
           <div className="action-row wide">
             <Button loading={savingGeneral} disabled={savingGeneral} onClick={handleSaveSettings}>حفظ الإعدادات</Button>
             <Button variant="secondary" loading={loading} disabled={loading} onClick={handleResetSettings}>{loading ? 'جارٍ الاسترجاع...' : 'Reset / إعادة من الخادم'}</Button>
@@ -251,16 +251,16 @@ export default function AdminSettings() {
                 <label className="field select-field">
                   <span className="field-label">الثيم</span>
                   <select className="input" value={general.theme} onChange={(event) => setGeneral((prev) => ({ ...prev, theme: event.target.value }))}>
-                    <option value="midnight">Midnight</option>
-                    <option value="aurora">Aurora</option>
-                    <option value="graphite">Graphite</option>
+                    <option value="midnight">منتصف الليل</option>
+                    <option value="aurora">الشفق القطبي</option>
+                    <option value="graphite">جرافيت</option>
                   </select>
                 </label>
                 <label className="field select-field">
                   <span className="field-label">اللغة</span>
                   <select className="input" value={general.locale} onChange={(event) => setGeneral((prev) => ({ ...prev, locale: event.target.value }))}>
                     <option value="ar-EG">العربية</option>
-                    <option value="en-US">English</option>
+                    <option value="en-US">الإنجليزية</option>
                   </select>
                 </label>
               </div>
@@ -274,7 +274,7 @@ export default function AdminSettings() {
         </Card>
 
         <Card>
-          <div className="card-head"><h3 className="section-title">Notification Settings</h3></div>
+          <div className="card-head"><h3 className="section-title">إعدادات الإشعارات</h3></div>
           <div className="modal-stack">
             <div className="queue-grid compact-cards">
               {[
@@ -297,12 +297,12 @@ export default function AdminSettings() {
               ))}
             </div>
             <label className="field select-field">
-              <span className="field-label">Notification Sounds</span>
+              <span className="field-label">أصوات الإشعارات</span>
               <select className="input" value={general.notifications?.sound || 'classic'} onChange={(event) => updateNotificationSetting('sound', event.target.value)}>
-                <option value="classic">Classic Bell</option>
-                <option value="pulse">Pulse Ping</option>
-                <option value="soft">Soft Chime</option>
-                <option value="silent">Silent Mode</option>
+                <option value="classic">جرس كلاسيكي</option>
+                <option value="pulse">نبضة</option>
+                <option value="soft">رنين ناعم</option>
+                <option value="silent">وضع صامت</option>
               </select>
             </label>
             <div className="queue-grid compact-cards">
@@ -312,7 +312,7 @@ export default function AdminSettings() {
                   <strong>{enabled ? 'مفعّل' : 'متوقف'}</strong>
                   <label className="checkbox-row">
                     <input type="checkbox" checked={Boolean(enabled)} onChange={() => toggleCategory(key)} />
-                    <span>Toggle Category</span>
+                    <span>تبديل الفئة</span>
                   </label>
                 </div>
               ))}

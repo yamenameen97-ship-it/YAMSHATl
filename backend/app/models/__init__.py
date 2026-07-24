@@ -21,6 +21,7 @@ from app.models.post_preference import PostPreference, CommentReaction  # noqa: 
 from app.models.user import User  # noqa: F401
 from app.models.user_block import UserBlock  # noqa: F401
 from app.models.user_mute import UserMute  # noqa: F401
+from app.models.user_restriction import UserRestriction  # noqa: F401
 from app.models.muted_story_user import MutedStoryUser  # noqa: F401
 from app.models.user_preference import UserPreference  # noqa: F401
 from app.models.user_profile import UserProfile  # noqa: F401

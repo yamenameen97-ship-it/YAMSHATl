@@ -18,25 +18,8 @@ const ROW_HEIGHT = 94;
 const QUEUE_HEIGHT = 520;
 const OVERSCAN = 4;
 
-const FALLBACK_REPORTS = [];
-
-function duplicateSeedReports(base) {
-  if (!Array.isArray(base) || !base.length) return [];
-  return Array.from({ length: 42 }, (_, index) => {
-    const template = base[index % base.length];
-    return {
-      ...template,
-      id: `${template.id}-${index + 1}`,
-      score: Math.max(42, template.score - (index % 14) + ((index * 3) % 9)),
-      slaMinutes: template.slaMinutes + index * 2,
-      createdAt: new Date(Date.now() - index * 6 * 60 * 1000).toISOString(),
-      reporter: `${template.reporter}${index % 3 === 0 ? '' : `_${index}`}`,
-    };
-  }).sort((a, b) => {
-    const severityWeight = { critical: 4, high: 3, medium: 2, low: 1 };
-    return (severityWeight[b.severity] || 0) - (severityWeight[a.severity] || 0) || new Date(b.createdAt) - new Date(a.createdAt);
-  });
-}
+// v88.48 — تم إزالة FALLBACK_REPORTS + duplicateSeedReports (بيانات mock).
+// الآن كل شيء يأتي من /admin/reports مباشرة عبر getAdminReports.
 
 function normalizeReports(payload) {
   const items = Array.isArray(payload?.items)
@@ -121,32 +104,42 @@ function scoreBars(reports) {
   }));
 }
 
-function seedRemovalRegistry(reports) {
-  return reports.slice(0, 3).map((report, index) => ({
-    id: `REM-${index + 1}`,
-    reportId: report.id,
-    target: report.target,
-    targetType: report.targetType,
-    action: index === 1 ? 'hide_from_feed' : 'remove_content',
-    reason: report.reason,
-    status: index === 2 ? 'restored' : 'active',
-    executedAt: new Date(Date.now() - index * 2 * 60 * 60 * 1000).toISOString(),
-    by: ['Content Lead', 'Trust & Safety', 'Super Admin'][index % 3],
-  }));
+// v88.48 — تم إزالة seedRemovalRegistry و seedAppealsRegistry (بيانات mock).
+// سجلات الإزالة والاستئنافات الآن تُبنى فقط من الإجراءات الفعلية على البلاغات
+// الحقيقية القادمة من /admin/reports. لا توجد بيانات تجريبية عند التحميل.
+
+function deriveRemovalsFromReports(reports) {
+  // البلاغات المُغلقة بإجراء إزالة محتوى تُعرض في سجل الإزالة.
+  return reports
+    .filter((r) => (r.actionTaken || '').toLowerCase().includes('remove') || (r.actionTaken || '').toLowerCase() === 'remove_content')
+    .map((r) => ({
+      id: `REM-${r.id}`,
+      reportId: r.id,
+      target: r.target,
+      targetType: r.targetType,
+      action: 'remove_content',
+      reason: r.reason,
+      status: 'active',
+      executedAt: r.handledAt || r.updatedAt || r.createdAt,
+      by: r.handledBy?.username || 'Admin',
+    }));
 }
 
-function seedAppealsRegistry(reports) {
-  return reports.slice(0, 3).map((report, index) => ({
-    id: `APL-${index + 1}`,
-    reportId: report.id,
-    target: report.target,
-    appellant: [report.reporter, '@creator_case', '@owner_media'][index] || report.reporter,
-    request: index === 0 ? 'إعادة فحص قرار الحظر المؤقت.' : index === 1 ? 'استرجاع المحتوى بعد إزالة تلقائية.' : 'الاعتراض على إنذار حقوق النشر.',
-    status: index === 1 ? 'under_review' : 'open',
-    severity: report.severity,
-    submittedAt: new Date(Date.now() - (index + 1) * 90 * 60 * 1000).toISOString(),
-    decision: '',
-  }));
+function deriveAppealsFromReports(reports) {
+  // البلاغات المُصعّدة (escalated) نعتبرها استئنافات مفتوحة.
+  return reports
+    .filter((r) => r.status === 'escalated' || r.status === 'appealed')
+    .map((r) => ({
+      id: `APL-${r.id}`,
+      reportId: r.id,
+      target: r.target,
+      appellant: r.reporter,
+      request: r.moderatorNotes || r.reason || 'تم تصعيد البلاغ لمراجعة أعلى.',
+      status: r.status === 'appealed' ? 'under_review' : 'open',
+      severity: r.severity,
+      submittedAt: r.updatedAt || r.createdAt,
+      decision: '',
+    }));
 }
 
 function QueueRow({ report, active, onOpen, onResolve, onEscalate, onRemove }) {
@@ -258,8 +251,9 @@ export default function AdminReports() {
       }));
       setReports(normalized);
       setActiveReportId((prev) => prev || normalized[0]?.id || '');
-      setRemovals((prev) => prev.length ? prev : seedRemovalRegistry(normalized));
-      setAppeals((prev) => prev.length ? prev : seedAppealsRegistry(normalized));
+      // v88.48 — بناء السجلات من إجراءات فعلية بدلاً من seed dummy
+      setRemovals(deriveRemovalsFromReports(normalized));
+      setAppeals(deriveAppealsFromReports(normalized));
     } catch (error) {
       // Fallback to summary endpoint
       try {
@@ -528,7 +522,7 @@ export default function AdminReports() {
         <Card style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: 13, color: '#60a5fa', marginBottom: 8 }}>Report Center • Content removal • Appeals system • Moderation tools</div>
+              <div style={{ fontSize: 13, color: '#60a5fa', marginBottom: 8 }}>مركز البلاغات • حذف المحتوى • نظام الطعون • أدوات الإشراف</div>
               <h2 style={{ margin: 0, color: '#f8fafc' }}>مركز البلاغات والإشراف المكتمل</h2>
               <p style={{ margin: '10px 0 0', color: '#94a3b8', maxWidth: 820 }}>
                 تم استكمال مركز البلاغات ليشمل مراجعة البلاغات، سجل إزالة المحتوى، ونظام استئناف داخلي مرتبط بكل قرار إداري بدل الاكتفاء بقائمة ناقصة فقط.
@@ -583,14 +577,14 @@ export default function AdminReports() {
               <Card style={{ padding: 18, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
                   <div>
-                    <h3 style={{ margin: 0, color: '#f8fafc' }}>Review Queue</h3>
+                    <h3 style={{ margin: 0, color: '#f8fafc' }}>طابور المراجعة</h3>
                     <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>قائمة مراجعة افتراضية سريعة مع إجراءات مباشرة للحذف والتصعيد والاستئناف.</div>
                   </div>
                   <div style={{ color: '#64748b', fontSize: 12, display: 'flex', alignItems: 'center' }}>Windowed list • {filteredReports.length} items</div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 16 }}>
-                  <Input label="بحث" value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} placeholder="ID / المستخدم / السبب" />
+                  <Input label="بحث" value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} placeholder="المعرف / المستخدم / السبب" />
                   <label className="field select-field"><span className="field-label">الحالة</span><select className="input" value={filters.status} onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}><option value="all">الكل</option><option value="pending">بانتظار</option><option value="investigating">تحقيق</option><option value="escalated">تصعيد</option><option value="resolved">منتهي</option><option value="appealed">استئناف</option></select></label>
                   <label className="field select-field"><span className="field-label">الخطورة</span><select className="input" value={filters.severity} onChange={(event) => setFilters((prev) => ({ ...prev, severity: event.target.value }))}><option value="all">الكل</option><option value="critical">critical</option><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select></label>
                   <label className="field select-field"><span className="field-label">المسار</span><select className="input" value={filters.queue} onChange={(event) => setFilters((prev) => ({ ...prev, queue: event.target.value }))}><option value="all">الكل</option>{queueMix.map((item) => <option key={item.label} value={item.label}>{item.label}</option>)}</select></label>
@@ -630,7 +624,7 @@ export default function AdminReports() {
 
               <Card style={{ padding: 18, display: 'grid', gap: 16 }}>
                 <div>
-                  <h3 style={{ margin: 0, color: '#f8fafc' }}>Moderation tools</h3>
+                  <h3 style={{ margin: 0, color: '#f8fafc' }}>أدوات الإشراف</h3>
                   <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>أوامر سريعة للمراجعين مع توضيح أثر كل إجراء.</div>
                 </div>
 
@@ -677,7 +671,7 @@ export default function AdminReports() {
                     {/* v88.44: Show snapshot content if available */}
                     {activeReport.snapshot && Object.keys(activeReport.snapshot).length > 1 ? (
                       <div style={{ borderRadius: 14, padding: 12, marginTop: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(148,163,184,0.12)' }}>
-                        <div style={{ color: '#94a3b8', fontSize: 11, marginBottom: 6 }}>محتوى البلاغ (snapshot):</div>
+                        <div style={{ color: '#94a3b8', fontSize: 11, marginBottom: 6 }}>محتوى البلاغ (لقطة):</div>
                         {activeReport.snapshot.content ? <div style={{ color: '#e2e8f0', fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{activeReport.snapshot.content}</div> : null}
                         {activeReport.snapshot.username ? <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>@{activeReport.snapshot.username}</div> : null}
                       </div>
@@ -741,7 +735,7 @@ export default function AdminReports() {
             <Card style={{ padding: 18 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
                 <div>
-                  <h3 style={{ margin: 0, color: '#f8fafc' }}>Content removal registry</h3>
+                  <h3 style={{ margin: 0, color: '#f8fafc' }}>سجل حذف المحتوى</h3>
                   <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>سجل كامل لكل إزالة أو إخفاء محتوى مع إمكانية الاسترجاع وفتح استئناف.</div>
                 </div>
                 <div style={{ color: '#64748b', fontSize: 12 }}>{removals.length} actions</div>
@@ -774,7 +768,7 @@ export default function AdminReports() {
                 <li>تتبع كل قرار إزالة محتوى بشكل واضح.</li>
                 <li>إمكانية الاسترجاع بدون مغادرة لوحة الإدارة.</li>
                 <li>ربط مباشر مع الاستئناف بدل العمل اليدوي الخارجي.</li>
-                <li>جاهز للربط لاحقًا مع API حذف المنشورات والتعليقات بشكل أعمق.</li>
+                <li>جاهز للربط لاحقًا مع واجهة حذف المنشورات والتعليقات بشكل أعمق.</li>
               </ul>
             </Card>
           </section>
@@ -785,7 +779,7 @@ export default function AdminReports() {
             <Card style={{ padding: 18 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
                 <div>
-                  <h3 style={{ margin: 0, color: '#f8fafc' }}>Appeals center</h3>
+                  <h3 style={{ margin: 0, color: '#f8fafc' }}>مركز الطعون</h3>
                   <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>نظام استئناف كامل لمراجعة اعتراضات المستخدمين على قرارات الحظر أو إزالة المحتوى.</div>
                 </div>
                 <div style={{ color: '#64748b', fontSize: 12 }}>{appeals.length} appeal cases</div>

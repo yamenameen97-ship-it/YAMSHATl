@@ -114,6 +114,13 @@ def _coerce_post_media(payload: dict) -> tuple[str | None, list[str]]:
 @router.post('', status_code=status.HTTP_201_CREATED)
 @router.post('/', status_code=status.HTTP_201_CREATED)
 def create(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # v88.53: منع النشر إذا كان المستخدم محظوراً من النشر (post_ban)
+    from app.services.restriction_service import is_user_restricted
+    if is_user_restricted(db, current_user.id, 'post_ban'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='حسابك محظور من النشر من قبل الإدارة. راجع الإشعارات لإرسال طلب مراجعة.',
+        )
     content = str(payload.get('content') or '').strip()
 
     # AI Moderation Hook

@@ -103,7 +103,7 @@ export default function AdminLogs() {
       <Card className="logs-header-card">
         <div className="flex-between">
           <div>
-            <h2>مركز السجلات والمراقبة (Logs Center)</h2>
+            <h2>مركز السجلات والمراقبة</h2>
             <p className="muted">مراقبة حية للعمليات الحساسة، سجلات الأمان، الأخطاء، ومراجعة العمليات.</p>
           </div>
           <div className="header-actions">
@@ -114,7 +114,7 @@ export default function AdminLogs() {
             >
               {isLive ? '🔴 مراقبة حية نشطة' : '⚪ المراقبة متوقفة'}
             </Button>
-            <Button variant="outline">تصدير السجلات (CSV)</Button>
+            <Button variant="outline">تصدير السجلات (ملف CSV)</Button>
           </div>
         </div>
       </Card>
@@ -186,7 +186,7 @@ export default function AdminLogs() {
                 {selectedLog.details}
               </div>
 
-              <label className="mt-3">بيانات إضافية (JSON):</label>
+              <label className="mt-3">بيانات إضافية (بصيغة JSON):</label>
               <pre className="json-box">
                 {JSON.stringify({
                   id: selectedLog.id,

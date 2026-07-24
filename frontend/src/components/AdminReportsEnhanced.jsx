@@ -319,7 +319,7 @@ export const AdminReportsEnhanced = ({ reports = [] }) => {
               <div style={styles.contentSection}>
                 <h3 style={styles.sectionTitle}>المحتوى المبلغ عنه</h3>
                 {selectedReport.reportedContent.type === 'image' ? (
-                  <img src={selectedReport.reportedContent.url} alt="Reported content" style={styles.contentImage} />
+                  <img src={selectedReport.reportedContent.url} alt="المحتوى المبلغ عنه" style={styles.contentImage} />
                 ) : selectedReport.reportedContent.type === 'video' ? (
                   <video src={selectedReport.reportedContent.url} style={styles.contentVideo} controls />
                 ) : (

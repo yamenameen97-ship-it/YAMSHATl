@@ -110,7 +110,7 @@ export default function AdminChat() {
         <div className="flex-between">
           <div>
             <h2>إدارة الشات والرقابة الذكية</h2>
-            <p className="muted">مراقبة الرسائل المسيئة، فلترة الكلمات، AI Moderation، والحظر التلقائي.</p>
+            <p className="muted">مراقبة الرسائل المسيئة، فلترة الكلمات، إشراف الذكاء الاصطناعي، والحظر التلقائي.</p>
           </div>
           <div className="header-controls">
             <div className="toggle-item">
@@ -122,7 +122,7 @@ export default function AdminChat() {
               />
             </div>
             <div className="toggle-item">
-              <label>رقابة AI:</label>
+              <label>رقابة الذكاء الاصطناعي:</label>
               <input 
                 type="checkbox" 
                 checked={aiModerationEnabled} 
@@ -148,7 +148,7 @@ export default function AdminChat() {
         </Card>
         <Card className="stat-mini-card info">
           <div className="stat-val">{chatStats.aiDetections}</div>
-          <div className="stat-lab">اكتشافات AI (اليوم)</div>
+          <div className="stat-lab">اكتشافات الذكاء الاصطناعي (اليوم)</div>
         </Card>
       </div>
 

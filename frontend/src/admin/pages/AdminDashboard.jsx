@@ -40,7 +40,7 @@ export default function AdminDashboard() {
   return (
     <div className="admin-dashboard-container">
       <header className="admin-header">
-        <h1>لوحة التحكم المؤسسية (Enterprise Admin)</h1>
+        <h1>لوحة التحكم المؤسسية</h1>
         <div className="system-status">
           <span className={`status-badge ${isConnected ? 'online' : 'offline'}`}>
             {isConnected ? 'اتصال حي نشط' : 'جاري إعادة الاتصال...'}
@@ -51,7 +51,7 @@ export default function AdminDashboard() {
       {/* Live Monitoring Grid */}
       <section className="monitoring-grid">
         <MonitoringWidget title="المستخدمون النشطون" value={metrics.activeUsers.toLocaleString()} status="success" trend={12} />
-        <MonitoringWidget title="طلبات API / ثانية" value={(metrics.apiRequests / 3600).toFixed(2)} status="success" trend={5} />
+        <MonitoringWidget title="طلبات الواجهة / ثانية" value={(metrics.apiRequests / 3600).toFixed(2)} status="success" trend={5} />
         <MonitoringWidget title="معدل الأخطاء" value={`${(metrics.errorRate * 100).toFixed(2)}%`} status={metrics.errorRate > 0.05 ? 'danger' : 'success'} trend={-2} />
         <MonitoringWidget title="حمولة الخادم" value={`${metrics.serverLoad}%`} status={metrics.serverLoad > 80 ? 'warning' : 'success'} trend={8} />
       </section>
@@ -60,8 +60,8 @@ export default function AdminDashboard() {
       <div className="admin-main-content">
         <Card className="analytics-card">
           <div className="card-header">
-            <h3>تحليلات معمقة (Deep Analytics)</h3>
-            <Button size="small" variant="secondary">تقرير PDF مفصل</Button>
+            <h3>تحليلات معمقة</h3>
+            <Button size="small" variant="secondary">تقرير مفصل</Button>
           </div>
           <div className="analytics-details-grid">
             <div className="detail-item">
@@ -92,12 +92,12 @@ export default function AdminDashboard() {
         </Card>
 
         <Card className="live-logs-card">
-          <h3>سجل النظام المباشر (Live Monitoring)</h3>
+          <h3>سجل النظام المباشر</h3>
           <div className="logs-container">
-            <div className="log-entry info"><span>[INFO]</span> API Gateway healthy - 200 OK</div>
-            <div className="log-entry warning"><span>[WARN]</span> High latency detected in Node-4</div>
-            <div className="log-entry info"><span>[INFO]</span> Backup task completed successfully</div>
-            <div className="log-entry danger"><span>[ERR]</span> Database connection pool near limit</div>
+            <div className="log-entry info"><span>[معلومة]</span> بوابة الواجهة تعمل بشكل سليم - 200 موافق</div>
+            <div className="log-entry warning"><span>[تحذير]</span> تم اكتشاف بطء استجابة في العقدة رقم 4</div>
+            <div className="log-entry info"><span>[معلومة]</span> اكتملت مهمة النسخ الاحتياطي بنجاح</div>
+            <div className="log-entry danger"><span>[خطأ]</span> اتصالات قاعدة البيانات اقتربت من الحد الأقصى</div>
           </div>
         </Card>
       </div>

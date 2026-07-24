@@ -277,6 +277,13 @@ def add_story(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # v88.53: منع رفع الستوري إذا كان المستخدم محظوراً (story_ban)
+    from app.services.restriction_service import is_user_restricted
+    if is_user_restricted(db, current_user.id, 'story_ban'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='حسابك محظور من رفع القصة من قبل الإدارة. راجع الإشعارات لإرسال طلب مراجعة.',
+        )
     # v88.3.2 MEDIA RENDER ROOT FIX:
     # - نفضّل media_url المُرجَع من upload (مطلق أو Cloudinary).
     # - إن وصل الرابط محلياً لأي سبب نُمرّره عبر normalize_media_url مرة

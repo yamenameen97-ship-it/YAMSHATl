@@ -254,7 +254,7 @@ export default function AdminLogin() {
 
         {showDevTools ? (
           <div className="dev-login-card">
-            <strong>Development Login</strong>
+            <strong>دخول وضع التطوير</strong>
             <p className="muted no-margin">زر سريع لتجربة لوحة الأدمن أثناء التطوير المحلي.</p>
             <Button type="button" variant="secondary" onClick={handleDevLogin} loading={devLoading} disabled={loading || devLoading}>
               {devLoading ? 'جارٍ دخول الإدارة التطويري...' : 'دخول تطويري للأدمن'}

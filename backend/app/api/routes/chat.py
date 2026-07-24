@@ -245,6 +245,20 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Receiver not found')
         _assert_can_chat(db, current_user.id, receiver.id)
         receiver_id = receiver.id
+        # v88.53: منع مراسلة الغرباء إذا كان المستخدم محظوراً (dm_strangers_ban)
+        from app.services.restriction_service import is_user_restricted
+        from app.models.friendship import Friendship
+        if is_user_restricted(db, current_user.id, 'dm_strangers_ban'):
+            # نتحقق إن كان المستقبل صديقاً/مقرّباً — إن لم يكن نمنع
+            is_friend = db.query(Friendship).filter(
+                ((Friendship.user_id == current_user.id) & (Friendship.friend_id == receiver.id))
+                | ((Friendship.user_id == receiver.id) & (Friendship.friend_id == current_user.id))
+            ).first() is not None
+            if not is_friend:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail='حسابك محظور من مراسلة الأشخاص غير الأصدقاء من قبل الإدارة. راجع الإشعارات لإرسال طلب مراجعة.',
+                )
     else:
         # للمجموعات: نستخدم معرف المُرسل نفسه كـ receiver_id لتلبية قيد FK
         receiver_id = current_user.id

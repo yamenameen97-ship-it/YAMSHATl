@@ -3,8 +3,21 @@ import AdminLayout from '../../components/admin/AdminLayout.jsx';
 import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Input from '../../components/ui/Input.jsx';
-import { broadcastAdminNotification, getAdminNotifications } from '../../api/admin.js';
+import {
+  broadcastAdminNotification,
+  getAdminNotifications,
+  sendAdminAlert,
+} from '../../api/admin.js';
 import { useToast } from '../../components/admin/ToastProvider.jsx';
+
+// v88.54 — لوحة إشعارات المدير العام
+// =====================================================
+// دُعمت هنا ميزة جديدة: إرسال تنبيه رسمي باسم "ادارة النظام"
+// لشخص محدد (بالمعرف أو اسم المستخدم) أو لجميع المشتركين.
+// العنوان الذي يظهر عند المشترك ثابت: "ادارة النظام" — لا يظهر اسم
+// حساب الأدمن أو اسم المدير العام إطلاقاً. عند المشترك يوجد زر "الرد"
+// يفتح فقاعة كتابة الرد وزر "ارسال" — بعد الإرسال يختفي الإشعار من
+// عنده. إن لم يرد يبقى الإشعار مقيداً لديه حتى يحذفه هو بنفسه.
 
 const TARGET_ROLE_OPTIONS = [
   { value: '', label: 'كل المستخدمين' },
@@ -13,11 +26,18 @@ const TARGET_ROLE_OPTIONS = [
   { value: 'admin', label: 'الإدارة' },
 ];
 
+const ALERT_TARGET_OPTIONS = [
+  { value: 'all', label: 'الكل (كل المشتركين)' },
+  { value: 'user', label: 'مستخدم محدد' },
+];
+
 export default function AdminNotifications() {
   const [notifications, setNotifications] = useState([]);
   const [form, setForm] = useState({ title: '', body: '', targetRole: '' });
+  const [alertForm, setAlertForm] = useState({ body: '', target: 'all', username: '' });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [sendingAlert, setSendingAlert] = useState(false);
   const { pushToast } = useToast();
 
   const loadData = async () => {
@@ -42,13 +62,14 @@ export default function AdminNotifications() {
     const total = notifications.length;
     const unread = notifications.filter((item) => !item?.is_read).length;
     const broadcasts = notifications.filter((item) => item?.data?.broadcast).length;
+    const alerts = notifications.filter((item) => (item?.type === 'ADMIN_ALERT') || item?.data?.admin_alert).length;
     const today = notifications.filter((item) => {
       if (!item?.created_at) return false;
       const created = new Date(item.created_at);
       const now = new Date();
       return created.toDateString() === now.toDateString();
     }).length;
-    return { total, unread, broadcasts, today };
+    return { total, unread, broadcasts, alerts, today };
   }, [notifications]);
 
   const handleBroadcast = async () => {
@@ -79,11 +100,104 @@ export default function AdminNotifications() {
     }
   };
 
+  const handleSendAdminAlert = async () => {
+    const body = alertForm.body.trim();
+    if (!body) {
+      pushToast({ title: 'اكتب نص التنبيه', description: 'حقل المحتوى مطلوب.', type: 'warning' });
+      return;
+    }
+    if (alertForm.target === 'user' && !alertForm.username.trim()) {
+      pushToast({ title: 'حدد المستخدم', description: 'اكتب اسم المستخدم أو المعرف.', type: 'warning' });
+      return;
+    }
+
+    try {
+      setSendingAlert(true);
+      const rawTarget = alertForm.username.trim().replace(/^@/, '');
+      const payload = {
+        body,
+        target: alertForm.target,
+      };
+      if (alertForm.target === 'user') {
+        // إذا كان رقماً بحتاً نُرسله كـ user_id، وإلا كـ username
+        if (/^\d+$/.test(rawTarget)) {
+          payload.user_id = Number(rawTarget);
+        } else {
+          payload.username = rawTarget;
+        }
+      }
+      const { data } = await sendAdminAlert(payload);
+      pushToast({
+        title: 'تم إرسال التنبيه',
+        description: `وصل إلى ${data?.recipients ?? 0} مستخدم باسم "ادارة النظام".`,
+        type: 'success',
+      });
+      setAlertForm({ body: '', target: 'all', username: '' });
+      await loadData();
+    } catch (error) {
+      const detail = error?.response?.data?.detail || 'تحقق من البيانات أو أعد المحاولة.';
+      pushToast({ title: 'فشل إرسال التنبيه', description: detail, type: 'error' });
+    } finally {
+      setSendingAlert(false);
+    }
+  };
+
   return (
     <AdminLayout>
       <section className="notifications-dashboard">
         <div className="two-column-grid">
-          <Card title="إرسال إشعار فوري">
+          {/* v88.54 — بطاقة تنبيه "ادارة النظام" */}
+          <Card title='إرسال تنبيه باسم "ادارة النظام"'>
+            <div className="modal-stack">
+              <div className="muted" style={{ fontSize: 13, lineHeight: 1.7 }}>
+                يظهر عند المشترك بعنوان ثابت <strong>"ادارة النظام"</strong> — لا يظهر
+                اسم حسابك أو اسم المدير العام. المشترك يستطيع فتح التنبيه والرد عليه.
+                بعد الرد يختفي الإشعار من عنده تلقائياً. إن لم يرد يبقى مقيداً لديه
+                حتى يحذفه بنفسه.
+              </div>
+
+              <label className="field select-field">
+                <span className="field-label">المستلم</span>
+                <select
+                  className="input"
+                  value={alertForm.target}
+                  onChange={(e) => setAlertForm((prev) => ({ ...prev, target: e.target.value }))}
+                >
+                  {ALERT_TARGET_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              {alertForm.target === 'user' ? (
+                <Input
+                  label="اسم المستخدم أو المعرف"
+                  placeholder="username أو 123"
+                  value={alertForm.username}
+                  onChange={(e) => setAlertForm((prev) => ({ ...prev, username: e.target.value }))}
+                />
+              ) : null}
+
+              <label className="field">
+                <span className="field-label">محتوى التنبيه</span>
+                <textarea
+                  className="input"
+                  rows="4"
+                  maxLength={1000}
+                  placeholder="اكتب نص التنبيه الذي سيصل المشترك..."
+                  value={alertForm.body}
+                  onChange={(e) => setAlertForm((prev) => ({ ...prev, body: e.target.value }))}
+                />
+              </label>
+
+              <Button onClick={handleSendAdminAlert} loading={sendingAlert} disabled={sendingAlert}>
+                {sendingAlert ? 'جارٍ الإرسال...' : 'إرسال التنبيه'}
+              </Button>
+            </div>
+          </Card>
+
+          {/* البطاقة الأصلية — إشعار عام (broadcast) */}
+          <Card title="إرسال إشعار عام (Broadcast)">
             <div className="modal-stack">
               <Input label="العنوان" value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} />
               <label className="field">
@@ -103,28 +217,32 @@ export default function AdminNotifications() {
               </Button>
             </div>
           </Card>
-
-          <Card title="ملخص الإشعارات">
-            <div className="analytics-grid">
-              <div className="stat-item">
-                <span className="label">إجمالي الإشعارات</span>
-                <span className="value">{analytics.total}</span>
-              </div>
-              <div className="stat-item">
-                <span className="label">غير مقروء</span>
-                <span className="value info">{analytics.unread}</span>
-              </div>
-              <div className="stat-item">
-                <span className="label">إشعارات جماعية</span>
-                <span className="value success">{analytics.broadcasts}</span>
-              </div>
-              <div className="stat-item">
-                <span className="label">اليوم</span>
-                <span className="value warning">{analytics.today}</span>
-              </div>
-            </div>
-          </Card>
         </div>
+
+        <Card title="ملخص الإشعارات">
+          <div className="analytics-grid">
+            <div className="stat-item">
+              <span className="label">إجمالي الإشعارات</span>
+              <span className="value">{analytics.total}</span>
+            </div>
+            <div className="stat-item">
+              <span className="label">غير مقروء</span>
+              <span className="value info">{analytics.unread}</span>
+            </div>
+            <div className="stat-item">
+              <span className="label">إشعارات جماعية</span>
+              <span className="value success">{analytics.broadcasts}</span>
+            </div>
+            <div className="stat-item">
+              <span className="label">تنبيهات إدارة النظام</span>
+              <span className="value info">{analytics.alerts}</span>
+            </div>
+            <div className="stat-item">
+              <span className="label">اليوم</span>
+              <span className="value warning">{analytics.today}</span>
+            </div>
+          </div>
+        </Card>
 
         <Card title="سجل الإشعارات">
           {loading ? (

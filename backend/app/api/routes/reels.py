@@ -884,3 +884,22 @@ def reels_cloud_health(current_user: User = Depends(get_current_user)):
             'أضف المفاتيح الناقصة في Render Dashboard → Environment ثم أعد النشر.'
         ),
     }
+
+
+# ==============================================================================
+# v88.60 — Endpoint اختبار حي لـ Cloudinary (upload صغير حقيقي)
+# ==============================================================================
+@router.post('/admin/cloud-test-upload')
+def reels_cloud_test_upload(current_user: User = Depends(get_current_user)):
+    """يرفع صورة PNG 1x1 صغيرة حقيقية إلى Cloudinary للتأكد من أن التوقيع صحيح.
+
+    هذا هو الفحص الوحيد الذي يكشف مشكلة "المفاتيح مختلطة" — بينما cloud-health يقول
+    فقط إن المفاتيح موجودة، هذا الـ endpoint يجرّب الرفع فعلياً.
+    """
+    if not getattr(current_user, 'role', '') in ('admin', 'superadmin'):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='admin only')
+    try:
+        from app.services.cloudinary_service import ping as _cloud_ping
+        return _cloud_ping()
+    except Exception as exc:  # noqa: BLE001
+        return {'ok': False, 'error': str(exc)[:300]}

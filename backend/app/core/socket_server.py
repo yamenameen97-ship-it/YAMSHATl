@@ -1000,6 +1000,35 @@ async def call_signal_event(sid, data):
     await sio.emit('call_signal', payload, room=f'username:{peer}')
 
 
+# ✅ v88.58 (2026-07-24) — CALL LOG BROADCAST
+# يستقبل سجلّ المكالمة من المتصل ويرسله للمتلقّي حتّى تظهر فقاعة
+# سجلّ المكالمة (واردة / فائتة) داخل المحادثة لدى الطرفين، لا فقط لدى المتصل.
+@sio.on('call_log')
+async def call_log_event(sid, data):
+    """Broadcast the call record to the callee so a matching bubble appears there."""
+    token = (data or {}).get('token')
+    session, user = await _resolve_authenticated_user(sid, token, client_ip=get_client_ip(sio.get_environ(sid) or {}))
+    if user is None:
+        return
+    peer = str((data or {}).get('to') or (data or {}).get('peer') or '').strip()
+    if not peer:
+        return
+    payload = {
+        'call_id': (data or {}).get('call_id'),
+        'from': user.username,
+        'caller': user.username,
+        'to': peer,
+        'mode': str((data or {}).get('mode') or 'voice')[:16],
+        'status': str((data or {}).get('status') or 'answered')[:24],
+        'duration_sec': int((data or {}).get('duration_sec') or 0),
+        'started_at': (data or {}).get('started_at'),
+        'ended_at': (data or {}).get('ended_at') or int(time.time() * 1000),
+        'time': str((data or {}).get('time') or '')[:16],
+        'created_at': (data or {}).get('created_at'),
+    }
+    await sio.emit('call_log', payload, room=f'username:{peer}')
+
+
 @sio.on('ping')
 async def ping_event(sid, data):
     session = await sio.get_session(sid)

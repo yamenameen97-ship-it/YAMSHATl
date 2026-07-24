@@ -2,24 +2,35 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { getCurrentUsername } from '../utils/auth.js';
-import { sendMessage as bridgeSend, listThreadsFor } from '../utils/shopChatBridge.js';
 import shopNotify from '../utils/shopNotify.js';
 
 /**
- * Shop — v88.35 (Marketplace + Private Chat + Notifications)
+ * Shop — v88.59 (Marketplace → Regular Chat)
  * ---------------------------------------------------------
- * التغييرات مقارنة بـ v88.27:
- *  ① إرسال الطلب: بدلاً من مجرد تخزينه، يُرسَل أيضاً كرسالة خاصة إلى صاحب
- *    المنتج داخل قناة /shop/chat/:productId/:buyer، ويُطلَق له إشعار.
- *  ② الاستفسار: لم يعد "تعليقاً عاماً" — بل رسالة خاصة تفتح دردشة
- *    /shop/chat/:productId/:buyer فوراً، ويصل إشعار للبائع.
- *  ③ زر "تعليق" في شريط الإجراءات السفلي أُعيدت تسميته وتوجيهه إلى نفس
- *    الدردشة الخاصة (كان يفتح مودال الاستفسار العام).
- *  ④ الإعجاب: يرسل إشعاراً للبائع (بدون فتح دردشة).
- *  ⑤ عدّاد الطلبات على بطاقة البائع يعرض فقط الطلبات النشطة
- *    (pending / accepted) — ليس المرفوضة أو المسلَّمة (كانت تتراكم بلا داعٍ).
- *  ⑥ زر جديد "📨 دردشتي مع البائع" للمشتري يفتح الخيط مباشرة إذا كان لديه واحد.
+ * التغيير الجوهري في هذه النسخة:
+ *  • لم نعُد ننشئ صفحة دردشة منفصلة (/shop/chat/...) ولا خيطاً محلياً خاصاً.
+ *  • عند الضغط على "راسل البائع" أو "إرسال طلب" يتم توجيه المستخدم مباشرةً
+ *    إلى الدردشة العادية /chat/:seller، وتُرسَل تفاصيل الطلب/الاستفسار
+ *    كرسالة عادية داخل نفس الخيط الأصلي بين المشتري والبائع.
+ *  • الرسالة تُمرَّر عبر sessionStorage['yamshat_shop_pending_message']
+ *    وتلتقطها صفحة Chat.jsx وترسلها تلقائياً عبر sendMessageApi.
+ *  • النتيجة: كل مراسلة تخص السوق تظهر ضمن الدردشة الاعتيادية،
+ *    ويحتفظ الطرفان بسجل واحد فقط للمحادثة كما هو الحال في أي شات عادي.
  */
+
+// مفتاح تمرير رسالة السوق للشات العادي (يقرأه Chat.jsx عند فتح المحادثة)
+const SHOP_PENDING_MSG_KEY = 'yamshat_shop_pending_message';
+function queueShopMessageToChat(seller, text) {
+  try {
+    sessionStorage.setItem(SHOP_PENDING_MSG_KEY, JSON.stringify({
+      to: seller,
+      text: String(text || ''),
+      at: Date.now(),
+    }));
+  } catch (err) {
+    console.warn('queueShopMessageToChat error', err);
+  }
+}
 
 const STORAGE_KEY = 'yamshat_shop_v1';
 
@@ -226,26 +237,18 @@ export default function Shop() {
     persist(next);
     setOrderModal(null);
 
-    // رسالة خاصة في دردشة المنتج
+    // رسالة نصية عادية تُرسل داخل الشات الأصلي بين المشتري والبائع
     const orderText = [
-      `📦 طلب شراء جديد`,
-      `الاسم: ${payload.buyerName}`,
-      `التواصل: ${payload.contact}`,
-      `الكمية: ${payload.quantity}`,
-      payload.message ? `الرسالة: ${payload.message}` : '',
+      `📦 طلب شراء جديد — ${product.name}`,
+      `💰 السعر: ${product.price} ${product.currency || 'USD'}`,
+      `📍 العنوان: ${product.address || '—'}`,
+      `👤 الاسم: ${payload.buyerName}`,
+      `📞 التواصل: ${payload.contact}`,
+      `× الكمية: ${payload.quantity}`,
+      payload.message ? `📝 الرسالة: ${payload.message}` : '',
     ].filter(Boolean).join('\n');
 
-    bridgeSend({
-      product,
-      buyer: me,
-      seller: product.seller,
-      from: me,
-      text: orderText,
-      kind: 'order',
-      meta: { orderId: order.id },
-    });
-
-    // إشعار للبائع
+    // إشعار للبائع (يوجّه إلى الشات العادي مباشرةً)
     if (product.seller !== me) {
       shopNotify.push({
         to: product.seller,
@@ -253,16 +256,19 @@ export default function Shop() {
         kind: 'order',
         product,
         text: `طلب شراء (${payload.quantity} × ${product.name})`,
-        path: `/shop/chat/${product.id}/${me}`,
+        path: `/chat/${encodeURIComponent(me)}`,
       });
     }
 
     window.dispatchEvent(new CustomEvent('yamshat:toast', {
-      detail: { type: 'success', title: 'تم إرسال طلبك ووصلت رسالتك للبائع.' }
+      detail: { type: 'success', title: 'تم إرسال طلبك ووصلت رسالتك للبائع في الشات.' }
     }));
 
-    // فتح الدردشة الخاصة للمشتري ليتابع الرد
-    navigate(`/shop/chat/${product.id}/${me}`);
+    // نمرّر الرسالة للشات العادي عبر sessionStorage ثم نفتح المحادثة الاعتيادية
+    if (product.seller !== me) {
+      queueShopMessageToChat(product.seller, orderText);
+      navigate(`/chat/${encodeURIComponent(product.seller)}`);
+    }
   };
 
   const replyToOrder = (productId, orderId, message) => {
@@ -277,27 +283,19 @@ export default function Shop() {
     next.orders = { ...next.orders, [productId]: list };
     persist(next);
 
-    // ابعث الرد أيضاً كرسالة خاصة داخل الخيط الصحيح
+    // الرد يُرسَل كرسالة عادية في الشات الاعتيادي بين البائع والمشتري
     const order = list.find((o) => o.id === orderId);
-    if (order) {
-      bridgeSend({
-        product,
-        buyer: order.buyer,
-        seller: product.seller,
+    if (order && order.buyer !== me) {
+      queueShopMessageToChat(order.buyer, `↩️ ردٌ على طلبك (${product.name}):\n${message}`);
+      shopNotify.push({
+        to: order.buyer,
         from: me,
-        text: message,
-        kind: 'reply',
+        kind: 'inquiry',
+        product,
+        text: `ردٌ من البائع: ${message}`,
+        path: `/chat/${encodeURIComponent(me)}`,
       });
-      if (order.buyer !== me) {
-        shopNotify.push({
-          to: order.buyer,
-          from: me,
-          kind: 'inquiry',
-          product,
-          text: `ردٌ من البائع: ${message}`,
-          path: `/shop/chat/${product.id}/${order.buyer}`,
-        });
-      }
+      navigate(`/chat/${encodeURIComponent(order.buyer)}`);
     }
   };
 
@@ -309,36 +307,26 @@ export default function Shop() {
     persist(next);
 
     const order = list.find((o) => o.id === orderId);
-    if (order && product) {
+    if (order && product && order.buyer !== me) {
       const label = status === 'accepted' ? 'تم قبول طلبك ✅'
         : status === 'rejected' ? 'تم رفض طلبك ✖'
         : status === 'delivered' ? 'تم تسليم طلبك 📦'
         : 'تحديث حالة طلبك';
-      bridgeSend({
-        product,
-        buyer: order.buyer,
-        seller: product.seller,
+      queueShopMessageToChat(order.buyer, `📦 ${product.name} — ${label}`);
+      shopNotify.push({
+        to: order.buyer,
         from: me,
+        kind: 'order',
+        product,
         text: label,
-        kind: 'reply',
+        path: `/chat/${encodeURIComponent(me)}`,
       });
-      if (order.buyer !== me) {
-        shopNotify.push({
-          to: order.buyer,
-          from: me,
-          kind: 'order',
-          product,
-          text: label,
-          path: `/shop/chat/${product.id}/${order.buyer}`,
-        });
-      }
     }
   };
 
-  // ② الاستفسار = فتح دردشة خاصة مباشرة (بدون مودال عام)
+  // ② الاستفسار = يفتح الدردشة العادية مع البائع مباشرةً،
+  //    ويُمرّر رسالة تعريفية عن المنتج تُرسل تلقائياً كرسالة عادية.
   const openInquiryChat = (product) => {
-    // المشتري (أنا) يفتح خيطه مع البائع
-    // إذا كنت أنا البائع، افتح رابط سوق لأنه لا يوجد خيط ذاتي
     if (product.seller === me) {
       window.dispatchEvent(new CustomEvent('yamshat:toast', {
         detail: { type: 'info', title: 'هذا منتجك — افتح "الطلبات" لرؤية استفسارات المشترين.' }
@@ -346,9 +334,16 @@ export default function Shop() {
       setOrdersPanelProduct(product.id);
       return;
     }
-    // أول مرة يفتح فيها المشتري الدردشة، أضف رسالة ترحيب لجعل البائع
-    // على علم بوجود اهتمام (ولن يتم إرسال إشعار طلب — سيصل حين يكتب أولى رسائله).
-    navigate(`/shop/chat/${product.id}/${me}`);
+    const inquiryText = [
+      `💬 استفسار عن منتج`,
+      `📦 ${product.name}`,
+      `💰 السعر: ${product.price} ${product.currency || 'USD'}`,
+      product.address ? `📍 ${product.address}` : '',
+      '',
+      'مرحباً، أرغب بالاستفسار عن هذا المنتج.',
+    ].filter(Boolean).join('\n');
+    queueShopMessageToChat(product.seller, inquiryText);
+    navigate(`/chat/${encodeURIComponent(product.seller)}`);
   };
 
   const productBeingOrdered = useMemo(
@@ -360,8 +355,9 @@ export default function Shop() {
     [state.products, ordersPanelProduct],
   );
 
-  // خيوطي لعرض شارة على البطاقة إن كنت المشتري
-  const myThreads = useMemo(() => listThreadsFor(me), [me, state]);
+  // لم نعُد نعرض شارة "دردشتي مع البائع" لأن كل المراسلات تجري
+  // ضمن الدردشة العادية الموجودة أصلاً.
+  const myThreads = useMemo(() => [], [me, state]);
 
   return (
     <MainLayout>
@@ -383,14 +379,13 @@ export default function Shop() {
             <div className="shop-empty">لا توجد إعلانات بعد. كن أول من ينشر منتجاً!</div>
           )}
           {state.products.map((product) => {
-            const mineWithSeller = myThreads.find((t) => t.productId === product.id && t.buyer === me);
             return (
               <ProductCard
                 key={product.id}
                 product={product}
                 me={me}
                 orders={state.orders[product.id] || []}
-                hasOpenThread={Boolean(mineWithSeller)}
+                hasOpenThread={false}
                 onLike={() => toggleLike(product.id)}
                 onSave={() => toggleSave(product.id)}
                 onShare={() => sharePost(product)}
@@ -399,7 +394,10 @@ export default function Shop() {
                 onInquire={() => openInquiryChat(product)}
                 onManageOrders={() => setOrdersPanelProduct(product.id)}
                 onDelete={() => removeProduct(product.id)}
-                onOpenChat={() => navigate(`/shop/chat/${product.id}/${me}`)}
+                onOpenChat={() => {
+                  if (product.seller === me) return;
+                  navigate(`/chat/${encodeURIComponent(product.seller)}`);
+                }}
               />
             );
           })}
@@ -428,7 +426,7 @@ export default function Shop() {
             onClose={() => setOrdersPanelProduct(null)}
             onReply={(orderId, msg) => replyToOrder(productForOrdersPanel.id, orderId, msg)}
             onStatus={(orderId, status) => setOrderStatus(productForOrdersPanel.id, orderId, status)}
-            onOpenBuyerChat={(buyer) => navigate(`/shop/chat/${productForOrdersPanel.id}/${buyer}`)}
+            onOpenBuyerChat={(buyer) => navigate(`/chat/${encodeURIComponent(buyer)}`)}
           />
         )}
       </div>
@@ -533,11 +531,11 @@ function ProductCard({
           📦 إرسال طلب
         </button>
         <button type="button" className="pc-btn secondary" onClick={onInquire}>
-          💬 استفسار (خاص)
+          💬 راسل البائع
         </button>
-        {!isOwner && hasOpenThread && (
-          <button type="button" className="pc-btn tertiary" onClick={onOpenChat} title="فتح دردشتك الخاصة بهذا المنتج">
-            📨 دردشتي مع البائع
+        {!isOwner && (
+          <button type="button" className="pc-btn tertiary" onClick={onOpenChat} title="فتح الدردشة العادية مع البائع">
+            📨 فتح الشات
           </button>
         )}
       </div>

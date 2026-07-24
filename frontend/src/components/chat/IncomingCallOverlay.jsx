@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import callService, {
   bootstrapCallService,
   onIncomingCall,
+  onIncomingCallCanceled,
   acceptIncomingCall,
   rejectIncomingCall,
   subscribe as subscribeCall,
@@ -47,6 +48,19 @@ export default function IncomingCallOverlay() {
       setAccepted(false);
       startRingtone();
     });
+    // ✅ v88.58 FIX #3 (2026-07-24): إسقاط شاشة الرنين فورًا عندما يُلغي
+    //    المتصل المكالمة قبل أن نردّ. السلوك السابق: البُست كان يبقى معروضًا لدى
+    //    المُستقبِل لأنّ activeCall = null ومعالج call_ended في callService كان يتجاهل الحدث.
+    const unsubCancel = onIncomingCallCanceled((payload) => {
+      setInvite((prev) => {
+        if (!prev) return prev;
+        if (payload?.call_id && prev.call_id && payload.call_id !== prev.call_id) return prev;
+        return null;
+      });
+      setAccepted(false);
+      setAcceptError(null);
+      stopRingtone();
+    });
     const unsubCall = subscribeCall((snapshot) => {
       setActiveCall(snapshot);
       if (!snapshot) {
@@ -59,6 +73,7 @@ export default function IncomingCallOverlay() {
     });
     return () => {
       unsubInvite?.();
+      unsubCancel?.();
       unsubCall?.();
       stopRingtone();
       // ✅ FIX v59.13.6: إغلاق AudioContext عند unmount لتحرير عتاد الصوت.

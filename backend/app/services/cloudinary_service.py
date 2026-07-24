@@ -9,6 +9,8 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# v88.60 FIX: تهيئة مع تسجيل واضح لحالة المفاتيح
+# تساعد في كشف أي خطأ في المفاتيح مبكراً (مثلاً خلط زوج مفاتيح)
 cloudinary.config(
     cloud_name=settings.CLOUDINARY_CLOUD_NAME,
     api_key=settings.CLOUDINARY_API_KEY,
@@ -16,8 +18,44 @@ cloudinary.config(
     secure=True,
 )
 
+_secret_preview = (settings.CLOUDINARY_API_SECRET or '')[:4] + '…' if settings.CLOUDINARY_API_SECRET else '(empty)'
+logger.info(
+    '[cloudinary] init cloud_name=%s api_key=%s secret=%s configured=%s',
+    settings.CLOUDINARY_CLOUD_NAME or '(empty)',
+    settings.CLOUDINARY_API_KEY or '(empty)',
+    _secret_preview,
+    settings.cloudinary_configured,
+)
+
 def is_configured() -> bool:
     return settings.cloudinary_configured
+
+
+def ping() -> dict:
+    """v88.60: اختبار حي للتأكد من أن Cloudinary يقبل توقيعنا.
+
+    يستخدم من admin endpoint لتشخيص "لماذا الوسائط لا تصل إلى Cloudinary".
+    """
+    result = {
+        'configured': settings.cloudinary_configured,
+        'cloud_name': settings.CLOUDINARY_CLOUD_NAME or None,
+        'api_key': settings.CLOUDINARY_API_KEY or None,
+        'secret_preview': _secret_preview,
+        'ok': False,
+        'error': None,
+    }
+    if not settings.cloudinary_configured:
+        result['error'] = 'missing_credentials'
+        return result
+    try:
+        # ping خفيف: استعلام usage يتطلّب توقيع صحيحاً
+        usage = cloudinary.api.usage()
+        result['ok'] = True
+        result['plan'] = usage.get('plan') if isinstance(usage, dict) else None
+    except Exception as exc:  # noqa: BLE001
+        result['error'] = str(exc)[:300]
+        logger.error('[cloudinary] ping FAILED: %s', exc)
+    return result
 
 def upload_file(file_path: str, folder: str | None = None, is_video: bool = False) -> dict:
     if not is_configured():

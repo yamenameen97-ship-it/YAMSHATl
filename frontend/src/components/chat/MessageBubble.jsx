@@ -669,11 +669,15 @@ function MessageBubble({
               call={{
                 ...(message?.call || {}),
                 mode: message?.call?.mode || message?.callMode || 'voice',
-                direction: (message?.isMe || message?.sender === message?.currentUser) ? 'outgoing' : 'incoming',
+                // ✅ v88.58 FIX #1 (2026-07-24): الاتجاه يُحسب حصريّاً من prop isMe المُمرَّر
+                //    من Chat.jsx (المقارنة الحقيقيّة بين sender و currentUser). الاعتماد على
+                //    message.currentUser كان يعطي undefined لأنّه غير موجود في كائن الرسالة،
+                //    فتظهر كل المكالمات بنفس الاتجاه لدى الطرفين.
+                direction: isMe ? 'outgoing' : 'incoming',
                 status: message?.call?.status || message?.callStatus || 'missed',
                 duration_sec: message?.call?.duration_sec || message?.callDuration || 0,
                 time: message?.time,
-                isMe: message?.isMe,
+                isMe: isMe,
               }}
               onCallBack={() => {
                 window.dispatchEvent(new CustomEvent('yamshat:callback', { detail: message }));

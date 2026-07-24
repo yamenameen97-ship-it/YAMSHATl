@@ -16,8 +16,16 @@ const viteEnv = (typeof import.meta !== 'undefined' && import.meta.env) ? import
  */
 export class UploadManager {
   constructor(options = {}) {
-    this.cloudinaryUrl = options.cloudinaryUrl || viteEnv.VITE_CLOUDINARY_URL || process.env.REACT_APP_CLOUDINARY_URL;
-    this.cloudinaryPreset = options.cloudinaryPreset || viteEnv.VITE_CLOUDINARY_PRESET || process.env.REACT_APP_CLOUDINARY_PRESET;
+    // v88.60 FIX: تجاهل الرفع المباشر إلى Cloudinary من المتصفّح.
+    // كان يفشل بصمت لأن unsigned preset (yamshat_preset) غير موجود/غير مفعل,
+    // والنتيجة أن الوسائط لم تصل إلى Cloudinary منذ بداية الربط.
+    // الآن كل الرفع يمر عبر الباك‍-إند (الذي يوقّع ويرفع بمفاتيح Root الصحيحة).
+    const rawCloudUrl = options.cloudinaryUrl || viteEnv.VITE_CLOUDINARY_URL || process.env.REACT_APP_CLOUDINARY_URL;
+    const rawCloudPreset = options.cloudinaryPreset || viteEnv.VITE_CLOUDINARY_PRESET || process.env.REACT_APP_CLOUDINARY_PRESET;
+    this.cloudinaryUrl = (rawCloudUrl && String(rawCloudUrl).trim()) || null;
+    this.cloudinaryPreset = (rawCloudPreset && String(rawCloudPreset).trim()) || null;
+    // تعطيل إجباري للرفع المباشر (الباك‍-إند هو مصدر الحقيقة).
+    this.forceBackendUpload = true;
     this.apiUrl = options.apiUrl || viteEnv.VITE_API_BASE || viteEnv.VITE_API_URL || process.env.REACT_APP_API_URL;
     this.maxFileSize = options.maxFileSize || 100 * 1024 * 1024; // 100MB
     this.maxImageSize = options.maxImageSize || 10 * 1024 * 1024; // 10MB
@@ -238,12 +246,14 @@ export class UploadManager {
           },
         };
 
-        if (this.cloudinaryUrl && this.cloudinaryPreset) {
+        // v88.60 FIX: دائماً عبر الباك‍-إند. الرفع المباشر إلى Cloudinary محظور
+        // لأنه كان يفشل بصمت (unsigned preset غير مفعل) ممّا أضاع كل الوسائط منذ بداية الربط.
+        if (!this.forceBackendUpload && this.cloudinaryUrl && this.cloudinaryPreset) {
           return this.uploadToCloudinary(file, uploadOptions);
         }
 
         return this.uploadToServer(file, {
-          endpoint: options.endpoint || '/upload',
+          endpoint: options.endpoint || '/api/upload',
           onProgress: uploadOptions.onProgress,
         });
       };

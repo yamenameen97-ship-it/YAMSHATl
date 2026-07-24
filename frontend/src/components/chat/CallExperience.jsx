@@ -407,8 +407,12 @@ export default function CallExperience({
       if (reason === 'missed') status = 'missed';
 
       const now = new Date();
+      // ✅ v88.58 FIX #1 (2026-07-24): call_id ثابت لمنع إدراج فقاعتين لنفس المكالمة.
+      //    السلوك السابق: Chat.jsx كان يولّد id عشوائيًا في كلّ استدعاء → تكرار.
+      const stableCallId = callState?.callId || `call-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`;
       const detail = {
         peer: callTarget,
+        call_id: stableCallId,
         mode: callState?.mode || mode,           // 'voice' | 'video'
         direction,                                // 'outgoing' | 'incoming'
         status,                                   // 'answered' | 'missed' | 'canceled' | 'declined'

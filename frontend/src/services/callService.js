@@ -345,15 +345,30 @@ export function toggleCamera(enabled) {
 
 let incomingInviteHandler = null;
 const incomingListeners = new Set();
+// ✅ v88.58 FIX #3 (2026-07-24): مستمعون خاصّون بإلغاء المكالمة الواردة قبل الرد.
+const incomingCancelListeners = new Set();
 
 export function onIncomingCall(listener) {
   incomingListeners.add(listener);
   return () => incomingListeners.delete(listener);
 }
 
+// ✅ v88.58 FIX #3 (2026-07-24): اشتراك IncomingCallOverlay في إشارة إلغاء الرنين
+//    عندما يُنهي المتصل مكالمته قبل أن يردّ المُستقبِل → يجب إسقاط شاشة الرنين فورًا.
+export function onIncomingCallCanceled(listener) {
+  incomingCancelListeners.add(listener);
+  return () => incomingCancelListeners.delete(listener);
+}
+
 function fanoutIncoming(invite) {
   incomingListeners.forEach((listener) => {
     try { listener(invite); } catch (_) { /* noop */ }
+  });
+}
+
+function fanoutIncomingCancel(payload) {
+  incomingCancelListeners.forEach((listener) => {
+    try { listener(payload); } catch (_) { /* noop */ }
   });
 }
 
@@ -399,13 +414,34 @@ export function bootstrapCallService() {
   });
 
   socketManager.on('call_ended', (payload) => {
-    if (!activeCall || activeCall.callId !== payload?.call_id) return;
+    // ✅ v88.58 FIX #3 (2026-07-24): إذا وصلت call_ended ولم يقبل المُستقبِل
+    //    بعد (لا يوجد activeCall) → الدعوة ما زالت معلّقة في incomingInviteHandler.
+    //    تحقّق مطابقة call_id ثمّ أطلق حدث الإلغاء ليلتقطه IncomingCallOverlay
+    //    فيمسح البُست ويوقف الرنين فور إنهاء المتصل للمكالمة.
+    if (!activeCall) {
+      if (incomingInviteHandler && incomingInviteHandler.call_id === payload?.call_id) {
+        const canceled = incomingInviteHandler;
+        incomingInviteHandler = null;
+        fanoutIncomingCancel({ ...canceled, reason: payload?.reason || 'canceled' });
+      }
+      return;
+    }
+    if (activeCall.callId !== payload?.call_id) return;
     // 🔧 FIX #5: mirror endCall cleanup for remote-initiated hangup.
     destroyStream(activeCall.localStream);
     destroyStream(activeCall.remoteStream);
     try { activeCall.pc?.close?.(); } catch (_) {}
     activeCall = null;
     emitState();
+  });
+
+  // ✅ v88.58 FIX #2 (2026-07-24): استقبال سجلّ المكالمة من الطرف الآخر عبر السوكت
+  //    حتّى تظهر فقاعة سجلّ المكالمة لدى الطرفين (واردة / فائتة) لا فقط لدى المتصل.
+  socketManager.on('call_log', (payload) => {
+    if (!payload) return;
+    try {
+      window.dispatchEvent(new CustomEvent('yamshat:call-log-remote', { detail: payload }));
+    } catch (_) { /* noop */ }
   });
 
   socketManager.on('call_signal', async (payload) => {
@@ -440,6 +476,7 @@ export default {
   endCall,
   subscribe,
   onIncomingCall,
+  onIncomingCallCanceled,
   toggleMute,
   toggleCamera,
   getActiveCall,

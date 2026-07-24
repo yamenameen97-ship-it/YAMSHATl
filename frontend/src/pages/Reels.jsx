@@ -7,6 +7,7 @@ import { addReelComment, getReelComments, updateReel, deleteReel } from '../api/
 import API from '../api/axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getReelsCache, saveReelsCache } from '../services/reelsEngine.js';
+import { markReelWatched } from '../services/reelsLocalCache.js';
 import { getCurrentUsername } from '../utils/auth.js';
 // ✅ v88.43: بث القلوب الطائرة لصاحب الريل عبر Socket.IO ليراها لحظياً
 import socket from '../api/socket.js';

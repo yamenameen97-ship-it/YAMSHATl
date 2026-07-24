@@ -395,6 +395,11 @@ export default function Chat() {
         oldestMessageId: data?.paging?.next_before_id,
         limit: 250,
       });
+      // ✅ v88.58 FIX #2 (2026-07-24): إخطار مستمعي سجلّ المكالمات لإعادة حقن الفقاعات
+      //    بعد أن يكون replaceConversationMessages قد مسحها من الـ store.
+      try {
+        window.dispatchEvent(new CustomEvent('yamshat:conversation-loaded', { detail: { peer: forPeer } }));
+      } catch (_) { /* noop */ }
       await markMessagesSeen(forPeer);
       if (mySeq !== peerLoadSeqRef.current) return;
       markThreadRead(forPeer);
@@ -512,19 +517,30 @@ export default function Chat() {
     };
   }, [applyMessagePatch, peer, reconcileOptimisticMessage, currentUser]);
 
-  // ✅ v88.56 (2026-07-24) — CALL RECORDS IN CHAT
+  // ✅ v88.58 (2026-07-24) — CALL RECORDS IN CHAT (Hard Fixes)
   // يستمع لحدث إنهاء المكالمة القادم من CallExperience ثمّ يدرج رسالة من نوع 'call' داخل الدردشة
-  // يظهر فيها CallBubble تلقائيّاً (مكالمة صادرة / واردة / فائتة — صوت / فيديو) تماماً كما في الصورة المرجعية.
-  // — يُحفظ السجلّ محليّاً في localStorage تحت مفتاح خاص بالطرف (peer) لكي يظل مرئيّاً بعد إعادة فتح الدردشة.
+  // يظهر فيها CallBubble تلقائيّاً (مكالمة صادرة / واردة / فائتة — صوت / فيديو).
+  //
+  // إصلاحات v88.58:
+  //   FIX #1: منع تكرار الإدراج (deduplication حسب call_id) — كان الحدث يُطلق مرّتين
+  //           عند المتصل (من handleHangup ومن معالج call_ended في callService عبر
+  //           subscribeCall snapshot=null) فتظهر فقاعتان فوق بعض.
+  //   FIX #2: إرسال السجلّ للطرف الآخر عبر السوكت (call_log) ودمج السجلّ المحلي
+  //           بعد كلّ تحميل رسائل من السيرفر لكي لا تختفي الفقاعات بعد إعادة الفتح.
+  //   FIX #3: تعديل الاتجاه والحالة حسب المتلقّي (outgoing عند المتصل → incoming/missed عند المتلقّي).
   useEffect(() => {
     if (!peer) return undefined;
 
     const CALL_LOG_KEY = (peerName) => `yamshat.callLog.${peerName}`;
+    // ✅ FIX #1: بصمة الإدراجات الأخيرة لمنع التكرار
+    const recentlyInsertedIds = new Set();
 
     const persistCallRecord = (peerName, record) => {
       try {
         const raw = localStorage.getItem(CALL_LOG_KEY(peerName));
         const arr = raw ? JSON.parse(raw) : [];
+        // ✅ FIX #1: منع التكرار في التخزين حسب id
+        if (arr.some((r) => r?.id === record?.id)) return;
         arr.push(record);
         // احتفظ بآخر 200 سجلّ فقط لتجنّب تضخّم التخزين
         const trimmed = arr.slice(-200);
@@ -532,43 +548,40 @@ export default function Chat() {
       } catch (_) { /* noop */ }
     };
 
-    const handleCallEnded = (event) => {
-      const detail = event?.detail || {};
-      const peerName = detail.peer || peer;
-      if (!peerName || peerName !== peer) return;
-
-      const isOutgoing = detail.direction === 'outgoing';
-      const now = new Date();
-      const callId = `call-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`;
-
-      const callMsg = normalizeChatMessage({
+    const buildCallMessage = ({ callId, peerName, isOutgoing, detail, createdAt, timeLabel }) => normalizeChatMessage({
+      id: callId,
+      client_id: callId,
+      sender: isOutgoing ? currentUser : peerName,
+      receiver: isOutgoing ? peerName : currentUser,
+      content: '',
+      message: '',
+      type: 'call',
+      created_at: createdAt,
+      time: timeLabel,
+      call: {
         id: callId,
-        client_id: callId,
-        sender: isOutgoing ? currentUser : peerName,
-        receiver: isOutgoing ? peerName : currentUser,
-        content: '',
-        message: '',
-        type: 'call',
-        created_at: now.toISOString(),
-        time: detail.time || now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        // حمولة المكالمة للـ CallBubble
-        call: {
-          id: callId,
-          mode: detail.mode || 'voice',                 // 'voice' | 'video'
-          direction: detail.direction || 'outgoing',    // 'outgoing' | 'incoming'
-          status: detail.status || 'answered',          // answered/missed/canceled/declined
-          duration_sec: Number(detail.duration_sec || 0),
-          startedAt: detail.startedAt || null,
-          endedAt: detail.endedAt || Date.now(),
-          time: detail.time || now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        },
-        isMe: isOutgoing,
-        status: MESSAGE_LIFECYCLE.SENT,
-      });
+        mode: detail.mode || 'voice',
+        direction: isOutgoing ? 'outgoing' : 'incoming',
+        status: detail.status || 'answered',
+        duration_sec: Number(detail.duration_sec || 0),
+        startedAt: detail.startedAt || null,
+        endedAt: detail.endedAt || Date.now(),
+        time: timeLabel,
+      },
+      isMe: isOutgoing,
+      status: MESSAGE_LIFECYCLE.SENT,
+    });
 
-      // أدرج السجلّ فوريّاً داخل المحادثة المفتوحة
+    const insertCallRecord = ({ callId, peerName, isOutgoing, detail, createdAt, timeLabel, persist = true, broadcast = true }) => {
+      // ✅ FIX #1: dedup — لا تُدرج نفس المكالمة مرّتين
+      if (recentlyInsertedIds.has(callId)) return;
+      recentlyInsertedIds.add(callId);
+      // نظّف البصمات القديمة بعد 30 ثانية
+      setTimeout(() => { recentlyInsertedIds.delete(callId); }, 30000);
+
+      const callMsg = buildCallMessage({ callId, peerName, isOutgoing, detail, createdAt, timeLabel });
       applyIncomingMessage(callMsg, currentUser, { peer: peerName, skipUnreadIncrement: true, limit: 250 });
-      // وحدّث ملخّص الخيط (last_message)
+
       const summaryText = (() => {
         const isVideo = detail.mode === 'video';
         const missed = ['missed', 'canceled', 'declined'].includes(detail.status);
@@ -587,16 +600,91 @@ export default function Chat() {
         ]);
       } catch (_) { /* noop */ }
 
-      // احفظ السجلّ محليّاً حتّى يبقى بعد إعادة الفتح
-      persistCallRecord(peerName, {
-        id: callId,
-        sender: callMsg.sender,
-        receiver: callMsg.receiver,
-        type: 'call',
-        created_at: callMsg.created_at,
-        time: callMsg.time,
-        call: callMsg.call,
-        isMe: isOutgoing,
+      if (persist) {
+        persistCallRecord(peerName, {
+          id: callId,
+          sender: callMsg.sender,
+          receiver: callMsg.receiver,
+          type: 'call',
+          created_at: callMsg.created_at,
+          time: callMsg.time,
+          call: callMsg.call,
+          isMe: isOutgoing,
+        });
+      }
+
+      // ✅ FIX #2: إرسال سجلّ المكالمة للطرف الآخر عبر السوكت
+      if (broadcast && isOutgoing) {
+        try {
+          socketManager.emit('call_log', {
+            call_id: callId,
+            to: peerName,
+            mode: detail.mode || 'voice',
+            status: detail.status || 'answered',
+            duration_sec: Number(detail.duration_sec || 0),
+            started_at: detail.startedAt || null,
+            ended_at: detail.endedAt || Date.now(),
+            time: timeLabel,
+            created_at: createdAt,
+          }, { queue: false });
+        } catch (_) { /* noop */ }
+      }
+    };
+
+    const handleCallEnded = (event) => {
+      const detail = event?.detail || {};
+      const peerName = detail.peer || peer;
+      if (!peerName || peerName !== peer) return;
+
+      const isOutgoing = detail.direction === 'outgoing';
+      const now = new Date();
+      // ✅ FIX #1: id ثابت لكلّ مكالمة (نفس البصمة عند المتصل والمتلقّي)
+      const callId = detail.call_id || `call-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`;
+      const timeLabel = detail.time || now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+
+      insertCallRecord({
+        callId,
+        peerName,
+        isOutgoing,
+        detail,
+        createdAt: now.toISOString(),
+        timeLabel,
+      });
+    };
+
+    // ✅ FIX #2: استقبال سجلّ المكالمة من الطرف الآخر (المتصل → المتلقّي)
+    const handleRemoteCallLog = (event) => {
+      const payload = event?.detail || {};
+      const from = payload?.from || payload?.caller || '';
+      if (!from || from !== peer) return;
+
+      // من منظور المتلقّي: هذه المكالمة واردة/فائتة (ليست صادرة)
+      const remoteStatus = String(payload.status || 'answered');
+      const localStatus = (() => {
+        if (remoteStatus === 'canceled' || remoteStatus === 'missed') return 'missed';
+        if (remoteStatus === 'declined') return 'declined';
+        return 'answered';
+      })();
+
+      const callId = payload.call_id || `call-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const createdAt = payload.created_at || new Date().toISOString();
+      const timeLabel = payload.time || new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+
+      insertCallRecord({
+        callId,
+        peerName: from,
+        isOutgoing: false,
+        detail: {
+          mode: payload.mode || 'voice',
+          status: localStatus,
+          duration_sec: Number(payload.duration_sec || 0),
+          startedAt: payload.started_at || null,
+          endedAt: payload.ended_at || Date.now(),
+        },
+        createdAt,
+        timeLabel,
+        persist: true,
+        broadcast: false, // لا نُعيد إرساله
       });
     };
 
@@ -608,14 +696,20 @@ export default function Chat() {
     };
 
     window.addEventListener('yamshat:call-ended', handleCallEnded);
+    window.addEventListener('yamshat:call-log-remote', handleRemoteCallLog);
     window.addEventListener('yamshat:callback', handleCallback);
 
-    // عند فتح الدردشة — أعد حقن السجلّات المحفوظة محليّاً
-    try {
-      const raw = localStorage.getItem(CALL_LOG_KEY(peer));
-      if (raw) {
+    // ✅ FIX #2: عند فتح الدردشة — أعد حقن السجلّات المحفوظة محليّاً
+    const rehydrateLocalCallLog = () => {
+      try {
+        const raw = localStorage.getItem(CALL_LOG_KEY(peer));
+        if (!raw) return;
         const arr = JSON.parse(raw) || [];
         arr.forEach((rec) => {
+          if (!rec?.id) return;
+          // منع التكرار إذا كانت موجودة بالفعل
+          if (recentlyInsertedIds.has(rec.id)) return;
+          recentlyInsertedIds.add(rec.id);
           const msg = normalizeChatMessage({
             id: rec.id,
             client_id: rec.id,
@@ -632,13 +726,60 @@ export default function Chat() {
           });
           applyIncomingMessage(msg, currentUser, { peer, skipUnreadIncrement: true, limit: 250 });
         });
-      }
-    } catch (_) { /* noop */ }
+      } catch (_) { /* noop */ }
+    };
+
+    rehydrateLocalCallLog();
+
+    // ✅ FIX #2: أعد الحقن كلّما اكتمل تحميل رسائل السيرفر (كي لا يُمسح سجلّ المكالمات)
+    const handleMessagesReloaded = () => {
+      // نظّف البصمات لأنّ replaceConversationMessages أزال الفقاعات
+      recentlyInsertedIds.clear();
+      setTimeout(rehydrateLocalCallLog, 60);
+    };
+    window.addEventListener('yamshat:conversation-loaded', handleMessagesReloaded);
 
     return () => {
       window.removeEventListener('yamshat:call-ended', handleCallEnded);
+      window.removeEventListener('yamshat:call-log-remote', handleRemoteCallLog);
       window.removeEventListener('yamshat:callback', handleCallback);
+      window.removeEventListener('yamshat:conversation-loaded', handleMessagesReloaded);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peer, currentUser]);
+
+  // ✅ v88.59: التقاط رسالة الطلب/الاستفسار القادمة من صفحة السوق وإرسالها
+  // تلقائياً في نفس الدردشة العادية مع البائع، بدون إنشاء أي خيط أو صفحة منفصلة.
+  const shopPendingConsumedRef = useRef(false);
+  useEffect(() => {
+    if (!peer || !currentUser) return;
+    if (shopPendingConsumedRef.current) return;
+    try {
+      const raw = sessionStorage.getItem('yamshat_shop_pending_message');
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (!data || !data.text) return;
+      // تحقق من أن الرسالة موجّهة للطرف الذي تم فتح دردشته
+      const target = String(data.to || '').trim();
+      if (target && target !== peer) return;
+      // تجنّب رسائل ممريرة قديمة جداً (أكثر من دقيقتين)
+      if (data.at && Date.now() - Number(data.at) > 120000) {
+        sessionStorage.removeItem('yamshat_shop_pending_message');
+        return;
+      }
+      shopPendingConsumedRef.current = true;
+      sessionStorage.removeItem('yamshat_shop_pending_message');
+      // أرسل الرسالة كرسالة عادية في نفس خيط المحادثة الحالي
+      setTimeout(() => {
+        try {
+          handleSend({ text: String(data.text || '') });
+        } catch (err) {
+          console.warn('shop pending send failed', err);
+        }
+      }, 350);
+    } catch (err) {
+      console.warn('shop pending read failed', err);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peer, currentUser]);
 

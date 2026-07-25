@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { timeAgoAr as fmtTimeAgoAr } from '../../utils/timeFormat.js';
 import { votePoll as apiVotePoll } from '../../api/posts.js';
 import ImageViewerModal from '../feed/ImageViewerModal.jsx';
+import FeedVideoPlayer from './FeedVideoPlayer.jsx';
 
 /**
  * MobilePostCard (v86.7 — إصلاح احترافي شامل للبستة على الجوال)
@@ -366,47 +367,13 @@ function MobilePostCard({
           )}
           {banner.type === 'video' && (
             <div className="banner-video-container">
-              {/* ✅ v88.3 ROOT FIX: crossOrigin="anonymous" لتفعيل CORS على
-                  R2/Cloudflare + استخدام <source> مع type للتوافق الأوسع */}
-              <video
-                poster={banner.poster || undefined}
-                controls
-                playsInline
-                preload="metadata"
-                crossOrigin="anonymous"
-                controlsList="nodownload noremoteplayback"
-                disablePictureInPicture={false}
-                onError={(e) => {
-                  try {
-                    const el = e.currentTarget;
-                    const parent = el.parentNode;
-                    el.style.display = 'none';
-                    if (parent && !parent.querySelector('.banner-image-fallback')) {
-                      const fb = document.createElement('div');
-                      fb.className = 'banner-image-fallback';
-                      fb.setAttribute('role', 'img');
-                      fb.setAttribute('aria-label', 'تعذّر تشغيل الفيديو');
-                      fb.innerHTML = ''
-                        + '<svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-                        + '<polygon points="5 3 19 12 5 21 5 3"/>'
-                        + '</svg>'
-                        + '<span>تعذّر تشغيل الفيديو</span>';
-                      parent.appendChild(fb);
-                    }
-                  } catch { /* ignore */ }
-                }}
-              >
-                <source src={banner.url} type={(() => {
-                  const u = String(banner.url || '').toLowerCase();
-                  if (u.endsWith('.webm')) return 'video/webm';
-                  if (u.endsWith('.mov') || u.endsWith('.m4v')) return 'video/quicktime';
-                  if (u.endsWith('.mkv')) return 'video/x-matroska';
-                  if (u.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl';
-                  return 'video/mp4';
-                })()} />
-                {/* fallback للمتصفحات القديمة */}
-                متصفحك لا يدعم تشغيل الفيديو.
-              </video>
+              {/* ✅ v88.61 ROOT FIX (2026-07-24): تشغيل بأسلوب فيسبوك
+                  - autoplay مكتوم عند الظهور، إيقاف عند الخروج من الرؤية
+                  - زر ميكروفون عائم لفتح/كتم الصوت دون فتح الفيديو
+                  - نقر على الفيديو → Fullscreen داخلي مع صوت وشريط تحكم
+                  - زر × لإرجاع المستخدم للصفحة والتمرير طبيعي
+                  - touch-action: pan-y حتى لا يمنع الفيديو تمرير الخلاصة */}
+              <FeedVideoPlayer src={banner.url} poster={banner.poster} />
             </div>
           )}
           {banner.type === 'logo' && (

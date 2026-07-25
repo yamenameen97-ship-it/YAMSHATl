@@ -1760,6 +1760,21 @@ export default function Reels() {
             overflow: visible;
             z-index: 8; /* فوق أزرار التفاعل (5) وطبقة الالتقاط (3) */
           }
+          /* ✅ v88.62: على الجوال نمدّ الطبقة لتغطّي كامل ارتفاع الشاشة من القاع للأعلى
+             ونجعل عرضها ملء الشاشة، حتى يبدأ القلب من أسفل الشاشة تماماً ويصعد إلى قمّتها ببطء ملحوظ. */
+          @media (max-width: 640px) {
+            .ym-reels-hearts-layer {
+              inset-inline-start: 0;
+              inset-inline-end: 0;
+              width: 100%;
+              max-width: none;
+              /* يبدأ من قاع الشاشة تقريباً (أسفل شريط الأزرار) */
+              bottom: 20px;
+              /* يمتد إلى قمة الشاشة تقريباً */
+              height: 100dvh;
+              max-height: 100dvh;
+            }
+          }
           .ym-reels-flying-heart {
             position: absolute;
             bottom: 0;
@@ -1780,6 +1795,16 @@ export default function Reels() {
             /* منع أي وراثة تصغّر الحجم */
             line-height: 1;
           }
+          /* ✅ v88.62: keyframes خاص بالجوال — رحلة أطول (من قاع الشاشة إلى قمّتها) وأبطأ بكثير */
+          @keyframes ym-reel-heart-rise-mobile {
+            0%   { opacity: 0;    transform: translateY(40px)   translateX(0)                                            scale(.55) rotate(-8deg); }
+            8%   { opacity: 1;    transform: translateY(-20px)  translateX(calc(var(--drift, 0px) * .08))                scale(1)    rotate(3deg); }
+            25%  { opacity: 1;    transform: translateY(-180px) translateX(calc(var(--drift, 0px) * .25))                scale(1.15) rotate(-2deg); }
+            45%  { opacity: 1;    transform: translateY(-340px) translateX(calc(var(--drift, 0px) * .45))                scale(1.2)  rotate(2deg); }
+            65%  { opacity: .95;  transform: translateY(-500px) translateX(calc(var(--drift, 0px) * .65))                scale(1.22) rotate(-3deg); }
+            85%  { opacity: .55;  transform: translateY(-680px) translateX(calc(var(--drift, 0px) * .85))                scale(1.24) rotate(3deg); }
+            100% { opacity: 0;    transform: translateY(-88dvh) translateX(var(--drift, 0px))                            scale(1.3)  rotate(0deg); }
+          }
           /* ✅ v88.55: حركة صعود بطيئة + ارتفاع أقل + مراحل ثبات ليمكث القلب مرئياً وقتاً أطول */
           @keyframes ym-reel-heart-rise {
             0%   { opacity: 0;   transform: translateY(20px)  translateX(0)                                       scale(.65) rotate(-6deg); }
@@ -1789,13 +1814,30 @@ export default function Reels() {
             80%  { opacity: .55; transform: translateY(-220px) translateX(calc(var(--drift, 0px) * .85))          scale(1.15) rotate(-3deg); }
             100% { opacity: 0;   transform: translateY(-300px) translateX(var(--drift, 0px))                     scale(1.2)  rotate(0deg); }
           }
-          /* ✅ v88.55: على شاشات الجوال الصغيرة (< 640px) نضاعف الحجم قليلاً للتأكد من الوضوح */
+          /* ✅ v88.62: على شاشات الجوال الصغيرة (< 640px) نضاعف الحجم فعلياً + رحلة كاملة من الأسفل إلى الأعلى ببطء واضح.
+             السبب: الإصلاح السابق v88.55 كان يُقلّل ارتفاع الرحلة إلى 300px فقط، مما جعل القلب يختفي قبل نصف الشاشة على الجوال.
+             الآن نُبدّل keyframes للجوال بالكامل إلى ym-reel-heart-rise-mobile الذي يقطع 88dvh (تقريباً كامل الشاشة). */
           @media (max-width: 640px) {
             .ym-reels-flying-heart {
-              /* الحد الأدنى المضمون على الجوال حتى لو أعطاه JS حجماً صغيراً */
-              min-width: 1em;
-              /* إبطاء إضافي على الجوال ليتماشى مع النقر السريع بالإصبع */
-              animation-duration: 6s;
+              /* الحد الأدنى المضمون على الجوال — إجباري أكبر من قواعد JS العشوائية */
+              min-width: 1.4em;
+              /* تكبير الحجم قسراً على الجوال بغضّ النظر عن قيمة inline style (نستخدم !important لأن fontSize يُطبَّق عبر style prop) */
+              font-size: clamp(96px, 22vw, 150px) !important;
+              /* ✅ v88.62: استبدال keyframes بالكامل + مدّة أبطأ بكثير (8s) لرحلة كاملة من الأسفل للأعلى */
+              animation: ym-reel-heart-rise-mobile 8s cubic-bezier(.18,.55,.35,1) forwards;
+              /* توهج أقوى ملحوظ فوق الفيديو */
+              text-shadow:
+                0 0 14px rgba(255, 143, 208, 0.9),
+                0 0 30px rgba(255, 105, 180, 0.7),
+                0 0 50px rgba(255, 105, 180, 0.4);
+              filter: drop-shadow(0 4px 12px rgba(0,0,0,.55));
+            }
+          }
+          /* ✅ v88.62: على شاشات الجوال الأصغر جداً (< 380px مثل iPhone SE) نُبقي الحجم كبيراً وواضحاً */
+          @media (max-width: 380px) {
+            .ym-reels-flying-heart {
+              font-size: clamp(88px, 26vw, 130px) !important;
+              animation-duration: 8.5s;
             }
           }
           .ym-action-group {

@@ -318,6 +318,8 @@ _include("app.api.routes.reports.router", prefix="/api/reports")
 
 # 🎮 Engagement & Gamification
 _include("app.api.routes.engagement.router", prefix="/api/engagement")
+# 🛍 Shop / Marketplace — إعلانات صفحة التسوق (تُشارَك مع كل المستخدمين)
+_include("app.api.routes.shop.router", prefix="/api/shop")
 # 🔊 Voice Rooms
 # v88.3.5: نسجّل الراوتر على 3 بوادئ لضمان الوصول من أي إصدار فرونت
 #   1) /api/voice           → المسار الأساسي (يستدعي /api/voice/rooms)

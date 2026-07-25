@@ -36,6 +36,7 @@ import { getCurrentUsername } from '../../utils/auth.js';
 import socketManager from '../../services/socketManager.js';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
 import UniversalPlayer from '../video/UniversalPlayer.jsx';
+import FeedVideoPlayer from '../mobile/FeedVideoPlayer.jsx';
 import ImageViewerModal from './ImageViewerModal.jsx';
 
 const ADVANCED_REACTIONS = [
@@ -189,7 +190,8 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showMediaModal, setShowMediaModal] = useState(false);
   // ✅ v88.3 ROOT FIX: fallback للفيديو إذا فشل UniversalPlayer
-  const [videoPlayerFailed, setVideoPlayerFailed] = useState(false);
+  // ✅ v88.61: لم نعد نحتاج videoPlayerFailed — FeedVideoPlayer يتولّى fallback داخليّاً
+  const [videoPlayerFailed] = useState(false); // eslint-disable-line no-unused-vars
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
@@ -692,55 +694,16 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
           <div
             className="ym-pc-media"
             dir="rtl"
-            onClick={() => setShowMediaModal(true)}
+            onClick={hasVideoMedia ? undefined : () => setShowMediaModal(true)}
             style={{ minHeight: hasVideoMedia ? 220 : 'auto', fontFamily: "'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif" }}
           >
             {hasVideoMedia ? (
+              /* ✅ v88.61 ROOT FIX (2026-07-24): فيديو بأسلوب فيسبوك موحّد (Desktop + Mobile)
+                 – autoplay مكتوم عند التمرير
+                 – زر ميكروفون عائم لتفعيل الصوت
+                 – نقر → Fullscreen داخلي مع زر × للإغلاق */
               <div style={{ width: '100%' }} onClick={(event) => event.stopPropagation()}>
-                {videoPlayerFailed ? (
-                  /* ✅ v88.3 ROOT FIX: native <video> مع source+type كـ fallback مماثل لـ MobilePostCard */
-                  <video
-                    controls
-                    playsInline
-                    preload="metadata"
-                    crossOrigin="anonymous"
-                    poster={posterUrl || undefined}
-                    style={{ width: '100%', maxHeight: '80vh', background: '#000', borderRadius: 8 }}
-                    onError={(e) => {
-                      try {
-                        const el = e.currentTarget;
-                        const parent = el.parentNode;
-                        el.style.display = 'none';
-                        if (parent && !parent.querySelector('.ym-pc-video-fallback')) {
-                          const fb = document.createElement('div');
-                          fb.className = 'ym-pc-video-fallback';
-                          fb.style.cssText = 'padding:24px;text-align:center;color:#9CA3AF;background:linear-gradient(135deg,#1a1f33,#0f1422);border-radius:8px;';
-                          fb.textContent = 'تعذّر تشغيل الفيديو';
-                          parent.appendChild(fb);
-                        }
-                      } catch { /* ignore */ }
-                    }}
-                  >
-                    <source src={mediaUrl} type={(() => {
-                      const u = String(mediaUrl || '').toLowerCase();
-                      if (u.endsWith('.webm')) return 'video/webm';
-                      if (u.endsWith('.mov') || u.endsWith('.m4v')) return 'video/quicktime';
-                      if (u.endsWith('.mkv')) return 'video/x-matroska';
-                      if (u.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl';
-                      return 'video/mp4';
-                    })()} />
-                    متصفحك لا يدعم تشغيل الفيديو.
-                  </video>
-                ) : (
-                  <UniversalPlayer
-                    src={mediaUrl}
-                    poster={posterUrl}
-                    variant="post"
-                    muted
-                    className="post-media-player"
-                    onError={() => setVideoPlayerFailed(true)}
-                  />
-                )}
+                <FeedVideoPlayer src={mediaUrl} poster={posterUrl} />
               </div>
             ) : (
               /* ✅ v87.22 FIX #2: إضافة onError → يُظهر placeholder جميل بدل "تعذّر تحميل الصورة".
@@ -830,23 +793,9 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
         </div>
       </div>
 
-      {/* ✅ v88.8 (2026-07-18): الفيديو يبقى بـ Modal الافتراضي، بينما الصور
-         تُفتح بعارض احترافي كامل الشاشة مع أزرار (تكبير/تصغير/حفظ/إعادة نشر/حذف). */}
-      {hasVideoMedia ? (
-        <Modal open={showMediaModal} onClose={() => setShowMediaModal(false)} title="الوسائط">
-          <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', minHeight: 320 }}>
-            <div style={{ width: '100%' }}>
-              <UniversalPlayer
-                src={mediaUrl}
-                poster={posterUrl}
-                variant="post"
-                autoplay
-                className="post-media-modal-player"
-              />
-            </div>
-          </div>
-        </Modal>
-      ) : (
+      {/* ✅ v88.61 ROOT FIX (2026-07-24): أزيل Modal الفيديو القديم — FeedVideoPlayer
+         يتولّى Fullscreen داخليّاً بأسلوب فيسبوك. الصور تبقى بـ ImageViewerModal. */}
+      {hasVideoMedia ? null : (
         <ImageViewerModal
           open={showMediaModal}
           imageUrl={posterUrl || mediaUrl}

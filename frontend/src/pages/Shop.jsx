@@ -3,19 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { getCurrentUsername } from '../utils/auth.js';
 import shopNotify from '../utils/shopNotify.js';
+import {
+  fetchShopAds,
+  publishShopAd,
+  deleteShopAd,
+  toggleShopAdLike,
+  reactToShopAd,
+} from '../api/shop.js';
 
 /**
- * Shop — v88.59 (Marketplace → Regular Chat)
+ * Shop — v88.60 (Server-Backed Marketplace)
  * ---------------------------------------------------------
- * التغيير الجوهري في هذه النسخة:
- *  • لم نعُد ننشئ صفحة دردشة منفصلة (/shop/chat/...) ولا خيطاً محلياً خاصاً.
- *  • عند الضغط على "راسل البائع" أو "إرسال طلب" يتم توجيه المستخدم مباشرةً
- *    إلى الدردشة العادية /chat/:seller، وتُرسَل تفاصيل الطلب/الاستفسار
- *    كرسالة عادية داخل نفس الخيط الأصلي بين المشتري والبائع.
- *  • الرسالة تُمرَّر عبر sessionStorage['yamshat_shop_pending_message']
- *    وتلتقطها صفحة Chat.jsx وترسلها تلقائياً عبر sendMessageApi.
- *  • النتيجة: كل مراسلة تخص السوق تظهر ضمن الدردشة الاعتيادية،
- *    ويحتفظ الطرفان بسجل واحد فقط للمحادثة كما هو الحال في أي شات عادي.
+ * ✅ الإصلاح الحاسم:
+ *  • الإعلانات تُخزَّن الآن في قاعدة بيانات الخادم عبر /api/shop/ads
+ *    بدلاً من localStorage فقط، حتى تظهر لجميع المشتركين.
+ *  • عند فتح الصفحة نجلب الإعلانات من الخادم أولاً، ثم نُدمجها مع cache
+ *    محلي احتياطي (fallback إذا كان الخادم بارداً).
+ *  • عند نشر إعلان جديد: POST /api/shop/ads → يعود الإعلان بمعرِّف server_id
+ *    ونضيفه للقائمة فيراه كل المشتركين فوراً عند تحديث صفحتهم.
+ *
+ * الطلبات/الاستفسارات لا تزال تُرسل كرسائل عادية داخل الدردشة الاعتيادية
+ * بين المشتري والبائع (كما في v88.59).
  */
 
 // مفتاح تمرير رسالة السوق للشات العادي (يقرأه Chat.jsx عند فتح المحادثة)
@@ -86,24 +94,19 @@ function timeAgo(ts) {
   return `منذ ${d} يوم`;
 }
 
-const seedProducts = () => ([
-  {
-    id: `p-${Date.now() - 500000}-a`,
-    seller: 'yamshat_shop',
-    sellerName: 'متجر يام شات',
-    name: 'سماعة بلوتوث لاسلكية',
-    price: 25,
-    currency: 'USD',
-    address: 'صنعاء - شارع الزبيري',
-    description: 'سماعة لاسلكية بجودة صوت عالية وبطارية تدوم 8 ساعات، توصيل مجاني داخل المدينة.',
-    image: '',
-    createdAt: Date.now() - 3600 * 1000 * 2,
-    likes: 3,
-    likedBy: [],
-    reactions: { like: 3 },
-    saved: false,
-  },
-]);
+/** ندمج قائمتين من الإعلانات (خادم + محلي) ونحذف المكرَّرات */
+function mergeAds(serverAds, localAds) {
+  const map = new Map();
+  // نُعطي الأولوية لإعلانات الخادم لأنها المصدر الرسمي
+  for (const a of (serverAds || [])) {
+    map.set(String(a.id), a);
+  }
+  for (const a of (localAds || [])) {
+    if (!map.has(String(a.id))) map.set(String(a.id), a);
+  }
+  // ترتيب حسب الأحدث
+  return Array.from(map.values()).sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0));
+}
 
 // ✅ Fix #5: عد الطلبات النشطة فقط (استبعد المرفوضة والمسلَّمة)
 function activeOrdersCount(list) {
@@ -115,14 +118,9 @@ export default function Shop() {
   const me = getCurrentUsername() || 'guest';
   const navigate = useNavigate();
 
-  const [state, setState] = useState(() => {
-    const s = loadState();
-    if (!s.products || s.products.length === 0) {
-      s.products = seedProducts();
-      saveState(s);
-    }
-    return s;
-  });
+  const [state, setState] = useState(() => loadState());
+  const [loading, setLoading] = useState(true);
+  const [serverError, setServerError] = useState('');
 
   const [composerOpen, setComposerOpen] = useState(false);
   const [orderModal, setOrderModal] = useState(null); // productId
@@ -133,23 +131,78 @@ export default function Shop() {
     saveState(next);
   }, []);
 
-  const addProduct = (product) => {
-    const p = {
-      id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      seller: me,
-      sellerName: me,
-      createdAt: Date.now(),
-      likes: 0,
-      likedBy: [],
-      reactions: {},
-      saved: false,
-      ...product,
+  // 🚀 تحميل الإعلانات من الخادم عند فتح الصفحة
+  const loadFromServer = useCallback(async () => {
+    setLoading(true);
+    setServerError('');
+    try {
+      const serverAds = await fetchShopAds({ limit: 200 });
+      setState((prev) => {
+        // نُبقي المنتجات المحلية القديمة كـ fallback ولكن نُعطي الأولوية للخادم
+        const localOnly = (prev.products || []).filter((p) => !String(p.id).startsWith('srv-'));
+        const merged = mergeAds(serverAds, localOnly);
+        const next = { ...prev, products: merged };
+        saveState(next);
+        return next;
+      });
+    } catch (err) {
+      console.warn('[shop] failed to load ads from server', err);
+      setServerError('تعذر جلب الإعلانات من الخادم — نعرض النسخة المحلية.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFromServer();
+    // إعادة الجلب كل 30 ثانية لالتقاط الإعلانات الجديدة من مستخدمين آخرين
+    const iv = setInterval(loadFromServer, 30_000);
+    // إعادة الجلب عند العودة للتبويب
+    const onFocus = () => loadFromServer();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(iv);
+      window.removeEventListener('focus', onFocus);
     };
-    persist({ ...state, products: [p, ...state.products] });
+  }, [loadFromServer]);
+
+  // ✅ نشر إعلان جديد على الخادم (بدل localStorage فقط)
+  const addProduct = async (product) => {
+    try {
+      const saved = await publishShopAd(product);
+      if (saved && saved.id) {
+        // saved.id يبدأ بـ "srv-<id>" ويشمل كل الحقول
+        persist({ ...state, products: [saved, ...state.products] });
+        window.dispatchEvent(new CustomEvent('yamshat:toast', {
+          detail: { type: 'success', title: 'تم نشر الإعلان — سيظهر لجميع المشتركين.' }
+        }));
+      } else {
+        throw new Error('empty response');
+      }
+    } catch (err) {
+      console.error('[shop] publish failed', err);
+      const msg = err?.response?.data?.detail || 'تعذّر نشر الإعلان. حاول مرة أخرى.';
+      window.dispatchEvent(new CustomEvent('yamshat:toast', {
+        detail: { type: 'error', title: String(msg) }
+      }));
+    }
   };
 
-  const removeProduct = (id) => {
+  const removeProduct = async (id) => {
     if (!window.confirm('حذف هذا المنتج؟')) return;
+    const product = state.products.find((p) => p.id === id);
+    // إن كان من الخادم نحذفه من الخادم
+    if (product && product.server_id) {
+      try {
+        await deleteShopAd(product.server_id);
+      } catch (err) {
+        console.warn('[shop] delete on server failed', err);
+        window.dispatchEvent(new CustomEvent('yamshat:toast', {
+          detail: { type: 'error', title: 'تعذّر حذف الإعلان من الخادم.' }
+        }));
+        return;
+      }
+    }
     const next = { ...state };
     next.products = state.products.filter((p) => p.id !== id);
     delete next.orders[id];
@@ -157,11 +210,12 @@ export default function Shop() {
     persist(next);
   };
 
-  const toggleLike = (id) => {
+  const toggleLike = async (id) => {
     const product = state.products.find((p) => p.id === id);
     if (!product) return;
     const wasLiked = (product.likedBy || []).includes(me);
 
+    // Optimistic update
     const next = { ...state, products: state.products.map((p) => {
       if (p.id !== id) return p;
       const likedBy = new Set(p.likedBy || []);
@@ -173,6 +227,24 @@ export default function Shop() {
       return { ...p, likes: (p.likes || 0) + 1, likedBy: Array.from(likedBy) };
     }) };
     persist(next);
+
+    // مزامنة مع الخادم
+    if (product.server_id) {
+      try {
+        const res = await toggleShopAdLike(product.server_id);
+        if (res) {
+          setState((prev) => {
+            const merged = { ...prev, products: prev.products.map((p) => (
+              p.id === id ? { ...p, likes: res.likes, likedBy: res.likedBy || [] } : p
+            )) };
+            saveState(merged);
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.warn('[shop] like sync failed', err);
+      }
+    }
 
     // ④ إشعار للبائع فقط عند الإعجاب (لا نُشعِر لصاحبه أو عند فك الإعجاب)
     if (!wasLiked && product.seller !== me) {
@@ -194,7 +266,10 @@ export default function Shop() {
     persist(next);
   };
 
-  const react = (id, key) => {
+  const react = async (id, key) => {
+    const product = state.products.find((p) => p.id === id);
+    if (!product) return;
+
     const next = { ...state, products: state.products.map((p) => {
       if (p.id !== id) return p;
       const r = { ...(p.reactions || {}) };
@@ -202,6 +277,23 @@ export default function Shop() {
       return { ...p, reactions: r };
     }) };
     persist(next);
+
+    if (product.server_id) {
+      try {
+        const res = await reactToShopAd(product.server_id, key);
+        if (res && res.reactions) {
+          setState((prev) => {
+            const merged = { ...prev, products: prev.products.map((p) => (
+              p.id === id ? { ...p, reactions: res.reactions } : p
+            )) };
+            saveState(merged);
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.warn('[shop] react sync failed', err);
+      }
+    }
   };
 
   const sharePost = async (product) => {
@@ -368,14 +460,23 @@ export default function Shop() {
               <h1>🛍 التسوق</h1>
               <p>سوق يام شات — اعرض منتجاتك واستقبل الطلبات مباشرة.</p>
             </div>
-            <button type="button" className="shop-add-btn" onClick={() => setComposerOpen(true)}>
-              + إضافة إعلان
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className="shop-refresh-btn" onClick={loadFromServer} title="تحديث الإعلانات">
+                {loading ? '⏳' : '🔄'}
+              </button>
+              <button type="button" className="shop-add-btn" onClick={() => setComposerOpen(true)}>
+                + إضافة إعلان
+              </button>
+            </div>
           </div>
+          {serverError && <div className="shop-server-warn">{serverError}</div>}
         </header>
 
         <main className="shop-grid">
-          {state.products.length === 0 && (
+          {loading && state.products.length === 0 && (
+            <div className="shop-empty">⏳ جاري تحميل الإعلانات…</div>
+          )}
+          {!loading && state.products.length === 0 && (
             <div className="shop-empty">لا توجد إعلانات بعد. كن أول من ينشر منتجاً!</div>
           )}
           {state.products.map((product) => {
@@ -406,7 +507,7 @@ export default function Shop() {
         {composerOpen && (
           <ProductComposer
             onClose={() => setComposerOpen(false)}
-            onSubmit={(data) => { addProduct(data); setComposerOpen(false); }}
+            onSubmit={async (data) => { await addProduct(data); setComposerOpen(false); }}
           />
         )}
 
@@ -464,6 +565,24 @@ export default function Shop() {
           font-weight: 700;
           cursor: pointer;
           box-shadow: 0 6px 18px rgba(124,58,237,0.35);
+        }
+        .shop-refresh-btn {
+          background: rgba(30,41,59,0.7);
+          color: #e2e8f0;
+          border: 1px solid rgba(148,163,184,0.16);
+          border-radius: 12px;
+          padding: 10px 14px;
+          cursor: pointer;
+          font-size: 1rem;
+        }
+        .shop-server-warn {
+          margin-top: 10px;
+          background: rgba(234,179,8,0.14);
+          color: #fde68a;
+          border: 1px solid rgba(234,179,8,0.3);
+          border-radius: 10px;
+          padding: 6px 12px;
+          font-size: 0.82rem;
         }
         .shop-grid {
           display: grid;
@@ -705,18 +824,23 @@ function ProductComposer({ onClose, onSubmit }) {
     }
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.name.trim()) { alert('اسم المنتج مطلوب.'); return; }
     if (!form.price || Number(form.price) <= 0) { alert('أدخل سعراً صحيحاً.'); return; }
     if (!form.address.trim()) { alert('العنوان مطلوب.'); return; }
-    onSubmit({
-      name: form.name.trim(),
-      price: Number(form.price),
-      currency: form.currency,
-      address: form.address.trim(),
-      description: form.description.trim(),
-      image: form.image,
-    });
+    setBusy(true);
+    try {
+      await onSubmit({
+        name: form.name.trim(),
+        price: Number(form.price),
+        currency: form.currency,
+        address: form.address.trim(),
+        description: form.description.trim(),
+        image: form.image,
+      });
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -752,7 +876,7 @@ function ProductComposer({ onClose, onSubmit }) {
       <div className="ml-actions">
         <button type="button" className="ml-btn cancel" onClick={onClose}>إلغاء</button>
         <button type="button" className="ml-btn primary" onClick={submit} disabled={busy}>
-          {busy ? 'جاري المعالجة…' : 'نشر الإعلان'}
+          {busy ? 'جاري النشر…' : 'نشر الإعلان'}
         </button>
       </div>
     </ModalShell>

@@ -1,34 +1,44 @@
 /**
- * ChatSettings.jsx — v88.69 (2026-07-25)
+ * ChatSettings.jsx — v88.70 (2026-07-25)
  *
- * ✅ إصلاحات هذا الإصدار — استكمال جذري لـ v88.65:
- *   المشكلة: بعد v88.65 لا تزال «الوسائط المشتركة» و«الملفات والصوتيات»
- *   تظهر فارغة في صفحة إعدادات المحادثة رغم وجود محتوى داخل المحادثة.
+ * ✅ إصلاحات هذا الإصدار — استكمال جذري لـ v88.69:
+ *   المشكلة: بعد v88.69 لا تزال «الوسائط المشتركة» و«الملفات والصوتيات»
+ *   تظهر فارغة داخل الصناديق رغم وجود صور/فيديو/صوت في المحادثة، والعدادات
+ *   ما زالت 0.
  *
- * السبب الجذري الفعلي (بعد تدقيق شامل):
- *   1) أحداث النافذة `yamshat:new-message` / `chat:message` **لا تُطلَق من أي مكان**
- *      في المشروع — الاعتماد الوحيد الحقيقي هو `socketManager` عبر
- *      `new_private_message`. لذلك التحديث اللحظي كان معلّقاً في الفراغ.
- *   2) استدعاء `getMessages(peer, PAGE_SIZE, undefined, {signal})` يستعمل الـ
- *      cache الافتراضي في `axios.js` (المفتاح يعتمد فقط على url+params) —
- *      أثناء الجلب التراكمي كل صفحة بعد الأولى تُخزَّن بالكاش، والبولنغ
- *      الدوري لصفحة `before_id=undefined` يُرجع نفس النسخة القديمة من الكاش
- *      حتى بعد وصول رسائل جديدة، فلا تُحدَّث الأعداد.
- *   3) في بعض المحادثات، الرسائل المُرسَلة كصور تُخزَّن بحقل `attachments[]`
- *      فقط دون `type` واضح، والفحص السابق ربما فقد بعضها.
- *   4) `mediaItems` كانت تُقصى إذا كان `url` فارغاً — لكن بعض الصور تأتي
- *      بحقل `attachment.thumbnail_url` أو `cdn_url` فقط دون `media_url`.
+ * السبب الجذري الفعلي (بعد تدقيق أعمق ومقارنة الواجهة بالخادم):
+ *   1) 🔴 عطل حرج في `api/chat.js#getMessages`:
+ *      كان يمرّر `signal + cache + cacheTtlMs` فقط إلى axios، لكن **لم يمرّر
+ *      `forceRefresh`** إطلاقاً. لذلك حتى عندما كانت v88.69 تنادي بـ
+ *      `{ forceRefresh: true }` كانت الحمولة تُبتلع صامتاً، والكاش يعود
+ *      بنفس النسخة القديمة (غالباً فارغة) بلا رسائل. → تم إصلاحه في
+ *      `frontend/src/api/chat.js` بتمرير `forceRefresh` صراحة.
  *
- * الحلّ:
- *   - الاستماع المباشر لـ `socketManager` لأحداث `new_private_message` بدلاً
- *     من أحداث نافذة وهمية.
- *   - إجبار `forceRefresh: true` على كل نداءات `/messages` من هذه الصفحة
- *     لتخطي الكاش (الصفحة تحتاج بيانات طازجة دائماً).
- *   - استخراج URL أكثر تسامحاً: يقبل `thumbnail_url` و`cdn_url` وأي مرفق
- *     صالح ضمن `attachments[]` (وليس أول واحد فقط).
- *   - إذا احتوت الرسالة على عدة مرفقات، يُصنَّف كل مرفق منها على حدة.
- *   - بولنغ أخف (كل 8 ثوان) + إعادة جلب فوري عند العودة إلى التبويب.
- *   - عرض عدّاد إجمالي حتى لو كان صفراً حقيقياً (لا `…` مستمر).
+ *   2) 🔴 `getAttachments` كان يقبل فقط `message.attachments` — بينما بعض
+ *      استجابات الخادم/الطبقات القديمة تستخدم `attachments_list` أو
+ *      `media_attachments` أو `attached_files`. → توسيع القبول.
+ *
+ *   3) 🔴 التصنيف كان يعتمد على وجود `url` قبل تحديد النوع، فإذا كان
+ *      المرفق موجوداً بحقل `file_name`/`kind` فقط دون url ظاهر (مثلاً
+ *      قبل انتهاء الرفع) كان يُقصى تماماً. → الآن نستخرج `kind` أولاً ثم
+ *      نستخدم url للفلترة النهائية فقط عند العرض.
+ *
+ *   4) 🔴 `socketManager.on` قد يُعاد قبل أن يتصل الـ socket (إذا فُتحت
+ *      الصفحة مباشرة عبر URL دون المرور بمكوّن الـ hook الرئيسي). كان لا
+ *      يوجد أي استدعاء لـ `socketManager.connect()` هنا. → أضفنا استدعاءه
+ *      لضمان استقبال الأحداث اللحظية.
+ *
+ *   5) 🔴 حلقة البولنغ كانت تستخدم `controller.signal` بعد `abort`، ما
+ *      يُلقي CanceledError صامتاً ويوقف التحديث. → البولنغ صار يستخدم
+ *      `AbortController` مستقل لكل نبضة.
+ *
+ *   6) 🔴 قسم «الوسائط المشتركة» داخل صندوق الإعدادات كان يظهر «لا توجد
+ *      وسائط» بينما العدادات فوقه (بعد المزامنة) قد تعكس أعداداً غير 0.
+ *      كان الرندر يعتمد على `!loading && !mediaItems.length` لكن السبب
+ *      الحقيقي أن `mediaItems` نفسها فارغة بسبب البنود ١–٣ أعلاه.
+ *      بعد إصلاح تلك البنود يظهر المحتوى فعلياً داخل الصندوق.
+ *
+ *   7) ✅ إضافة سجل تشخيصي مختصر عند `DEV` لتسهيل التحقق مستقبلاً.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -53,23 +63,30 @@ const IMAGE_MEDIA_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|bmp|heic|heif)(?:$|\?)
 const VIDEO_MEDIA_RE = /\.(mp4|webm|mov|m4v|mkv|avi|3gp)(?:$|\?)/i;
 const AUDIO_MEDIA_RE = /\.(mp3|wav|ogg|m4a|opus|aac|flac|amr)(?:$|\?)/i;
 
-// ✅ v88.69: عتبات أكثر انسجاماً — 200×10 صفحة ما زالت آمنة، ولكن نبقي بولنغ
-// أخف (8 ث) لالتقاط الرسائل الجديدة في حال فشلت أحداث Socket
 const PAGE_SIZE = 200;
-const MAX_PAGES = 12;               // 12 × 200 = 2400 رسالة
-const REFRESH_INTERVAL_MS = 8_000;  // بولنغ خلفي كل 8 ثوان
+const MAX_PAGES = 12;                 // 12 × 200 = 2400 رسالة
+const REFRESH_INTERVAL_MS = 8_000;    // بولنغ خلفي كل 8 ثوان
 
 function safeUrl(value) {
   const str = String(value || '').trim();
   return str && str !== 'null' && str !== 'undefined' ? str : '';
 }
 
+// ✅ v88.70: نقبل عدة أسماء للحقل تفادياً لعدم توافق نسخ الخادم
 function getAttachments(message = {}) {
-  return Array.isArray(message?.attachments) ? message.attachments : [];
+  const candidates = [
+    message?.attachments,
+    message?.attachments_list,
+    message?.media_attachments,
+    message?.attached_files,
+  ];
+  for (const list of candidates) {
+    if (Array.isArray(list) && list.length) return list;
+  }
+  return [];
 }
 
 function pickBestUrl(source = {}) {
-  // ✅ v88.69: أي حقل رابط صالح مقبول (بما في ذلك المصغّر)
   return (
     safeUrl(source?.url)
     || safeUrl(source?.media_url)
@@ -106,8 +123,9 @@ function extractFileName(source = {}, fallbackUrl = '') {
 }
 
 /**
- * ✅ v88.69: تصنيف يعمل على مرفق واحد أو رسالة كاملة.
- *   يُرجع: 'image' | 'video' | 'audio' | 'file' | ''
+ * ✅ v88.70: يُرجع نوع الوسيط دون اشتراط وجود URL في البداية.
+ *   يعتمد على kind/mime أولاً ثم extension إذا لزم. للتصنيف النهائي
+ *   داخل الصناديق نستخدم URL فقط للعرض/الفتح.
  */
 function classifyEntity(entity = {}, rawTypeHint = '') {
   const url = pickBestUrl(entity).toLowerCase();
@@ -153,7 +171,7 @@ export default function ChatSettings() {
     setIsPinnedConversation(prefs.pinned.has(peer));
   }, [peer]);
 
-  // ✅ v88.69: forceRefresh:true لتخطي الكاش دائماً في هذه الصفحة
+  // ✅ v88.70: forceRefresh:true يُمرَّر الآن فعلياً بعد إصلاح api/chat.js
   const fetchPage = useCallback((beforeId, signal) => (
     getMessages(peer, PAGE_SIZE, beforeId, { signal, forceRefresh: true })
   ), [peer]);
@@ -212,6 +230,9 @@ export default function ChatSettings() {
     const controller = new AbortController();
     let active = true;
 
+    // ✅ v88.70: نضمن أن الـ socket متصل حتى لو فُتحت الصفحة مباشرة عبر URL
+    try { socketManager.connect?.(); } catch { /* ignore */ }
+
     const loadData = async () => {
       setLoading(true);
       try {
@@ -253,7 +274,7 @@ export default function ChatSettings() {
 
     loadData();
 
-    // ✅ v88.69: الاستماع لأحداث Socket الحقيقية (لا نعتمد على أحداث نافذة وهمية)
+    // ✅ v88.70: مستمع socket مباشر — المصدر الحقيقي للأحداث اللحظية
     const handleSocketMessage = (message) => {
       if (!message || typeof message !== 'object') return;
       const sender = String(message?.sender || '').trim();
@@ -262,7 +283,7 @@ export default function ChatSettings() {
       mergeMessages([message]);
     };
 
-    // + نُبقي الاستماع لأحداث النافذة كخط دفاع إضافي إن وُجدت
+    // نُبقي أحداث النافذة كخط دفاع إضافي (إن أُطلقت مستقبلاً)
     const handleWindowMessage = (event) => {
       const detail = event?.detail || {};
       const msg = detail?.message || detail?.data || detail;
@@ -276,11 +297,14 @@ export default function ChatSettings() {
       unsubscribeSocket = () => {};
     }
 
-    // بولنغ خلفي — يستخدم forceRefresh لتفادي الكاش
+    // ✅ v88.70: كل نبضة بولنغ لها AbortController مستقل حتى لا يُقتل الطلب
+    // إذا أُغلقت الصفحة أثناء النبضة السابقة
     const refreshTimer = setInterval(async () => {
       if (!active || document.hidden) return;
+      const pulseController = new AbortController();
       try {
-        const res = await fetchPage(undefined, controller.signal);
+        const res = await fetchPage(undefined, pulseController.signal);
+        if (!active) return;
         const { items } = extractItemsFromResponse(res);
         mergeMessages(items);
       } catch { /* تجاهل */ }
@@ -289,8 +313,10 @@ export default function ChatSettings() {
     // إعادة جلب فوري عند العودة إلى التبويب
     const handleVisibility = async () => {
       if (document.hidden || !active) return;
+      const pulseController = new AbortController();
       try {
-        const res = await fetchPage(undefined, controller.signal);
+        const res = await fetchPage(undefined, pulseController.signal);
+        if (!active) return;
         const { items } = extractItemsFromResponse(res);
         mergeMessages(items);
       } catch { /* تجاهل */ }
@@ -313,7 +339,7 @@ export default function ChatSettings() {
     };
   }, [peer, pushToast, loadAllMessages, rebuildFromMap, mergeMessages, fetchPage]);
 
-  // ✅ v88.69: تصنيف صارم — يفحص كل مرفق داخل الرسالة على حدة
+  // ✅ v88.70: تصنيف صارم — يفحص كل مرفق داخل الرسالة على حدة
   const classified = useMemo(() => {
     const mediaItems = [];
     const fileItems = [];
@@ -327,15 +353,20 @@ export default function ChatSettings() {
       const rawType = rawTypeOf(item);
       const atts = getAttachments(item);
 
-      // 1) اجمع الكيانات المرشحة: المرفقات إن وُجدت، وإلا الرسالة نفسها
+      // 1) اجمع الكيانات المرشحة: المرفقات إن وُجدت + الرسالة إذا كانت
+      //    تحمل media_url مباشر لم يُغطَّ بالمرفقات
       const entities = [];
       if (atts.length) {
-        atts.forEach((att, i) => entities.push({ entity: att, sub: i, source: 'attachment' }));
+        atts.forEach((att, i) => entities.push({ entity: att, sub: i }));
       }
-      // إن كانت الرسالة تحمل media_url مباشرة ولم يوجد مرفق يحمله، أضِف كيان الرسالة
       const directUrl = safeUrl(item?.media_url) || safeUrl(item?.media_urls?.[0]);
       if (directUrl && !atts.some((a) => pickBestUrl(a) === directUrl)) {
-        entities.push({ entity: { url: directUrl, mime_type: '', kind: rawType }, sub: 'root', source: 'message' });
+        entities.push({ entity: { url: directUrl, mime_type: '', kind: rawType }, sub: 'root' });
+      }
+      // ✅ v88.70: إذا لم يوجد أي مرفق ولا media_url، لكن نوع الرسالة
+      //   يدل على وسيط (voice/audio/image/video/file) — عاملها ككيان ذاتي
+      if (!entities.length && ['voice', 'audio', 'image', 'video', 'file', 'document'].includes(rawType)) {
+        entities.push({ entity: item, sub: 'self' });
       }
 
       entities.forEach(({ entity, sub }) => {
@@ -386,6 +417,17 @@ export default function ChatSettings() {
         }
       });
     });
+
+    // ✅ v88.70: سجل تشخيصي مختصر في بيئة التطوير
+    if (typeof window !== 'undefined' && (window?.location?.hostname === 'localhost' || window?.__YAM_DEBUG__)) {
+      // eslint-disable-next-line no-console
+      console.debug('[ChatSettings v88.70] classify', {
+        totalMessages: messages.length,
+        media: mediaItems.length,
+        files: fileItems.length,
+        links: linkSet.size,
+      });
+    }
 
     return {
       mediaItems,

@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260722-003527-1784680527023';
+const VERSION = 'yamshat-v88.71-share-target-choice-1785000000000';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -104,9 +104,11 @@ async function handleShareTarget(request) {
       files: normalizedFiles,
     });
 
-    return Response.redirect('/#/share-target?shared=1', 303);
+    // ✅ v88.71: نوجّه دائماً إلى صفحة المشاركة التي تعرض خياري الريلز/المنشور.
+    //    ندعم طريقتي التوجيه (BrowserRouter و HashRouter) لضمان التوافق مع أي تطبيقات مُجهّزة.
+    return Response.redirect('/share-target?shared=1', 303);
   } catch (error) {
-    return Response.redirect('/#/share-target?shared=0', 303);
+    return Response.redirect('/share-target?shared=0', 303);
   }
 }
 

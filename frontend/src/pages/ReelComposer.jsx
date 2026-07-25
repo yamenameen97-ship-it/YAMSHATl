@@ -12,6 +12,8 @@ import CameraFilterCarousel, {
   saveCamFilter,
   getCamFilterCss,
 } from '../components/reels/CameraFilterCarousel.jsx';
+// ✅ v88.71 FIX: استقبال المحتوى المُشارك من تطبيقات أخرى (PWA Share Target)
+import { consumePendingShare } from '../services/share/sharedIntake.js';
 
 /**
  * ReelComposer.jsx — v56 (Pixel-perfect rebuild — مطابق 1:1 للصورة المرجعية)
@@ -179,6 +181,74 @@ export default function ReelComposer() {
   //   (ج) setState بعد unmount في onConfirm async.
   const countdownTimerRef = useRef(null);
   const isMountedRef = useRef(true);
+
+  // ✅ v88.71: محتوى وارد من ميزة "مشاركة إلى يام شات" مع شريط تقدم تحضيري
+  const [sharedIntake, setSharedIntake] = useState(null);
+  const [prepareProgress, setPrepareProgress] = useState(0);
+
+  // ✅ v88.71: استهلاك المحتوى الوارد من SW عند اختيار "ريلز" في صفحة /share-target.
+  //    يتم وضع الملف في galleryFile وتفعيل معاينة الفيديو بـ URL.createObjectURL
+  //    (مثل ما يحدث في onGalleryPick تماماً) بحيث يرى المستخدم المحتوى جاهزاً
+  //    للنشر مباشرة، ويضغط زر التأكيد ليبدأ الرفع الحقيقي إلى الخادم.
+  useEffect(() => {
+    let cancelled = false;
+    let progressTimer = null;
+    try {
+      const pending = consumePendingShare('reel');
+      if (!pending || !pending.file) return;
+      // إن لم يكن فيديو — تجاهل (الريلز للفيديو فقط)
+      if (!String(pending.fileMeta?.type || '').startsWith('video/')) {
+        pushToast?.({
+          tone: 'error',
+          message: 'محتوى الريلز يجب أن يكون فيديو. جرّب إعادة المشاركة واختر منشور بدلاً من ريلز.',
+        });
+        return;
+      }
+      if (Number(pending.fileMeta?.size || 0) > MAX_VIDEO_SIZE) {
+        pushToast?.({
+          tone: 'error',
+          message: `الملف كبير جداً للريلز (الحد ${MAX_VIDEO_SIZE / (1024 * 1024)}MB). جرّب اختيار "منشور" للمحتوى الأطول.`,
+        });
+        return;
+      }
+      setSharedIntake({
+        sourceUrl: pending.sourceUrl || '',
+        sourceTitle: pending.sourceTitle || '',
+        fileMeta: pending.fileMeta,
+      });
+      // أوقف الكاميرا إن كانت مفتوحة وأظهر المعاينة
+      setCameraOn(false);
+      setGalleryFile(pending.file);
+      setRecordedBlob(null);
+      try {
+        const url = URL.createObjectURL(pending.file);
+        setGalleryPreviewUrl(url);
+      } catch { /* ignore */ }
+      setErrorMessage('');
+      // عدّاد تحضير ناعم (الرفع الحقيقي يبدأ عند ضغط زر التأكيد/النشر)
+      setPrepareProgress(8);
+      progressTimer = setInterval(() => {
+        if (cancelled) return;
+        setPrepareProgress((prev) => {
+          const next = prev + Math.max(2, Math.round((100 - prev) / 8));
+          if (next >= 100) {
+            clearInterval(progressTimer);
+            return 100;
+          }
+          return next;
+        });
+      }, 120);
+      pushToast?.({
+        tone: 'success',
+        message: 'تم استلام الفيديو المُشارك — اضغط ✓ لرفعه كريلز.',
+      });
+    } catch { /* ignore intake errors */ }
+    return () => {
+      cancelled = true;
+      if (progressTimer) clearInterval(progressTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---- بدء/إيقاف الكاميرا حسب الجلسة ----
   // v59.8 — لا تُفتح الكاميرا تلقائياً عند دخول الصفحة، فقط عند تفعيل cameraOn
@@ -593,6 +663,39 @@ export default function ReelComposer() {
       {/* شريط التقدم أثناء التسجيل */}
       {recording ? <div className="ymrc-recbar"><span style={{ width: `${recPct}%` }} /></div> : null}
 
+      {/* ✅ v88.71: شارة المحتوى الوارد من ميزة "مشاركة إلى يام شات" مع شريط تحضير الملف */}
+      {sharedIntake ? (
+        <div className="ymrc-share-intake">
+          <div className="ymrc-share-intake-row">
+            <span className="ymrc-share-badge">📥 فيديو مُشارك خارجي</span>
+            {sharedIntake.sourceUrl ? (
+              <a
+                href={sharedIntake.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ymrc-share-link"
+              >
+                {sharedIntake.sourceTitle || sharedIntake.sourceUrl}
+              </a>
+            ) : null}
+          </div>
+          {prepareProgress < 100 ? (
+            <>
+              <div className="ymrc-share-status">
+                جارٍ تحضير الفيديو… {prepareProgress}%
+              </div>
+              <div className="ymrc-share-track">
+                <span style={{ width: `${prepareProgress}%` }} />
+              </div>
+            </>
+          ) : (
+            <div className="ymrc-share-status ready">
+              ✅ جاهز للنشر — اضغط ✓ لرفعه كريلز.
+            </div>
+          )}
+        </div>
+      ) : null}
+
       {/* الشريط العلوي */}
       <header className="ymrc-top">
         <button type="button" className="ymrc-icon-btn" onClick={() => navigate(-1)} aria-label="إغلاق">
@@ -980,6 +1083,67 @@ export default function ReelComposer() {
           border-color: rgba(139,92,246,0.45);
         }
         .ymrc-open-cam svg { width: 44px; height: 44px; }
+        /* ✅ v88.71: شارة المحتوى الوارد من ميزة المشاركة (فوق طبقة الفيديو) */
+        .ymrc-share-intake {
+          position: absolute;
+          top: calc(56px + env(safe-area-inset-top, 0px));
+          inset-inline-start: 12px;
+          inset-inline-end: 12px;
+          z-index: 30;
+          display: grid;
+          gap: 8px;
+          padding: 12px 14px;
+          border-radius: 14px;
+          background: rgba(15, 23, 42, 0.85);
+          border: 1px solid rgba(167,139,250,0.45);
+          backdrop-filter: blur(10px);
+          color: #fff;
+        }
+        .ymrc-share-intake-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .ymrc-share-badge {
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(139,92,246,0.30);
+          color: #ddd6fe;
+          font-size: 12px;
+          font-weight: 800;
+        }
+        .ymrc-share-link {
+          color: #93c5fd;
+          text-decoration: underline;
+          font-size: 12.5px;
+          direction: ltr;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          max-width: 100%;
+        }
+        .ymrc-share-status {
+          color: #cbd5e1;
+          font-size: 12.5px;
+        }
+        .ymrc-share-status.ready {
+          color: #86efac;
+          font-weight: 700;
+        }
+        .ymrc-share-track {
+          height: 6px;
+          border-radius: 6px;
+          background: rgba(255,255,255,0.15);
+          overflow: hidden;
+        }
+        .ymrc-share-track > span {
+          display: block;
+          height: 100%;
+          background: linear-gradient(90deg, #8b5cf6, #ec4899);
+          transition: width 0.2s ease;
+        }
+
         .ymrc-cam-hint {
           margin-top: 16px;
           color: rgba(255,255,255,0.7);

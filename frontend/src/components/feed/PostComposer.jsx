@@ -8,6 +8,8 @@ import { useToast } from '../admin/ToastProvider.jsx';
 import { clearLocalFeedCaches, injectPostIntoFeedCache } from '../../utils/feedCache.js';
 // ✅ v88.24 FIX: تدفئة كاش الوسائط في Service Worker بعد الرفع
 import { warmMediaCache } from '../../service-worker-manager.js';
+// ✅ v88.71 FIX: استقبال المحتوى المُشارك من تطبيقات أخرى (يوتيوب…) عبر PWA Share Target
+import { consumePendingShare } from '../../services/share/sharedIntake.js';
 
 const DRAFT_KEY = 'yamshat_post_draft';
 const QUOTE_KEY = 'yamshat_quote_draft';
@@ -24,6 +26,11 @@ export default function PostComposer() {
   const [mediaPreview, setMediaPreview] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  // ✅ v88.71: علامة "وارد من ميزة المشاركة الخارجية" — تُظهر شريط تقدم تحضيري
+  // وتُبرز رسالة تحدد أن المحتوى وارد من تطبيق خارجي (يوتيوب…)
+  const [sharedIntake, setSharedIntake] = useState(null);
+  // شريط تحضير الملف عند الاستلام من ميزة المشاركة (قبل بدء الرفع)
+  const [prepareProgress, setPrepareProgress] = useState(0);
   const [showScheduler, setShowScheduler] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
   const [showPollBuilder, setShowPollBuilder] = useState(false);
@@ -154,6 +161,65 @@ export default function PostComposer() {
     setMedia(file);
     setMediaPreview(URL.createObjectURL(file));
   };
+
+  // ✅ v88.71: استهلاك المحتوى الوارد من ميزة "مشاركة إلى يام شات".
+  //    عند اختيار "منشور" من صفحة /share-target، نحصل هنا على:
+  //      - file (Blob) → يوضع مباشرة في مربع المعاينة كأنه اختير من المعرض.
+  //      - description  → يوضع في نص المنشور (يشمل رابط يوتيوب الأصلي
+  //        على سطر مستقل، حتى يظهر قابلاً للنقر في المنشور النهائي
+  //        ويفتح خارج التطبيق).
+  //    نُظهر شريط تحضير 0→100% ثم نُفعّل مربع الرفع الأساسي وشريط
+  //    التقدم الحقيقي (setUploadProgress) يعمل تلقائياً كما هو.
+  useEffect(() => {
+    let cancelled = false;
+    let progressTimer = null;
+    try {
+      const pending = consumePendingShare('post');
+      if (!pending) return;
+      setSharedIntake({
+        sourceUrl: pending.sourceUrl || '',
+        sourceTitle: pending.sourceTitle || '',
+        fileMeta: pending.fileMeta || null,
+      });
+      // ضع الوصف (يتضمن الرابط) في نص المنشور فوراً
+      if (pending.description) {
+        setContent((prev) => (prev && prev.trim() ? `${prev}\n${pending.description}` : pending.description));
+      }
+      // إن كان هناك ملف مُرفق (فيديو/صورة) — طبّقه كمعاينة وابدأ عدّاد التحضير
+      if (pending.file) {
+        setPrepareProgress(5);
+        // عدّاد ناعم يمثّل "تحضير الملف" حتى ينقر المستخدم زر النشر
+        // (الرفع الحقيقي إلى الخادم يبدأ عند handleSubmit مع setUploadProgress).
+        progressTimer = setInterval(() => {
+          if (cancelled) return;
+          setPrepareProgress((prev) => {
+            const next = prev + Math.max(2, Math.round((100 - prev) / 8));
+            if (next >= 100) {
+              clearInterval(progressTimer);
+              return 100;
+            }
+            return next;
+          });
+        }, 120);
+        applySelectedFile(pending.file);
+      } else {
+        // رابط فقط بلا ملف — الوصف كافٍ، لا حاجة لتحضير رفع
+        setPrepareProgress(100);
+      }
+      pushToast?.({
+        type: 'success',
+        title: 'تم استلام المحتوى المُشارك',
+        description: pending.file
+          ? 'اضغط "النشر" بعد اكتمال التحضير لرفعه إلى الفيد.'
+          : 'الرابط تم إدراجه في وصف المنشور.',
+      });
+    } catch { /* ignore intake errors */ }
+    return () => {
+      cancelled = true;
+      if (progressTimer) clearInterval(progressTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleMediaSelect = (event) => {
     const file = event.target.files?.[0];
@@ -591,6 +657,46 @@ export default function PostComposer() {
         </div>
       ) : null}
 
+      {/* ✅ v88.71: شارة + شريط تقدم للمحتوى الوارد من ميزة "مشاركة" خارجية */}
+      {sharedIntake ? (
+        <div className="composer-share-intake">
+          <div className="composer-share-intake-row">
+            <span className="composer-share-intake-badge">📥 محتوى مُشارك خارجي</span>
+            {sharedIntake.sourceUrl ? (
+              <a
+                href={sharedIntake.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="composer-share-intake-link"
+              >
+                {sharedIntake.sourceTitle || sharedIntake.sourceUrl}
+              </a>
+            ) : null}
+          </div>
+          {sharedIntake.fileMeta && prepareProgress < 100 ? (
+            <>
+              <div className="composer-share-intake-status">
+                جارٍ تحضير الملف للرفع… {prepareProgress}%
+              </div>
+              <div className="composer-upload-progress-track">
+                <div
+                  className="composer-upload-progress-fill"
+                  style={{ width: `${prepareProgress}%` }}
+                />
+              </div>
+            </>
+          ) : sharedIntake.fileMeta ? (
+            <div className="composer-share-intake-status ready">
+              ✅ اكتمل التحضير — اضغط زر “النشر” لرفع الملف وإظهاره في الفيد.
+            </div>
+          ) : (
+            <div className="composer-share-intake-status ready">
+              ✅ تمت إضافة الرابط إلى وصف المنشور — اضغط “النشر” لإرساله.
+            </div>
+          )}
+        </div>
+      ) : null}
+
       {mediaPreview ? (
         <div className="composer-media-preview">
           <button
@@ -859,6 +965,62 @@ export default function PostComposer() {
           height: 100%;
           background: linear-gradient(90deg, #8b5cf6, #ec4899);
           transition: width 0.2s;
+        }
+
+        /* ✅ v88.71: شارة ومربّع المحتوى الوارد من ميزة المشاركة الخارجية */
+        .composer-share-intake {
+          display: grid;
+          gap: 8px;
+          padding: 12px 14px;
+          margin: 8px 0 12px;
+          border-radius: 14px;
+          background: linear-gradient(180deg, rgba(139,92,246,0.16), rgba(59,130,246,0.10));
+          border: 1px solid rgba(167,139,250,0.35);
+          position: relative;
+        }
+        .composer-share-intake-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .composer-share-intake-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(139,92,246,0.25);
+          color: #ddd6fe;
+          font-size: 12px;
+          font-weight: 800;
+        }
+        .composer-share-intake-link {
+          color: #93c5fd;
+          text-decoration: underline;
+          font-size: 13px;
+          direction: ltr;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          max-width: 100%;
+        }
+        .composer-share-intake-status {
+          color: #cbd5e1;
+          font-size: 12.5px;
+          line-height: 1.6;
+        }
+        .composer-share-intake-status.ready {
+          color: #86efac;
+          font-weight: 700;
+        }
+        .composer-share-intake .composer-upload-progress-track {
+          position: relative;
+          bottom: auto;
+          left: auto;
+          right: auto;
+          height: 6px;
+          border-radius: 6px;
+          overflow: hidden;
         }
         @media (max-width: 1024px) {
           .composer-header-row,

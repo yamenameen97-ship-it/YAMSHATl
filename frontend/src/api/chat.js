@@ -6,12 +6,14 @@ const RESUME_KEY_PREFIX = 'yamshat-upload-session';
 
 const sessionStorageKey = (file) => `${RESUME_KEY_PREFIX}:${file.name}:${file.size}:${file.lastModified}`;
 
+// ✅ v88.70: تمرير forceRefresh إلى axios لتخطي الكاش عند الطلب من صفحة إعدادات المحادثة
 export const getMessages = (receiver, limit = 40, before_id, options = {}) =>
   API.get('/messages', {
     params: { receiver, limit, before_id },
     signal: options.signal,
-    cache: Boolean(before_id),
+    cache: options.forceRefresh ? false : Boolean(before_id),
     cacheTtlMs: 8_000,
+    forceRefresh: Boolean(options.forceRefresh),
   });
 
 export const sendMessageApi = (payload) => API.post('/send_message', payload);

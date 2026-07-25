@@ -373,27 +373,40 @@ export default function ProfileHeader({
     || profile?.user?.username
     || 'مستخدم';
   const username = profile?.user?.username || 'مستخدم';
-  // ✅ v88.14 FIX: ربط العدادات فعلياً بالبيانات المُرجعة من الباك إند
-  // الباك إند يرجع البيانات في counts.{posts,followers,following} + user.followers_count/following_count
-  // + posts array. نقرأ من كل المصادر المحتملة لضمان عرض قيم فعلية دائماً.
-  const postsCount = (
-    Number(profile?.counts?.posts) ||
-    Number(profile?.posts_count) ||
-    Number(profile?.user?.posts_count) ||
-    (Array.isArray(profile?.posts) ? profile.posts.length : 0) ||
-    0
+  // ✅ v88.68 FIX: ربط عدادات المتابعة بشكل صحيح
+  //  ─ الباك إند (`_profile_bundle` في `users.py`) يرجع:
+  //     counts: { posts, followers, following } و user.followers_count و user.following_count.
+  //  ─ المشكلة السابقة: استخدام `||` بين قيم رقمية يجعل القيمة `0` (وهي قيمة صحيحة)
+  //     تُعتبر falsy فيقفز التعبير للمصدر التالي وقد يكون undefined فيرجع NaN.
+  //  ─ الحل: دالة مساعدة `pickCount` تأخذ أول قيمة رقمية محددة وتحترم `0`.
+  const pickCount = (...candidates) => {
+    for (const raw of candidates) {
+      if (raw === undefined || raw === null || raw === '') continue;
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+    return 0;
+  };
+
+  const postsCount = pickCount(
+    profile?.counts?.posts,
+    profile?.posts_count,
+    profile?.user?.posts_count,
+    Array.isArray(profile?.posts) ? profile.posts.length : undefined,
   );
-  const followersCount = (
-    Number(profile?.counts?.followers) ||
-    Number(profile?.followers_count) ||
-    Number(profile?.user?.followers_count) ||
-    0
+  const followersCount = pickCount(
+    profile?.counts?.followers,
+    profile?.followers_count,
+    profile?.user?.followers_count,
+    profile?.user?.stats?.followers_count,
+    profile?.followers,
   );
-  const followingCount = (
-    Number(profile?.counts?.following) ||
-    Number(profile?.following_count) ||
-    Number(profile?.user?.following_count) ||
-    0
+  const followingCount = pickCount(
+    profile?.counts?.following,
+    profile?.following_count,
+    profile?.user?.following_count,
+    profile?.user?.stats?.following_count,
+    profile?.following,
   );
   const bio = profile?.user?.profile?.bio || '';
   const tagline = profile?.user?.profile?.activity_tagline || 'منشئ محتوى رقمي';

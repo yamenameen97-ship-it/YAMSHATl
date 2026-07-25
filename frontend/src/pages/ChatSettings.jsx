@@ -1,31 +1,34 @@
 /**
- * ChatSettings.jsx — v88.65 (2026-07-25)
+ * ChatSettings.jsx — v88.69 (2026-07-25)
  *
- * ✅ إصلاحات هذا الإصدار — سبب طلب المستخدم:
- *   المشكلة: صفحة "إعدادات المحادثة" كانت تُظهر أصفاراً كاذبة في العدادات
- *   (الوسائط المشتركة/الروابط/الملفات والصوتيات)، ولا تعرض المحتويات الفعلية
- *   للمحادثة رغم وجود صور/فيديو/روابط/ملفات صوتية بداخلها.
+ * ✅ إصلاحات هذا الإصدار — استكمال جذري لـ v88.65:
+ *   المشكلة: بعد v88.65 لا تزال «الوسائط المشتركة» و«الملفات والصوتيات»
+ *   تظهر فارغة في صفحة إعدادات المحادثة رغم وجود محتوى داخل المحادثة.
  *
- * السبب الجذري:
- *   1) استجابة `/messages` من الخادم بالشكل: { items: [...], paging: {...} }
- *      بينما الكود كان يعتمد أحياناً على شكل مصفوفة مباشرة (تسلسل استخراج مكسور).
- *   2) الحدّ الأقصى للجلب كان 120 رسالة فقط → أي وسائط أقدم لا تظهر أبداً.
- *   3) تصنيف الرسائل معطوب: `mediaItems` كان يضمّ كل رسالة لها media_url بما فيها
- *      الملفات/الصوتيات، فتظهر الأعداد متضاربة والعرض مكسور.
- *   4) الملفات الصوتية (voice/audio) لم يكن هناك فحص عبر `attachments[].kind`
- *      ولا عبر الامتدادات (mp3/wav/ogg/m4a/opus).
- *   5) الروابط كانت تُبحث في نص الرسالة فقط دون فحص المرفقات ولا استبعاد
- *      روابط الوسائط الملحقة (كانت تُعدّ الوسائط كروابط).
- *   6) لم يكن هناك تحديث لحظي — العدادات تُقفل عند التحميل الأول.
+ * السبب الجذري الفعلي (بعد تدقيق شامل):
+ *   1) أحداث النافذة `yamshat:new-message` / `chat:message` **لا تُطلَق من أي مكان**
+ *      في المشروع — الاعتماد الوحيد الحقيقي هو `socketManager` عبر
+ *      `new_private_message`. لذلك التحديث اللحظي كان معلّقاً في الفراغ.
+ *   2) استدعاء `getMessages(peer, PAGE_SIZE, undefined, {signal})` يستعمل الـ
+ *      cache الافتراضي في `axios.js` (المفتاح يعتمد فقط على url+params) —
+ *      أثناء الجلب التراكمي كل صفحة بعد الأولى تُخزَّن بالكاش، والبولنغ
+ *      الدوري لصفحة `before_id=undefined` يُرجع نفس النسخة القديمة من الكاش
+ *      حتى بعد وصول رسائل جديدة، فلا تُحدَّث الأعداد.
+ *   3) في بعض المحادثات، الرسائل المُرسَلة كصور تُخزَّن بحقل `attachments[]`
+ *      فقط دون `type` واضح، والفحص السابق ربما فقد بعضها.
+ *   4) `mediaItems` كانت تُقصى إذا كان `url` فارغاً — لكن بعض الصور تأتي
+ *      بحقل `attachment.thumbnail_url` أو `cdn_url` فقط دون `media_url`.
  *
  * الحلّ:
- *   - جلب الصفحات بشكل تراكمي (pagination عبر before_id) حتى نهاية المحادثة
- *     أو حتى سقف آمن (2000 رسالة) لتغطية المحادثة بالكامل.
- *   - تصنيف صارم بثلاث فئات متبادلة الاستبعاد (image/video) → media، (voice/audio) → file،
- *     غير ذلك مع مرفقات → file، الروابط تُستخرج من النص فقط بعد تنظيف روابط الوسائط.
- *   - إدماج فوري للرسائل الواردة عبر أحداث النافذة yamshat:new-message/message
- *     لتحديث العدادات لحظياً بدون إعادة تحميل.
- *   - قراءة استجابة API بمرونة (data.items أو data المصفوفة القديمة).
+ *   - الاستماع المباشر لـ `socketManager` لأحداث `new_private_message` بدلاً
+ *     من أحداث نافذة وهمية.
+ *   - إجبار `forceRefresh: true` على كل نداءات `/messages` من هذه الصفحة
+ *     لتخطي الكاش (الصفحة تحتاج بيانات طازجة دائماً).
+ *   - استخراج URL أكثر تسامحاً: يقبل `thumbnail_url` و`cdn_url` وأي مرفق
+ *     صالح ضمن `attachments[]` (وليس أول واحد فقط).
+ *   - إذا احتوت الرسالة على عدة مرفقات، يُصنَّف كل مرفق منها على حدة.
+ *   - بولنغ أخف (كل 8 ثوان) + إعادة جلب فوري عند العودة إلى التبويب.
+ *   - عرض عدّاد إجمالي حتى لو كان صفراً حقيقياً (لا `…` مستمر).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -42,6 +45,7 @@ import {
 } from '../api/chat.js';
 import { formatLastSeen } from '../components/yamshat/YamshatDesign.js';
 import { getChatPreferences, toggleChatPreference } from '../utils/chatPreferences.js';
+import socketManager from '../services/socketManager.js';
 
 const URL_PATTERN = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
 
@@ -49,38 +53,52 @@ const IMAGE_MEDIA_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|bmp|heic|heif)(?:$|\?)
 const VIDEO_MEDIA_RE = /\.(mp4|webm|mov|m4v|mkv|avi|3gp)(?:$|\?)/i;
 const AUDIO_MEDIA_RE = /\.(mp3|wav|ogg|m4a|opus|aac|flac|amr)(?:$|\?)/i;
 
-// ✅ v88.65: عتبات آمنة لتحميل تاريخ المحادثة كاملاً
-const PAGE_SIZE = 200;          // أقصى ما يقبله الخادم عادةً
-const MAX_PAGES = 10;           // 10 × 200 = 2000 رسالة → غطاء كامل لأي محادثة عادية
-const REFRESH_INTERVAL_MS = 12_000; // تحديث خلفي كل 12 ثانية لالتقاط أي جديد
+// ✅ v88.69: عتبات أكثر انسجاماً — 200×10 صفحة ما زالت آمنة، ولكن نبقي بولنغ
+// أخف (8 ث) لالتقاط الرسائل الجديدة في حال فشلت أحداث Socket
+const PAGE_SIZE = 200;
+const MAX_PAGES = 12;               // 12 × 200 = 2400 رسالة
+const REFRESH_INTERVAL_MS = 8_000;  // بولنغ خلفي كل 8 ثوان
 
-function getPrimaryAttachment(message = {}) {
-  return Array.isArray(message?.attachments) && message.attachments.length ? (message.attachments[0] || {}) : {};
+function safeUrl(value) {
+  const str = String(value || '').trim();
+  return str && str !== 'null' && str !== 'undefined' ? str : '';
+}
+
+function getAttachments(message = {}) {
+  return Array.isArray(message?.attachments) ? message.attachments : [];
+}
+
+function pickBestUrl(source = {}) {
+  // ✅ v88.69: أي حقل رابط صالح مقبول (بما في ذلك المصغّر)
+  return (
+    safeUrl(source?.url)
+    || safeUrl(source?.media_url)
+    || safeUrl(source?.mediaUrl)
+    || safeUrl(source?.cdn_url)
+    || safeUrl(source?.cdnUrl)
+    || safeUrl(source?.thumbnail_url)
+    || safeUrl(source?.thumbnailUrl)
+  );
 }
 
 function resolveMessageMediaUrl(message = {}) {
-  const attachment = getPrimaryAttachment(message);
-  return String(
-    message?.media_url
-    || message?.media_urls?.[0]
-    || attachment?.url
-    || attachment?.cdn_url
-    || attachment?.mediaUrl
-    || attachment?.media_url
-    || ''
-  ).trim();
+  const direct = safeUrl(message?.media_url) || safeUrl(message?.media_urls?.[0]);
+  if (direct) return direct;
+  const atts = getAttachments(message);
+  for (const att of atts) {
+    const url = pickBestUrl(att);
+    if (url) return url;
+  }
+  return '';
 }
 
-function extractFileName(message = {}) {
-  const attachment = getPrimaryAttachment(message);
-  if (message.attachment_name) return message.attachment_name;
-  if (attachment?.file_name) return attachment.file_name;
-  if (attachment?.fileName) return attachment.fileName;
-  if (attachment?.name) return attachment.name;
-  const mediaUrl = resolveMessageMediaUrl(message);
-  if (!mediaUrl) return 'ملف مرفق';
+function extractFileName(source = {}, fallbackUrl = '') {
+  const name = source?.file_name || source?.fileName || source?.name || source?.attachment_name;
+  if (name) return String(name);
+  const url = fallbackUrl || pickBestUrl(source);
+  if (!url) return 'ملف مرفق';
   try {
-    const clean = mediaUrl.split('?')[0];
+    const clean = url.split('?')[0];
     return decodeURIComponent(clean.split('/').pop() || 'ملف مرفق');
   } catch {
     return 'ملف مرفق';
@@ -88,30 +106,22 @@ function extractFileName(message = {}) {
 }
 
 /**
- * ✅ v88.65: تصنيف نوع الرسالة بدقّة — ثلاث فئات متبادلة الاستبعاد:
- *   'image' | 'video' → تُعدّ ضمن الوسائط المشتركة
- *   'audio' | 'file'  → تُعدّ ضمن الملفات والصوتيات
- *   ''                → رسالة نصية (لا وسائط ولا ملف)
+ * ✅ v88.69: تصنيف يعمل على مرفق واحد أو رسالة كاملة.
+ *   يُرجع: 'image' | 'video' | 'audio' | 'file' | ''
  */
-function resolveMediaKind(message = {}) {
-  const attachment = getPrimaryAttachment(message);
-  const mediaUrl = resolveMessageMediaUrl(message).toLowerCase();
-  const rawType = String(message?.type || message?.message_type || attachment?.kind || attachment?.type || '').trim().toLowerCase();
-  const mime = String(attachment?.mime_type || attachment?.mimeType || '').trim().toLowerCase();
+function classifyEntity(entity = {}, rawTypeHint = '') {
+  const url = pickBestUrl(entity).toLowerCase();
+  const kind = String(entity?.kind || entity?.type || rawTypeHint || '').trim().toLowerCase();
+  const mime = String(entity?.mime_type || entity?.mimeType || '').trim().toLowerCase();
 
-  // فيديو
-  if (['video', 'media_video'].includes(rawType) || mime.startsWith('video/') || VIDEO_MEDIA_RE.test(mediaUrl)) return 'video';
-  // صورة
-  if (['image', 'photo', 'media_image', 'sticker', 'gif'].includes(rawType) || mime.startsWith('image/') || IMAGE_MEDIA_RE.test(mediaUrl)) return 'image';
-  // صوت
-  if (['voice', 'audio', 'media_audio'].includes(rawType) || mime.startsWith('audio/') || AUDIO_MEDIA_RE.test(mediaUrl)) return 'audio';
-  // مرفق ملف عام
-  if (mediaUrl || rawType === 'file' || rawType === 'document' || attachment?.url) return 'file';
+  if (['video', 'media_video'].includes(kind) || mime.startsWith('video/') || VIDEO_MEDIA_RE.test(url)) return 'video';
+  if (['image', 'photo', 'media_image', 'sticker', 'gif'].includes(kind) || mime.startsWith('image/') || IMAGE_MEDIA_RE.test(url)) return 'image';
+  if (['voice', 'audio', 'media_audio'].includes(kind) || mime.startsWith('audio/') || AUDIO_MEDIA_RE.test(url)) return 'audio';
+  if (url || kind === 'file' || kind === 'document') return 'file';
   return '';
 }
 
 function extractItemsFromResponse(res) {
-  // ✅ v88.65: قراءة مرنة — الخادم الجديد يُرجع {items,paging}، القديم قد يُرجع مصفوفة
   const data = res?.data ?? res;
   if (Array.isArray(data)) return { items: data, paging: null };
   const items = Array.isArray(data?.items) ? data.items : [];
@@ -134,7 +144,7 @@ export default function ChatSettings() {
   const [totalLoaded, setTotalLoaded] = useState(0);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
 
-  const messagesMapRef = useRef(new Map()); // id → message (لمنع التكرار عند الدمج اللحظي)
+  const messagesMapRef = useRef(new Map());
 
   useEffect(() => {
     if (!peer) return;
@@ -143,7 +153,11 @@ export default function ChatSettings() {
     setIsPinnedConversation(prefs.pinned.has(peer));
   }, [peer]);
 
-  // ✅ v88.65: جلب تاريخ المحادثة كاملاً بشكل تراكمي
+  // ✅ v88.69: forceRefresh:true لتخطي الكاش دائماً في هذه الصفحة
+  const fetchPage = useCallback((beforeId, signal) => (
+    getMessages(peer, PAGE_SIZE, beforeId, { signal, forceRefresh: true })
+  ), [peer]);
+
   const loadAllMessages = useCallback(async (signal) => {
     const collected = [];
     let beforeId;
@@ -152,11 +166,10 @@ export default function ChatSettings() {
       if (signal?.aborted) return { items: [], hasMore: false };
       try {
         // eslint-disable-next-line no-await-in-loop
-        const res = await getMessages(peer, PAGE_SIZE, beforeId, { signal });
+        const res = await fetchPage(beforeId, signal);
         const { items, paging } = extractItemsFromResponse(res);
         if (!items.length) { hasMore = false; break; }
         collected.push(...items);
-        // paging.next_before_id هو أقدم id تم إرجاعه
         beforeId = paging?.next_before_id;
         hasMore = Boolean(paging?.has_more) && Boolean(beforeId);
       } catch (err) {
@@ -166,11 +179,10 @@ export default function ChatSettings() {
       }
     }
     return { items: collected, hasMore };
-  }, [peer]);
+  }, [fetchPage]);
 
   const rebuildFromMap = useCallback(() => {
     const list = Array.from(messagesMapRef.current.values());
-    // ترتيب صاعد حسب id/created_at لضمان استقرار الاستخراج
     list.sort((a, b) => {
       const ai = Number(a?.id || 0);
       const bi = Number(b?.id || 0);
@@ -180,6 +192,20 @@ export default function ChatSettings() {
     setMessages(list);
     setTotalLoaded(list.length);
   }, []);
+
+  const mergeMessages = useCallback((items) => {
+    let mutated = false;
+    (items || []).forEach((item) => {
+      if (!item || typeof item !== 'object') return;
+      const key = String(item?.id || item?.client_id || `${item?.created_at || ''}-${item?.sender || ''}`);
+      if (!key) return;
+      const prev = messagesMapRef.current.get(key);
+      if (!prev) mutated = true;
+      messagesMapRef.current.set(key, { ...(prev || {}), ...item });
+    });
+    if (mutated) rebuildFromMap();
+    return mutated;
+  }, [rebuildFromMap]);
 
   useEffect(() => {
     if (!peer) return undefined;
@@ -201,7 +227,6 @@ export default function ChatSettings() {
         const historyItems = historyRes.status === 'fulfilled' ? (historyRes.value?.items || []) : [];
         const hasMore = historyRes.status === 'fulfilled' ? Boolean(historyRes.value?.hasMore) : false;
 
-        // بناء الخريطة (منع التكرار)
         const map = new Map();
         historyItems.forEach((item) => {
           const key = String(item?.id || item?.client_id || `${item?.created_at || ''}-${item?.sender || ''}`);
@@ -228,85 +253,122 @@ export default function ChatSettings() {
 
     loadData();
 
-    // ✅ v88.65: تحديث لحظي — استقبال أي رسالة جديدة أثناء فتح الصفحة
-    const handleRealtimeMessage = (event) => {
-      const detail = event?.detail || {};
-      const msg = detail?.message || detail?.data || detail;
-      if (!msg || typeof msg !== 'object') return;
-      const sender = String(msg?.sender || '').trim();
-      const receiver = String(msg?.receiver || '').trim();
-      // اقبل فقط الرسائل المرتبطة بهذه المحادثة
+    // ✅ v88.69: الاستماع لأحداث Socket الحقيقية (لا نعتمد على أحداث نافذة وهمية)
+    const handleSocketMessage = (message) => {
+      if (!message || typeof message !== 'object') return;
+      const sender = String(message?.sender || '').trim();
+      const receiver = String(message?.receiver || '').trim();
       if (sender !== peer && receiver !== peer) return;
-      const key = String(msg?.id || msg?.client_id || `${msg?.created_at || ''}-${sender}`);
-      if (!key) return;
-      messagesMapRef.current.set(key, { ...(messagesMapRef.current.get(key) || {}), ...msg });
-      rebuildFromMap();
+      mergeMessages([message]);
     };
 
-    // ✅ v88.65: تحديث دوري خفيف — يلتقط أي وسائط جديدة أُرسلت والصفحة مفتوحة
+    // + نُبقي الاستماع لأحداث النافذة كخط دفاع إضافي إن وُجدت
+    const handleWindowMessage = (event) => {
+      const detail = event?.detail || {};
+      const msg = detail?.message || detail?.data || detail;
+      handleSocketMessage(msg);
+    };
+
+    let unsubscribeSocket = () => {};
+    try {
+      unsubscribeSocket = socketManager.on('new_private_message', handleSocketMessage) || (() => {});
+    } catch {
+      unsubscribeSocket = () => {};
+    }
+
+    // بولنغ خلفي — يستخدم forceRefresh لتفادي الكاش
     const refreshTimer = setInterval(async () => {
       if (!active || document.hidden) return;
       try {
-        const res = await getMessages(peer, PAGE_SIZE, undefined, { signal: controller.signal });
+        const res = await fetchPage(undefined, controller.signal);
         const { items } = extractItemsFromResponse(res);
-        let mutated = false;
-        items.forEach((item) => {
-          const key = String(item?.id || item?.client_id || `${item?.created_at || ''}-${item?.sender || ''}`);
-          if (!key) return;
-          if (!messagesMapRef.current.has(key)) mutated = true;
-          messagesMapRef.current.set(key, item);
-        });
-        if (mutated) rebuildFromMap();
+        mergeMessages(items);
       } catch { /* تجاهل */ }
     }, REFRESH_INTERVAL_MS);
 
-    window.addEventListener('yamshat:new-message', handleRealtimeMessage);
-    window.addEventListener('yamshat:message', handleRealtimeMessage);
-    window.addEventListener('chat:message', handleRealtimeMessage);
+    // إعادة جلب فوري عند العودة إلى التبويب
+    const handleVisibility = async () => {
+      if (document.hidden || !active) return;
+      try {
+        const res = await fetchPage(undefined, controller.signal);
+        const { items } = extractItemsFromResponse(res);
+        mergeMessages(items);
+      } catch { /* تجاهل */ }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    window.addEventListener('yamshat:new-message', handleWindowMessage);
+    window.addEventListener('yamshat:message', handleWindowMessage);
+    window.addEventListener('chat:message', handleWindowMessage);
 
     return () => {
       active = false;
       controller.abort();
       clearInterval(refreshTimer);
-      window.removeEventListener('yamshat:new-message', handleRealtimeMessage);
-      window.removeEventListener('yamshat:message', handleRealtimeMessage);
-      window.removeEventListener('chat:message', handleRealtimeMessage);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      try { unsubscribeSocket?.(); } catch { /* ignore */ }
+      window.removeEventListener('yamshat:new-message', handleWindowMessage);
+      window.removeEventListener('yamshat:message', handleWindowMessage);
+      window.removeEventListener('chat:message', handleWindowMessage);
     };
-  }, [peer, pushToast, loadAllMessages, rebuildFromMap]);
+  }, [peer, pushToast, loadAllMessages, rebuildFromMap, mergeMessages, fetchPage]);
 
-  // ✅ v88.65: تصنيف صارم متبادل الاستبعاد
+  // ✅ v88.69: تصنيف صارم — يفحص كل مرفق داخل الرسالة على حدة
   const classified = useMemo(() => {
     const mediaItems = [];
     const fileItems = [];
     const mediaUrlsUsed = new Set();
+    const seenMediaKeys = new Set();
+
+    const rawTypeOf = (m) => String(m?.type || m?.message_type || '').trim().toLowerCase();
 
     messages.forEach((item, index) => {
-      const kind = resolveMediaKind(item);
-      const url = resolveMessageMediaUrl(item);
       const idKey = String(item?.id || item?.client_id || index);
-      if (kind === 'image' || kind === 'video') {
-        if (!url) return;
-        mediaItems.push({
-          id: idKey,
-          url,
-          type: kind,
-          caption: item?.content || item?.message || '',
-          sender: item?.sender || '',
-        });
-        mediaUrlsUsed.add(url);
-      } else if (kind === 'audio' || kind === 'file') {
-        fileItems.push({
-          id: idKey,
-          url,
-          kind,
-          name: extractFileName(item),
-          sender: item?.sender || '',
-        });
-        if (url) mediaUrlsUsed.add(url);
+      const rawType = rawTypeOf(item);
+      const atts = getAttachments(item);
+
+      // 1) اجمع الكيانات المرشحة: المرفقات إن وُجدت، وإلا الرسالة نفسها
+      const entities = [];
+      if (atts.length) {
+        atts.forEach((att, i) => entities.push({ entity: att, sub: i, source: 'attachment' }));
       }
+      // إن كانت الرسالة تحمل media_url مباشرة ولم يوجد مرفق يحمله، أضِف كيان الرسالة
+      const directUrl = safeUrl(item?.media_url) || safeUrl(item?.media_urls?.[0]);
+      if (directUrl && !atts.some((a) => pickBestUrl(a) === directUrl)) {
+        entities.push({ entity: { url: directUrl, mime_type: '', kind: rawType }, sub: 'root', source: 'message' });
+      }
+
+      entities.forEach(({ entity, sub }) => {
+        const url = pickBestUrl(entity);
+        const kind = classifyEntity(entity, rawType);
+        const uniq = `${idKey}::${sub}::${url || kind}`;
+        if (seenMediaKeys.has(uniq)) return;
+        seenMediaKeys.add(uniq);
+
+        if (kind === 'image' || kind === 'video') {
+          if (!url) return;
+          mediaItems.push({
+            id: uniq,
+            url,
+            type: kind,
+            caption: item?.content || item?.message || '',
+            sender: item?.sender || '',
+          });
+          mediaUrlsUsed.add(url);
+        } else if (kind === 'audio' || kind === 'file') {
+          fileItems.push({
+            id: uniq,
+            url,
+            kind,
+            name: extractFileName(entity, url) || extractFileName(item, url),
+            sender: item?.sender || '',
+          });
+          if (url) mediaUrlsUsed.add(url);
+        }
+      });
     });
 
-    // استخراج الروابط النصية فقط (استبعاد روابط المرفقات المُصنّفة)
+    // 2) الروابط النصية (استبعاد روابط المرفقات)
     const linkSet = new Map();
     messages.forEach((item, index) => {
       const text = `${item?.content || ''} ${item?.message || ''}`.trim();
@@ -314,7 +376,6 @@ export default function ChatSettings() {
       const matches = text.match(URL_PATTERN) || [];
       matches.forEach((raw, linkIndex) => {
         const normalized = raw.startsWith('http') ? raw : `https://${raw}`;
-        // استبعاد الروابط التي هي نفسها روابط وسائط المرفقات
         if (mediaUrlsUsed.has(normalized)) return;
         if (!linkSet.has(normalized)) {
           linkSet.set(normalized, {

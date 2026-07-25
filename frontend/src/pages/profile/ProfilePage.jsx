@@ -4,6 +4,9 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import MobileTopBar from '../../components/mobile/MobileTopBar.jsx';
 import BottomNav from '../../components/mobile/BottomNav.jsx';
 import ProfileHeader from '../../components/profile/ProfileHeader.jsx';
+import ProfileFeedList from '../../components/profile/ProfileFeedList.jsx';
+import ProfileReelsGrid from '../../components/profile/ProfileReelsGrid.jsx';
+import ProfileMediaGrid from '../../components/profile/ProfileMediaGrid.jsx';
 import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Modal from '../../components/ui/Modal.jsx';
@@ -596,6 +599,31 @@ export default function ProfilePage() {
               tabs={availableTabs}
             />
 
+            {activeTab === TABS.POSTS ? (
+              /* ✅ v88.66: عند الضغط على "صفحتي" تُعرض المنشورات بتصميم
+                 بطاقات الصفحة الرئيسية (MobilePostCard) بدل شبكة الصور. */
+              <ProfileFeedList
+                username={username}
+                profile={profile}
+                isOwnProfile={isOwnProfile}
+              />
+            ) : activeTab === TABS.REELS ? (
+              /* ✅ v88.67: تبويب الريلز — شبكة عمودين تعرض ريلزات المستخدم،
+                 والضغط على أيّها يفتح مشغّل ريلز كامل بجميع أزرار التفاعل. */
+              <ProfileReelsGrid
+                username={username}
+                profile={profile}
+                isOwnProfile={isOwnProfile}
+              />
+            ) : activeTab === TABS.MEDIA ? (
+              /* ✅ v88.68: تبويب الوسائط — شبكة 3 أعمدة تعرض جميع الوسائط
+                 (صور + فيديوهات) لصاحب الملف، والضغط على أيّها يفتح المنشور. */
+              <ProfileMediaGrid
+                username={username}
+                profile={profile}
+                isOwnProfile={isOwnProfile}
+              />
+            ) : (
             <div className="ym-profile-gallery" dir="rtl">
               {tabContent.length > 0 ? (
                 tabContent.map((post) => (
@@ -665,6 +693,7 @@ export default function ProfilePage() {
                 </div>
               )}
             </div>
+            )}
           </div>
         ) : null}
       </main>

@@ -150,6 +150,7 @@
         "src/components/chat/CallBubble.jsx",
         "src/components/chat/MediaPreviewModal.jsx",
         "src/components/chat/MessageActionsToolbar.jsx",
+        "src/components/mobile/FeedVideoPlayer.jsx",
         "src/components/chat/MessageReactionPicker.jsx",
         "src/components/chat/SafeImage.jsx",
         "src/components/mobile/PWAInstallBanner.jsx",

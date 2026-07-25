@@ -387,6 +387,9 @@ function MessageBubble({
   const isImageOnly = isImage && !hasMeaningfulCaption && !replyTarget && !message?.deleted;
   const isVideoOnly = isVideo && !hasMeaningfulCaption && !replyTarget && !message?.deleted;
   const isMediaOnly = isImageOnly || isVideoOnly;
+  // ✅ v88.63 FIX (2026-07-25): علامة الحذف النهائي — تمنع أي إظهار للصورة/الفيديو/الصوت/الملف/الرد/المكالمة
+  //    وتُطبَّق كلاس is-deleted على الفقاعة لإزالة الخلفية والحواف بالكامل.
+  const isDeleted = Boolean(message?.deleted);
 
   // === القائمة السياقية: فتح + إغلاق ===
   // v60: على الجوال نستخدم popupAnchor (MessageContextPopup) ، وعلى السطح نستخدم contextMenu القديم
@@ -548,7 +551,7 @@ function MessageBubble({
   return (
     <motion.div
       ref={(node) => { bubbleRef.current = node; registerMessageNode?.(String(messageId), node); }}
-      className={`yam-message-row ${isMe ? 'me' : 'them'} ${groupedWithPrev ? 'grouped-prev' : ''} ${groupedWithNext ? 'grouped-next' : ''} ${isVoiceOnly ? 'voice-only' : ''} ${isMediaOnly ? 'media-only' : ''}`}
+      className={`yam-message-row ${isMe ? 'me' : 'them'} ${groupedWithPrev ? 'grouped-prev' : ''} ${groupedWithNext ? 'grouped-next' : ''} ${!isDeleted && isVoiceOnly ? 'voice-only' : ''} ${!isDeleted && isMediaOnly ? 'media-only' : ''} ${isDeleted ? 'row-deleted' : ''}`}
       data-msg-id={messageId}
       layout={!reduceMotion}
       onMouseEnter={() => setShowToolbar(true)}
@@ -610,7 +613,7 @@ function MessageBubble({
         onMouseUp={handleMouseUp}
       >
         <motion.div
-          className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'} ${shouldGlow ? 'search-hit' : ''} ${showToolbar ? 'toolbar-open' : ''} ${isVoiceOnly ? 'is-voice-only' : ''} ${isMediaOnly ? 'is-media-only' : ''} ${isImageOnly ? 'is-image-only' : ''} ${isVideoOnly ? 'is-video-only' : ''} ${(message?.type === 'call' || message?.call) ? 'is-call-only' : ''}`}
+          className={`yam-bubble ${isMe ? 'bubble-me' : 'bubble-them'} ${shouldGlow ? 'search-hit' : ''} ${showToolbar ? 'toolbar-open' : ''} ${!isDeleted && isVoiceOnly ? 'is-voice-only' : ''} ${!isDeleted && isMediaOnly ? 'is-media-only' : ''} ${!isDeleted && isImageOnly ? 'is-image-only' : ''} ${!isDeleted && isVideoOnly ? 'is-video-only' : ''} ${!isDeleted && (message?.type === 'call' || message?.call) ? 'is-call-only' : ''} ${isDeleted ? 'is-deleted' : ''}`}
           layout={!reduceMotion}
         >
           <button
@@ -650,7 +653,7 @@ function MessageBubble({
           </AnimatePresence>
 
           <AnimatePresence initial={false}>
-            {replyTarget ? (
+            {replyTarget && !isDeleted ? (
               <motion.button
                 type="button"
                 className="yam-reply-preview"
@@ -664,7 +667,7 @@ function MessageBubble({
             ) : null}
           </AnimatePresence>
 
-          {message?.type === 'call' || message?.call ? (
+          {(message?.type === 'call' || message?.call) && !isDeleted ? (
             <CallBubble
               call={{
                 ...(message?.call || {}),
@@ -684,7 +687,7 @@ function MessageBubble({
               }}
             />
           ) : null}
-          {isImage && mediaUrl ? (
+          {isImage && mediaUrl && !isDeleted ? (
             <button type="button" className="yam-media-button" onClick={openCurrentMedia}>
               {/* ✅ v88.9 FIX (2026-07-18): رفع maxHeight من 340 إلى 520 لإظهار
                  الصور الطويلة (البورتريه) كاملة دون قص في شات ويب موبايل. */}
@@ -699,14 +702,14 @@ function MessageBubble({
             </button>
           ) : null}
 
-          {isVideo && mediaUrl ? (
+          {isVideo && mediaUrl && !isDeleted ? (
             <button type="button" className="yam-media-button yam-video-preview-shell" onClick={openCurrentMedia}>
               <video src={mediaUrl} muted playsInline className="yam-bubble-media" preload="metadata" />
               <span className="yam-bubble-media-overlay">تشغيل كامل</span>
             </button>
           ) : null}
 
-          {isVoice ? (
+          {isVoice && !isDeleted ? (
             <VoiceMessagePlayer
               src={mediaUrl || ''}
               seed={message?.waveform_seed || message?.created_at || messageId}
@@ -719,7 +722,7 @@ function MessageBubble({
             />
           ) : null}
 
-          {isFile && mediaUrl ? (
+          {isFile && mediaUrl && !isDeleted ? (
             <a href={mediaUrl} target="_blank" rel="noreferrer" className="yam-file-card">
               <span className="yam-file-icon">📄</span>
               <span className="yam-file-copy">
@@ -746,10 +749,15 @@ function MessageBubble({
               <ChatTranslationStrip content={content} isMe={isMe} />
             </>
           ) : null}
-          {message?.deleted ? <div className="bubble-deleted">تم حذف الرسالة</div> : null}
+          {isDeleted ? (
+            <div className="bubble-deleted" role="note" aria-label="تم حذف الرسالة">
+              <span className="bubble-deleted-icon" aria-hidden="true">🚫</span>
+              <span className="bubble-deleted-text">تم حذف الرسالة</span>
+            </div>
+          ) : null}
 
-          {/* v87.10 — شارة الرسالة المُحوَّلة (Forwarded label) */}
-          {(message?.forwarded_from || message?.is_forwarded || message?.forwardedFrom) ? (
+          {/* v87.10 — شارة الرسالة المُحوَّلة (Forwarded label) — تُخفى عند الحذف */}
+          {!isDeleted && (message?.forwarded_from || message?.is_forwarded || message?.forwardedFrom) ? (
             <div className="bubble-forwarded-label" aria-label="رسالة محوّلة">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <polyline points="15 17 20 12 15 7" />

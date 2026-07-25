@@ -883,6 +883,9 @@ export default function Chat() {
   const handleDelete = async (msgId, deleteForEveryone = false) => {
     try {
       await deleteMessageApi(msgId, { delete_for_everyone: deleteForEveryone });
+      // ✅ v88.63 FIX (2026-07-25): حذف نهائي بدون أي أثر —
+      //    نمسح كل حقول الوسائط (attachments, media_url, preview_url, file_name, type, reply_to, forwarded_from, call)
+      //    حتى لا تظهر الصورة أو الفيديو أو الصوت أو أي شارة داخل الفقاعة المحذوفة.
       applyMessagePatch(
         peer,
         [msgId],
@@ -892,6 +895,45 @@ export default function Chat() {
             deleted_for_everyone: deleteForEveryone,
             content: '',
             message: '',
+            // إفراغ الوسائط بالكامل
+            attachments: [],
+            media_url: null,
+            mediaUrl: null,
+            media: null,
+            preview_url: null,
+            previewUrl: null,
+            file_name: null,
+            fileName: null,
+            file_url: null,
+            fileUrl: null,
+            url: null,
+            image: null,
+            image_url: null,
+            video: null,
+            video_url: null,
+            audio: null,
+            audio_url: null,
+            voice: null,
+            voice_url: null,
+            mime: null,
+            mime_type: null,
+            type: 'text',
+            // إزالة الردود والتحويل والمكالمة
+            reply_to: null,
+            replyTo: null,
+            reply_target: null,
+            replyTarget: null,
+            forwarded_from: null,
+            forwardedFrom: null,
+            is_forwarded: false,
+            call: null,
+            callMode: null,
+            callStatus: null,
+            callDuration: null,
+            // إزالة التفاعلات
+            reactions: [],
+            // تنظيف حقول التعديل
+            edited: false,
           },
           MESSAGE_LIFECYCLE.DELETED,
         ),
@@ -2261,10 +2303,59 @@ export default function Chat() {
             white-space: pre-wrap;
             word-break: break-word;
           }
+          /* ✅ v88.63 FIX (2026-07-25): حذف نهائي بدون أي أثر */
           .bubble-deleted {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
             font-size: 14px;
             color: #cbd5e1;
             font-style: italic;
+            direction: rtl;
+            font-family: 'Noto Sans Arabic', system-ui, sans-serif;
+          }
+          .bubble-deleted-icon {
+            opacity: 0.7;
+            font-size: 0.9em;
+            line-height: 1;
+          }
+          .bubble-deleted-text {
+            white-space: nowrap;
+          }
+          /* تطبيع فقاعة الرسالة المحذوفة: لا صور، لا فيديو، لا فقاعة مضاعفة */
+          .yam-bubble.is-deleted {
+            padding: 8px 12px !important;
+            width: auto !important;
+            max-width: fit-content !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            aspect-ratio: auto !important;
+            background: rgba(30, 41, 59, 0.55) !important;
+            border: 1px dashed rgba(148, 163, 184, 0.28) !important;
+            box-shadow: none !important;
+          }
+          .yam-bubble.is-deleted.bubble-me {
+            background: rgba(139, 92, 246, 0.18) !important;
+            border-color: rgba(139, 92, 246, 0.30) !important;
+          }
+          .yam-bubble.is-deleted .yam-media-button,
+          .yam-bubble.is-deleted .yam-bubble-media,
+          .yam-bubble.is-deleted .yam-video-preview-shell,
+          .yam-bubble.is-deleted .yam-file-card,
+          .yam-bubble.is-deleted .yam-reply-preview,
+          .yam-bubble.is-deleted .bubble-text,
+          .yam-bubble.is-deleted .bubble-forwarded-label,
+          .yam-bubble.is-deleted .yam-bubble-toolbar,
+          .yam-bubble.is-deleted .yam-reaction-chip,
+          .yam-bubble.is-deleted .yam-bubble-media-overlay,
+          .yam-bubble.is-deleted audio,
+          .yam-bubble.is-deleted video,
+          .yam-bubble.is-deleted img:not(.avatar) {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           .bubble-meta {
             display: flex;

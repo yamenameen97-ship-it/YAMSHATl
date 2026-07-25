@@ -1,34 +1,92 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { addComment, getComments } from '../../api/posts.js';
+import { addComment, getComments, likeComment } from '../../api/posts.js';
 import { useToast } from '../admin/ToastProvider.jsx';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
 
 /**
  * MobileCommentsSheet — bottom sheet لعرض/إضافة التعليقات على منشور.
- * يستخدم getComments + addComment الحقيقيين من backend.
- *
- * ✅ v88.19 FIX (ROOT CAUSE):
- *  المشكلة: صندوق كتابة التعليق (composer) كان يختفي جزئياً خلف أزرار نظام
- *  الهاتف السفلية (home indicator / gesture bar) لأن التصميم القديم استخدم
- *   position: absolute; bottom: var(--ym-kb-inset, 0px);
- *  وبدون لوحة مفاتيح مفتوحة، ‎--ym-kb-inset = 0‎، فيلتصق الـ composer بحافة
- *  الشاشة تماماً ويصادر مساحة الـ safe-area-inset-bottom.
- *
- *  الحل الجذري (مستوحى من درج تعليقات الريلز الذي يعمل بشكل مثالي):
- *  1) الـ overlay يحمل padding-bottom بمقدار (safe-area + kb-inset) لرفع
- *     البانل بأكمله فوق أزرار النظام ولوحة المفاتيح.
- *  2) الـ sheet عضو flex-column طبيعي بدون position:absolute متضارب.
- *  3) الـ composer الآن flex-item عادي (flex-shrink:0) يبقى مرئياً دائماً
- *     في نهاية عمود الـ sheet — نفس منطق ym-reels-drawer-input بالضبط.
+ * ✅ v88.64 FIX: إصلاح شامل لأزرار التفاعل على التعليقات
+ *  - زر إعجاب (❤️) مع عرض عدد الإعجابات
+ *  - زر رد: عند الضغط عليه يفتح فقاعة الردود السابقة (إن وجدت)
+ *    مع منطقة كتابة الرد وزر إرسال
+ *  - بعد إرسال الرد يرجع لقائمة التعليقات ويحدّث عدد الردود
  */
 function MobileCommentsSheet({ open, postId, onClose }) {
+  // v88.64: هيكل تعليق = { ...c, replies: [...], reply_count, likes_count, is_liked }
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  // v88.64: id التعليق الذي فُتِح على "وضع الرد" — عند الضغط على زر رد يفتح لوحة الردود.
+  const [activeReplyId, setActiveReplyId] = useState(null);
+  const [replyDraft, setReplyDraft] = useState('');
+  const [replySending, setReplySending] = useState(false);
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
+
+  // ─────────────────────────────────────────────────────────────
+  // v88.64: تحويل نتائج الـ backend إلى قائمة جذور مع مصفوفة ردود
+  // (بدل تسطيح كل شيء) حتى يظهر عدد الردود وفقاعتها لكل تعليق.
+  // ─────────────────────────────────────────────────────────────
+  const normalizeComments = useCallback((data) => {
+    let raw = [];
+    if (Array.isArray(data)) raw = data;
+    else if (Array.isArray(data?.items)) raw = data.items;
+    else if (Array.isArray(data?.comments)) raw = data.comments;
+    else if (Array.isArray(data?.results)) raw = data.results;
+    else if (Array.isArray(data?.data)) raw = data.data;
+    else if (Array.isArray(data?.data?.items)) raw = data.data.items;
+
+    // إذا كانت شجرة بالفعل — نستخدمها. إذا كانت مسطحة نبني الشجرة من parent_id.
+    const hasNestedReplies = raw.some((n) => Array.isArray(n?.replies) && n.replies.length);
+    if (hasNestedReplies) {
+      return raw.map((n) => ({
+        ...n,
+        replies: Array.isArray(n.replies) ? n.replies : [],
+        reply_count: Number(n.reply_count ?? (Array.isArray(n.replies) ? n.replies.length : 0)),
+        likes_count: Number(n.likes_count ?? n.like_count ?? 0),
+        is_liked: Boolean(n.is_liked ?? n.liked_by_me),
+      }));
+    }
+
+    // بناء شجرة من مصفوفة مسطحة
+    const byId = new Map();
+    const roots = [];
+    raw.forEach((n) => {
+      if (!n || typeof n !== 'object' || n.id == null) return;
+      byId.set(n.id, {
+        ...n,
+        replies: [],
+        reply_count: 0,
+        likes_count: Number(n.likes_count ?? n.like_count ?? 0),
+        is_liked: Boolean(n.is_liked ?? n.liked_by_me),
+      });
+    });
+    byId.forEach((node) => {
+      const pid = node.parent_id;
+      if (pid && byId.has(pid)) {
+        byId.get(pid).replies.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+    byId.forEach((node) => { node.reply_count = node.replies.length; });
+    return roots;
+  }, []);
+
+  const refetchComments = useCallback(async () => {
+    if (!postId) return;
+    try {
+      const res = await getComments(postId);
+      setComments(normalizeComments(res?.data));
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status && status !== 500) {
+        console.warn('Failed to reload comments', err?.message || err);
+      }
+    }
+  }, [postId, normalizeComments]);
 
   useEffect(() => {
     if (!open || !postId) return;
@@ -37,39 +95,9 @@ function MobileCommentsSheet({ open, postId, onClose }) {
     getComments(postId)
       .then((res) => {
         if (cancelled) return;
-        const data = res?.data;
-        // ✅ v85.9 FIX: دعم أشكال إرجاع متعدّدة من الـ backend — مصفوفة مباشرة،
-        // أو { items }، أو { comments }، أو { results }، أو { data: [...] } ملتففة مرتين.
-        let raw = [];
-        if (Array.isArray(data)) raw = data;
-        else if (Array.isArray(data?.items)) raw = data.items;
-        else if (Array.isArray(data?.comments)) raw = data.comments;
-        else if (Array.isArray(data?.results)) raw = data.results;
-        else if (Array.isArray(data?.data)) raw = data.data;
-        else if (Array.isArray(data?.data?.items)) raw = data.data.items;
-
-        // ✅ v85.7 FIX: تسطيح شجرة التعليقات (جذور + ردود) إلى قائمة مسطحة
-        // لأن الـ backend يُرجع الآن items كشجرة (داخل كل جذر replies[]).
-        // ✅ v85.9 FIX: تجنّب الحلقات اللانهائية لو أرجع الباكاند مرجعاً دائرياً.
-        const flat = [];
-        const seen = new Set();
-        const walk = (nodes) => {
-          if (!Array.isArray(nodes)) return;
-          for (const n of nodes) {
-            if (!n || typeof n !== 'object') continue;
-            const key = n.id ?? `${n.user_id || ''}-${n.created_at || ''}-${(n.content || n.text || '').slice(0,20)}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            flat.push(n);
-            if (Array.isArray(n.replies) && n.replies.length) walk(n.replies);
-            if (Array.isArray(n.children) && n.children.length) walk(n.children);
-          }
-        };
-        walk(raw);
-        setComments(flat);
+        setComments(normalizeComments(res?.data));
       })
       .catch((err) => {
-        // 500 من الـ backend عند غياب التعليقات => نتعامل بصمت بدون رمي خطأ في الكونسول
         const status = err?.response?.status;
         if (status && status !== 500) {
           console.warn('Failed to load comments', err?.message || err);
@@ -78,22 +106,14 @@ function MobileCommentsSheet({ open, postId, onClose }) {
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, postId]);
+  }, [open, postId, normalizeComments]);
 
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    // ✅ v60.8 FIX: تعيين data-attribute على body حتى يتم إخفاء BottomNav عبر CSS
-    // وبالتالي تظهر منطقة كتابة التعليق بالكامل ولا تفقد خلف شريط التنقل
     document.body.setAttribute('data-ym-sheet', 'open');
 
-    // ✅ v88.29 FIX (FEED MOBILE COMMENT COMPOSER LIFT):
-    // نطابق منطق درج الريلز حرفياً: نضبط متغير CSS ‎--ym-kb-inset‎ إلى ارتفاع
-    // لوحة المفاتيح المرئية عبر visualViewport، ونضبط ‎--ym-nav-inset‎ إلى
-    // ارتفاع شريط أزرار الجوال (gesture bar) الاحتياطي كي لا يعتمد الرفع
-    // على env(safe-area-inset-bottom) وحده — لأن قيمته قد تعود 0 داخل بعض
-    // متصفحات الأندرويد/PWA فيلتصق الـ composer بأسفل الشاشة.
     const updateKbInset = () => {
       try {
         const vv = window.visualViewport;
@@ -115,55 +135,19 @@ function MobileCommentsSheet({ open, postId, onClose }) {
     };
   }, [open]);
 
+  // ─────────────────────────────────────────────────────────────
+  // v88.64: إرسال تعليق رئيسي
+  // ─────────────────────────────────────────────────────────────
   const handleSend = async () => {
     const content = draft.trim();
     if (!content || !postId) return;
     setSending(true);
     try {
-      const res = await addComment(postId, content);
-      const newComment = res?.data?.comment || res?.data || {
-        id: `local-${Date.now()}`,
-        content,
-        author_name: 'أنت',
-        created_at: new Date().toISOString(),
-      };
-      setComments((prev) => [newComment, ...prev]);
+      await addComment(postId, content);
       setDraft('');
       queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       pushToast?.({ type: 'success', title: 'تمت إضافة التعليق' });
-
-      // ✅ v87.8 FIX: إعادة جلب التعليقات من الخادم فور الإرسال لضمان التزامن الحقيقي.
-      // إذا فشل التخزين داخل الخادم لأي سبب (مثلاً: allow_comments=false يتم تجاوزه مؤقتاً،
-      // او رد 200 خاطئ)، سيظهر ذلك فوراً بدل الانتظار للمرة التالية.
-      try {
-        const refetch = await getComments(postId);
-        const data = refetch?.data;
-        let raw = [];
-        if (Array.isArray(data)) raw = data;
-        else if (Array.isArray(data?.items)) raw = data.items;
-        else if (Array.isArray(data?.comments)) raw = data.comments;
-        else if (Array.isArray(data?.results)) raw = data.results;
-        else if (Array.isArray(data?.data)) raw = data.data;
-        const flat = [];
-        const seen = new Set();
-        const walk = (nodes) => {
-          if (!Array.isArray(nodes)) return;
-          for (const n of nodes) {
-            if (!n || typeof n !== 'object') continue;
-            const key = n.id ?? `${n.user_id || ''}-${n.created_at || ''}-${(n.content || n.text || '').slice(0,20)}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            flat.push(n);
-            if (Array.isArray(n.replies) && n.replies.length) walk(n.replies);
-            if (Array.isArray(n.children) && n.children.length) walk(n.children);
-          }
-        };
-        walk(raw);
-        if (flat.length) setComments(flat);
-      } catch (refetchErr) {
-        // إذا فشلت إعادة الجلب، نبقي التعليق المضاف محلياً (فعلناه أعلاه).
-        console.warn('Refetch after add failed', refetchErr?.message || refetchErr);
-      }
+      await refetchComments();
     } catch (err) {
       console.error('Add comment failed', err);
       pushToast?.({ type: 'error', title: 'تعذر إضافة التعليق' });
@@ -172,25 +156,204 @@ function MobileCommentsSheet({ open, postId, onClose }) {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────
+  // v88.64: زر إعجاب — تحديث تفاؤلي فوري ثم تزامن مع الخادم
+  // ─────────────────────────────────────────────────────────────
+  const handleLike = async (commentId) => {
+    if (!commentId) return;
+    // تحديث تفاؤلي
+    setComments((prev) => prev.map((c) => {
+      if (c.id === commentId) {
+        const nowLiked = !c.is_liked;
+        return {
+          ...c,
+          is_liked: nowLiked,
+          likes_count: Math.max(0, Number(c.likes_count || 0) + (nowLiked ? 1 : -1)),
+        };
+      }
+      if (Array.isArray(c.replies) && c.replies.length) {
+        return {
+          ...c,
+          replies: c.replies.map((r) => {
+            if (r.id !== commentId) return r;
+            const nowLiked = !r.is_liked;
+            return {
+              ...r,
+              is_liked: nowLiked,
+              likes_count: Math.max(0, Number(r.likes_count || 0) + (nowLiked ? 1 : -1)),
+            };
+          }),
+        };
+      }
+      return c;
+    }));
+
+    try {
+      await likeComment(commentId);
+    } catch (err) {
+      console.warn('like comment failed', err?.message || err);
+      pushToast?.({ type: 'error', title: 'تعذر تسجيل الإعجاب' });
+      // إعادة الجلب لتصحيح الحالة
+      await refetchComments();
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // v88.64: فتح/إغلاق وضع الرد
+  // ─────────────────────────────────────────────────────────────
+  const openReply = (commentId) => {
+    setActiveReplyId(commentId);
+    setReplyDraft('');
+  };
+  const closeReply = () => {
+    setActiveReplyId(null);
+    setReplyDraft('');
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // v88.64: إرسال الرد ثم الرجوع لقائمة التعليقات مع تحديث عدد الردود
+  // ─────────────────────────────────────────────────────────────
+  const handleSendReply = async () => {
+    const content = replyDraft.trim();
+    if (!content || !activeReplyId || !postId) return;
+    setReplySending(true);
+    try {
+      await addComment(postId, content, activeReplyId);
+      pushToast?.({ type: 'success', title: 'تم إرسال الرد' });
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
+      // نُغلق وضع الرد فوراً كي "يرجع لقائمة التعليقات" كما طلب المستخدم
+      closeReply();
+      // إعادة الجلب لعرض العدد الجديد للردود
+      await refetchComments();
+    } catch (err) {
+      console.error('Reply failed', err);
+      pushToast?.({ type: 'error', title: 'تعذر إرسال الرد' });
+    } finally {
+      setReplySending(false);
+    }
+  };
+
   if (!open) return null;
+
+  // ─────────────────────────────────────────────────────────────
+  // v88.64: صف تعليق واحد (يستخدم للتعليق الرئيسي والرد)
+  // ─────────────────────────────────────────────────────────────
+  const renderCommentRow = (c, isReply = false) => {
+    const author = c.display_name || c.full_name || c.author_name || c.username || c.user || 'مستخدم';
+    const avatar = resolveMediaUrl(c.user_avatar || c.avatar || c.author_avatar || '');
+    const txt = c.content || c.text || '';
+    const likes = Number(c.likes_count || 0);
+    const isLiked = Boolean(c.is_liked);
+    const replyCount = Number(c.reply_count || (Array.isArray(c.replies) ? c.replies.length : 0));
+    const isActive = activeReplyId === c.id;
+
+    return (
+      <li key={c.id || `c-${Math.random()}`} className={`ym-comment-item ${isReply ? 'is-reply' : ''}`}>
+        <span className="ym-comment-avatar">
+          {avatar ? <img src={avatar} alt="" loading="lazy" /> : <span className="ph">{String(author).charAt(0)}</span>}
+        </span>
+        <div className="ym-comment-body">
+          <div className="ym-comment-bubble">
+            <div className="ym-comment-author">{author}</div>
+            <div className="ym-comment-text" dir="auto">{txt}</div>
+          </div>
+
+          {/* v88.64: شريط أزرار التفاعل — إعجاب + عدد، رد + عدد الردود */}
+          {!isReply ? (
+            <div className="ym-comment-actions">
+              <button
+                type="button"
+                className={`ym-c-action-btn ${isLiked ? 'liked' : ''}`}
+                onClick={() => handleLike(c.id)}
+                aria-label="إعجاب"
+              >
+                <span className="ym-c-action-icon">{isLiked ? '❤️' : '🤍'}</span>
+                <span className="ym-c-action-label">إعجاب</span>
+                {likes > 0 ? <span className="ym-c-action-count">{likes}</span> : null}
+              </button>
+
+              <button
+                type="button"
+                className={`ym-c-action-btn ${isActive ? 'active' : ''}`}
+                onClick={() => (isActive ? closeReply() : openReply(c.id))}
+                aria-label="رد"
+              >
+                <span className="ym-c-action-icon">💬</span>
+                <span className="ym-c-action-label">رد</span>
+                {replyCount > 0 ? <span className="ym-c-action-count">{replyCount}</span> : null}
+              </button>
+            </div>
+          ) : (
+            /* للرد: زر إعجاب مبسّط فقط */
+            <div className="ym-comment-actions is-reply-actions">
+              <button
+                type="button"
+                className={`ym-c-action-btn small ${isLiked ? 'liked' : ''}`}
+                onClick={() => handleLike(c.id)}
+                aria-label="إعجاب"
+              >
+                <span className="ym-c-action-icon">{isLiked ? '❤️' : '🤍'}</span>
+                {likes > 0 ? <span className="ym-c-action-count">{likes}</span> : null}
+              </button>
+            </div>
+          )}
+
+          {/* v88.64: عند فتح "وضع الرد" — نظهر فقاعة الردود السابقة إن وجدت + منطقة كتابة الرد + زر إرسال */}
+          {isActive && !isReply ? (
+            <div className="ym-reply-panel">
+              {Array.isArray(c.replies) && c.replies.length > 0 ? (
+                <ul className="ym-reply-list">
+                  {c.replies.map((r) => renderCommentRow(r, true))}
+                </ul>
+              ) : (
+                <div className="ym-reply-empty">لا توجد ردود بعد. كن أول من يرد!</div>
+              )}
+
+              <div className="ym-reply-composer">
+                <input
+                  type="text"
+                  placeholder={`الرد على ${author}...`}
+                  value={replyDraft}
+                  onChange={(e) => setReplyDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(); } }}
+                  disabled={replySending}
+                  dir="auto"
+                  className="ym-reply-input"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="ym-reply-send"
+                  onClick={handleSendReply}
+                  disabled={!replyDraft.trim() || replySending}
+                  aria-label="إرسال الرد"
+                >
+                  {replySending ? '...' : (
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                      <path d="M3 12 L21 4 L17 21 L13 13 Z" fill="currentColor" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="ym-reply-cancel"
+                  onClick={closeReply}
+                  aria-label="إلغاء"
+                  disabled={replySending}
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </li>
+    );
+  };
 
   return (
     <div className="ym-sheet-overlay" data-yam-comments-sheet="true" role="dialog" aria-modal="true" aria-label="التعليقات" dir="rtl" onClick={onClose}>
       <style>{`
-        /* ═════════════════════════════════════════════════════════════════
-           v88.19 ROOT-CAUSE FIX: صندوق تعليقات المنشور مطابق لصندوق تعليقات
-           الريلز — لن يختفي composer خلف أزرار نظام الهاتف السفلية أو خلف
-           BottomNav أو خلف لوحة المفاتيح. نفس منطق ym-reels-drawer.
-           ═════════════════════════════════════════════════════════════════ */
-
-        /* 1) الـ overlay = حاوية fixed تحتضن الشيت في الأسفل.
-              padding-bottom يرفع البانل بأكمله فوق أزرار النظام + لوحة المفاتيح.
-              ✅ v88.29 FEED MOBILE FIX (ROOT CAUSE):
-              نفس منطق ‎.ym-reels-drawer‎ في صفحة الريلز حرفياً — قاعدة ثابتة 70px
-              (تكفي لأزرار الرجوع/الهوم/الإيماءات على كل متصفحات الجوال) بدل
-              الاعتماد على env(safe-area-inset-bottom) الذي يعود 0px في
-              متصفحات أندرويد و PWA فيلتصق الـ composer بحافة الشاشة ويختفي.
-              نضيف كيبورد إن وُجد + safe-area كتعزيز إضافي على iPhone. */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] {
           position: fixed !important;
           inset: 0 !important;
@@ -199,10 +362,6 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           display: flex !important;
           align-items: flex-end !important;
           justify-content: center !important;
-          /* ⭐ المفتاح: 70px = نفس ثابت درج الريلز الذي أثبت أنه يرفع البانل فوق
-             شريط أزرار الهاتف بدقة (رجوع/هوم/شريط الإيماءات).
-             + env(safe-area-inset-bottom) لتعزيز الرفع على iPhone.
-             + var(--ym-kb-inset) لرفع البانل فوق لوحة المفاتيح عند فتحها. */
           padding: 0 0 calc(70px + env(safe-area-inset-bottom, 0px) + var(--ym-kb-inset, 0px)) !important;
           margin: 0 !important;
           box-sizing: border-box !important;
@@ -210,10 +369,6 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           visibility: visible !important;
           opacity: 1 !important;
         }
-
-        /* 1.b) عند فتح لوحة المفاتيح: نلغي رفع 70px لأن الكيبورد نفسه دفع كل شيء
-              للأعلى، ولا نريد فراغاً مضاعفاً بين الـ composer وبين الكيبورد.
-              نبقي فقط قيمة الكيبورد + safe-area. */
         @supports (padding: max(0px)) {
           html body .ym-sheet-overlay[data-yam-comments-sheet="true"] {
             padding-bottom: max(
@@ -222,24 +377,15 @@ function MobileCommentsSheet({ open, postId, onClose }) {
             ) !important;
           }
         }
-
-        /* 1.c) على الشاشات الكبيرة (تابلت/ديسكتوب) لا يوجد شريط أزرار جوال،
-              فنُلغي الـ 70px الاحتياطي ونعتمد safe-area فقط. */
         @media (min-width: 900px) {
           html body .ym-sheet-overlay[data-yam-comments-sheet="true"] {
             padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--ym-kb-inset, 0px)) !important;
           }
         }
-
-        /* 2) الـ sheet نفسه = flex-column طبيعي، بدون position:absolute متضارب.
-              الارتفاع يستخدم dvh لكي يتقلص تلقائياً عند فتح الكيبورد.
-              ✅ v88.29: نقلّل الارتفاع الأقصى قليلاً كي يتناسب مع وجود 70px
-              padding-bottom على الحاوية (البانل بأكمله يجب أن يظل داخل الشاشة). */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet {
           position: relative !important;
           width: 100% !important;
           max-width: 640px !important;
-          /* ارتفاع البانل الفعلي — dvh يتقلص مع الكيبورد */
           height: min(78dvh, 720px) !important;
           max-height: 78dvh !important;
           min-height: 320px !important;
@@ -255,15 +401,12 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           pointer-events: auto !important;
           visibility: visible !important;
           opacity: 1 !important;
-          /* إلغاء أي تثبيت مطلق قديم كان يُلصق الشيت بأسفل الشاشة */
           inset: auto !important;
           top: auto !important;
           bottom: auto !important;
           left: auto !important;
           right: auto !important;
         }
-
-        /* 3) مقبض السحب (handle) */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-handle {
           width: 44px !important;
           height: 4px !important;
@@ -272,8 +415,6 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           margin: 8px auto 0 !important;
           flex-shrink: 0 !important;
         }
-
-        /* 4) الهيدر — flex item عادي */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-head {
           flex-shrink: 0 !important;
           display: flex !important;
@@ -296,10 +437,6 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           padding: 6px !important;
           border-radius: 8px !important;
         }
-
-        /* 5) الجسم = flex:1 يستهلك المساحة المتبقية، قابل للتمرير.
-              لا نحتاج padding-bottom اصطناعي لأن الـ composer الآن flex-item
-              حقيقي في نفس العمود (نفس مبدأ الريلز). */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-body {
           flex: 1 1 auto !important;
           min-height: 0 !important;
@@ -313,10 +450,6 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           opacity: 1 !important;
           pointer-events: auto !important;
         }
-
-        /* 6) الـ COMPOSER = flex item راسخ في نهاية العمود.
-              ⭐ لا position:absolute — لا bottom:0 — تماماً كـ ym-reels-drawer-input
-              يبقى دائماً مرئياً فوق أزرار الهاتف لأن الـ overlay هو من يرفعه. */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-composer {
           position: relative !important;
           left: auto !important;
@@ -340,8 +473,6 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           opacity: 1 !important;
           pointer-events: auto !important;
         }
-
-        /* 7) حقل الإدخال */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-input {
           flex: 1 1 auto !important;
           min-width: 0 !important;
@@ -352,11 +483,9 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           padding: 10px 16px !important;
           color: #fff !important;
           font-family: inherit !important;
-          font-size: 16px !important; /* يمنع Safari/iOS من التكبير التلقائي */
+          font-size: 16px !important;
           outline: 0 !important;
         }
-
-        /* 8) زر الإرسال */
         html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-send {
           width: 44px !important;
           height: 44px !important;
@@ -376,8 +505,201 @@ function MobileCommentsSheet({ open, postId, onClose }) {
           cursor: not-allowed !important;
         }
 
-        /* 9) إخفاء نهائي لأي BottomNav محتمل أثناء فتح ورقة التعليقات
-              (تكرار الحماية على مستوى المكوّن حتى لو لم يُحمَّل CSS القديم) */
+        /* v88.64: قائمة تعليقات ─────────────────────────────── */
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-comment-list {
+          list-style: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 14px !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-comment-item {
+          display: flex !important;
+          gap: 10px !important;
+          align-items: flex-start !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-comment-item.is-reply {
+          margin-inline-start: 40px !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-comment-avatar {
+          width: 36px !important;
+          height: 36px !important;
+          flex-shrink: 0 !important;
+          border-radius: 50% !important;
+          overflow: hidden !important;
+          background: linear-gradient(135deg, #8b5cf6, #6d28d9) !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          color: #fff !important;
+          font-weight: 700 !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-comment-avatar img {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-comment-body {
+          flex: 1 1 auto !important;
+          min-width: 0 !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-comment-bubble {
+          background: rgba(255,255,255,0.06) !important;
+          border: 1px solid rgba(255,255,255,0.08) !important;
+          border-radius: 16px !important;
+          padding: 8px 12px !important;
+          color: #e5e7eb !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-comment-author {
+          font-size: 13px !important;
+          font-weight: 700 !important;
+          color: #fff !important;
+          margin-bottom: 2px !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-comment-text {
+          font-size: 14px !important;
+          line-height: 1.6 !important;
+          word-break: break-word !important;
+        }
+
+        /* v88.64: شريط أزرار التفاعل — إعجاب + رد */
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-comment-actions {
+          display: flex !important;
+          gap: 14px !important;
+          align-items: center !important;
+          padding: 6px 10px 0 !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-c-action-btn {
+          display: inline-flex !important;
+          align-items: center !important;
+          gap: 5px !important;
+          background: transparent !important;
+          border: 0 !important;
+          padding: 4px 6px !important;
+          color: #9ca3af !important;
+          font-size: 12.5px !important;
+          font-weight: 600 !important;
+          cursor: pointer !important;
+          border-radius: 10px !important;
+          transition: color .15s ease, background .15s ease !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-c-action-btn:hover {
+          background: rgba(255,255,255,0.05) !important;
+          color: #e5e7eb !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-c-action-btn.liked {
+          color: #f87171 !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-c-action-btn.active {
+          color: #a78bfa !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-c-action-icon {
+          font-size: 14px !important;
+          line-height: 1 !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-c-action-count {
+          background: rgba(255,255,255,0.08) !important;
+          color: inherit !important;
+          font-weight: 700 !important;
+          font-size: 11px !important;
+          border-radius: 999px !important;
+          padding: 1px 7px !important;
+          min-width: 18px !important;
+          text-align: center !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-c-action-btn.liked .ym-c-action-count {
+          background: rgba(248,113,113,0.16) !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-c-action-btn.small {
+          font-size: 11.5px !important;
+          padding: 2px 4px !important;
+        }
+
+        /* v88.64: لوحة الرد ─────────────────────────────── */
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-reply-panel {
+          margin-top: 10px !important;
+          background: rgba(139,92,246,0.06) !important;
+          border: 1px solid rgba(139,92,246,0.18) !important;
+          border-radius: 14px !important;
+          padding: 10px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 10px !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-reply-list {
+          list-style: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 10px !important;
+          max-height: 220px !important;
+          overflow-y: auto !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-reply-empty {
+          font-size: 12.5px !important;
+          color: #94a3b8 !important;
+          text-align: center !important;
+          padding: 6px 0 !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-reply-composer {
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-reply-input {
+          flex: 1 1 auto !important;
+          min-width: 0 !important;
+          min-height: 40px !important;
+          background: rgba(255,255,255,0.06) !important;
+          border: 1px solid rgba(255,255,255,0.10) !important;
+          border-radius: 20px !important;
+          padding: 8px 14px !important;
+          color: #fff !important;
+          font-family: inherit !important;
+          font-size: 15px !important;
+          outline: 0 !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-reply-send {
+          width: 40px !important;
+          height: 40px !important;
+          flex-shrink: 0 !important;
+          border-radius: 50% !important;
+          border: 0 !important;
+          background: linear-gradient(135deg, #8b5cf6, #6d28d9) !important;
+          color: #fff !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          cursor: pointer !important;
+          box-shadow: 0 4px 14px rgba(139,92,246,0.40) !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-reply-send:disabled {
+          opacity: 0.5 !important;
+          cursor: not-allowed !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-reply-cancel {
+          background: transparent !important;
+          border: 1px solid rgba(255,255,255,0.10) !important;
+          color: #cbd5e1 !important;
+          padding: 6px 10px !important;
+          border-radius: 999px !important;
+          font-size: 12px !important;
+          cursor: pointer !important;
+          flex-shrink: 0 !important;
+        }
+
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-empty {
+          text-align: center !important;
+          color: #94a3b8 !important;
+          padding: 40px 12px !important;
+        }
+        html body .ym-sheet-overlay[data-yam-comments-sheet="true"] .ym-sheet-empty .icon {
+          font-size: 32px !important;
+          margin-bottom: 6px !important;
+        }
+
         html body[data-ym-sheet="open"] .mobile-bottom-nav,
         html body[data-ym-sheet="open"] .yam-bottom-nav,
         html body[data-ym-sheet="open"] .ym-bottomnav,
@@ -410,23 +732,7 @@ function MobileCommentsSheet({ open, postId, onClose }) {
             </div>
           ) : (
             <ul className="ym-comment-list">
-              {comments.map((c) => {
-                // v88.40: تفضيل الاسم الكامل العربي (الأول + الأب + اللقب) على username الإنجليزي
-                const author = c.display_name || c.full_name || c.author_name || c.username || c.user || 'مستخدم';
-                const avatar = resolveMediaUrl(c.user_avatar || c.avatar || c.author_avatar || '');
-                const txt = c.content || c.text || '';
-                return (
-                  <li key={c.id || `c-${Math.random()}`} className="ym-comment-item">
-                    <span className="ym-comment-avatar">
-                      {avatar ? <img src={avatar} alt="" loading="lazy" /> : <span className="ph">{String(author).charAt(0)}</span>}
-                    </span>
-                    <div className="ym-comment-body">
-                      <div className="ym-comment-author">{author}</div>
-                      <div className="ym-comment-text" dir="auto">{txt}</div>
-                    </div>
-                  </li>
-                );
-              })}
+              {comments.map((c) => renderCommentRow(c, false))}
             </ul>
           )}
         </div>

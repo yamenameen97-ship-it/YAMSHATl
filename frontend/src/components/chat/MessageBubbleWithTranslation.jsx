@@ -439,21 +439,22 @@ function MessageBubbleWithTranslation({
               ) : null}
             </AnimatePresence>
 
-            {isImage && mediaUrl ? (
+            {/* ✅ v88.63 FIX (2026-07-25): إخفاء كل الوسائط والمرفقات عند الحذف النهائي */}
+            {isImage && mediaUrl && !message?.deleted ? (
               <button type="button" className="yam-media-button" onClick={openCurrentMedia}>
                 <img src={previewUrl} alt={fileName} className="yam-bubble-media" loading="lazy" decoding="async" referrerPolicy="no-referrer" />
                 <span className="yam-bubble-media-overlay">تكبير</span>
               </button>
             ) : null}
 
-            {isVideo && mediaUrl ? (
+            {isVideo && mediaUrl && !message?.deleted ? (
               <button type="button" className="yam-media-button yam-video-preview-shell" onClick={openCurrentMedia}>
                 <video src={mediaUrl} muted playsInline className="yam-bubble-media" preload="metadata" />
                 <span className="yam-bubble-media-overlay">تشغيل كامل</span>
               </button>
             ) : null}
 
-            {isVoice && mediaUrl ? (
+            {isVoice && mediaUrl && !message?.deleted ? (
               <VoiceMessagePlayer
                 src={mediaUrl}
                 seed={message?.waveform_seed || message?.created_at || messageId}
@@ -463,7 +464,7 @@ function MessageBubbleWithTranslation({
               />
             ) : null}
 
-            {isFile && mediaUrl ? (
+            {isFile && mediaUrl && !message?.deleted ? (
               <a href={mediaUrl} target="_blank" rel="noreferrer" className="yam-file-card">
                 <span className="yam-file-icon">📄</span>
                 <span className="yam-file-copy">
@@ -474,7 +475,12 @@ function MessageBubbleWithTranslation({
             ) : null}
 
             {content && !message?.deleted ? <div className="bubble-text">{content}</div> : null}
-            {message?.deleted ? <div className="bubble-deleted">تم حذف الرسالة</div> : null}
+            {message?.deleted ? (
+              <div className="bubble-deleted" role="note" aria-label="تم حذف الرسالة">
+                <span className="bubble-deleted-icon" aria-hidden="true">🚫</span>
+                <span className="bubble-deleted-text">تم حذف الرسالة</span>
+              </div>
+            ) : null}
 
             <div className="bubble-meta">
               <span className="bubble-time">{formatMessageTime(message?.created_at)}</span>

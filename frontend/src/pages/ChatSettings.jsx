@@ -1,4 +1,33 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+/**
+ * ChatSettings.jsx — v88.65 (2026-07-25)
+ *
+ * ✅ إصلاحات هذا الإصدار — سبب طلب المستخدم:
+ *   المشكلة: صفحة "إعدادات المحادثة" كانت تُظهر أصفاراً كاذبة في العدادات
+ *   (الوسائط المشتركة/الروابط/الملفات والصوتيات)، ولا تعرض المحتويات الفعلية
+ *   للمحادثة رغم وجود صور/فيديو/روابط/ملفات صوتية بداخلها.
+ *
+ * السبب الجذري:
+ *   1) استجابة `/messages` من الخادم بالشكل: { items: [...], paging: {...} }
+ *      بينما الكود كان يعتمد أحياناً على شكل مصفوفة مباشرة (تسلسل استخراج مكسور).
+ *   2) الحدّ الأقصى للجلب كان 120 رسالة فقط → أي وسائط أقدم لا تظهر أبداً.
+ *   3) تصنيف الرسائل معطوب: `mediaItems` كان يضمّ كل رسالة لها media_url بما فيها
+ *      الملفات/الصوتيات، فتظهر الأعداد متضاربة والعرض مكسور.
+ *   4) الملفات الصوتية (voice/audio) لم يكن هناك فحص عبر `attachments[].kind`
+ *      ولا عبر الامتدادات (mp3/wav/ogg/m4a/opus).
+ *   5) الروابط كانت تُبحث في نص الرسالة فقط دون فحص المرفقات ولا استبعاد
+ *      روابط الوسائط الملحقة (كانت تُعدّ الوسائط كروابط).
+ *   6) لم يكن هناك تحديث لحظي — العدادات تُقفل عند التحميل الأول.
+ *
+ * الحلّ:
+ *   - جلب الصفحات بشكل تراكمي (pagination عبر before_id) حتى نهاية المحادثة
+ *     أو حتى سقف آمن (2000 رسالة) لتغطية المحادثة بالكامل.
+ *   - تصنيف صارم بثلاث فئات متبادلة الاستبعاد (image/video) → media، (voice/audio) → file،
+ *     غير ذلك مع مرفقات → file، الروابط تُستخرج من النص فقط بعد تنظيف روابط الوسائط.
+ *   - إدماج فوري للرسائل الواردة عبر أحداث النافذة yamshat:new-message/message
+ *     لتحديث العدادات لحظياً بدون إعادة تحميل.
+ *   - قراءة استجابة API بمرونة (data.items أو data المصفوفة القديمة).
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { Avatar } from '../components/ui/index.js';
@@ -17,7 +46,13 @@ import { getChatPreferences, toggleChatPreference } from '../utils/chatPreferenc
 const URL_PATTERN = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
 
 const IMAGE_MEDIA_RE = /\.(jpg|jpeg|png|gif|webp|svg|avif|bmp|heic|heif)(?:$|\?)/i;
-const VIDEO_MEDIA_RE = /\.(mp4|webm|mov|m4v|mkv)(?:$|\?)/i;
+const VIDEO_MEDIA_RE = /\.(mp4|webm|mov|m4v|mkv|avi|3gp)(?:$|\?)/i;
+const AUDIO_MEDIA_RE = /\.(mp3|wav|ogg|m4a|opus|aac|flac|amr)(?:$|\?)/i;
+
+// ✅ v88.65: عتبات آمنة لتحميل تاريخ المحادثة كاملاً
+const PAGE_SIZE = 200;          // أقصى ما يقبله الخادم عادةً
+const MAX_PAGES = 10;           // 10 × 200 = 2000 رسالة → غطاء كامل لأي محادثة عادية
+const REFRESH_INTERVAL_MS = 12_000; // تحديث خلفي كل 12 ثانية لالتقاط أي جديد
 
 function getPrimaryAttachment(message = {}) {
   return Array.isArray(message?.attachments) && message.attachments.length ? (message.attachments[0] || {}) : {};
@@ -29,6 +64,7 @@ function resolveMessageMediaUrl(message = {}) {
     message?.media_url
     || message?.media_urls?.[0]
     || attachment?.url
+    || attachment?.cdn_url
     || attachment?.mediaUrl
     || attachment?.media_url
     || ''
@@ -38,8 +74,8 @@ function resolveMessageMediaUrl(message = {}) {
 function extractFileName(message = {}) {
   const attachment = getPrimaryAttachment(message);
   if (message.attachment_name) return message.attachment_name;
-  if (attachment?.fileName) return attachment.fileName;
   if (attachment?.file_name) return attachment.file_name;
+  if (attachment?.fileName) return attachment.fileName;
   if (attachment?.name) return attachment.name;
   const mediaUrl = resolveMessageMediaUrl(message);
   if (!mediaUrl) return 'ملف مرفق';
@@ -51,14 +87,35 @@ function extractFileName(message = {}) {
   }
 }
 
-function resolveMediaType(message = {}) {
+/**
+ * ✅ v88.65: تصنيف نوع الرسالة بدقّة — ثلاث فئات متبادلة الاستبعاد:
+ *   'image' | 'video' → تُعدّ ضمن الوسائط المشتركة
+ *   'audio' | 'file'  → تُعدّ ضمن الملفات والصوتيات
+ *   ''                → رسالة نصية (لا وسائط ولا ملف)
+ */
+function resolveMediaKind(message = {}) {
   const attachment = getPrimaryAttachment(message);
   const mediaUrl = resolveMessageMediaUrl(message).toLowerCase();
   const rawType = String(message?.type || message?.message_type || attachment?.kind || attachment?.type || '').trim().toLowerCase();
   const mime = String(attachment?.mime_type || attachment?.mimeType || '').trim().toLowerCase();
+
+  // فيديو
   if (['video', 'media_video'].includes(rawType) || mime.startsWith('video/') || VIDEO_MEDIA_RE.test(mediaUrl)) return 'video';
-  if (mime.startsWith('image/') || IMAGE_MEDIA_RE.test(mediaUrl) || ['image', 'photo', 'media_image'].includes(rawType)) return 'image';
-  return 'file';
+  // صورة
+  if (['image', 'photo', 'media_image', 'sticker', 'gif'].includes(rawType) || mime.startsWith('image/') || IMAGE_MEDIA_RE.test(mediaUrl)) return 'image';
+  // صوت
+  if (['voice', 'audio', 'media_audio'].includes(rawType) || mime.startsWith('audio/') || AUDIO_MEDIA_RE.test(mediaUrl)) return 'audio';
+  // مرفق ملف عام
+  if (mediaUrl || rawType === 'file' || rawType === 'document' || attachment?.url) return 'file';
+  return '';
+}
+
+function extractItemsFromResponse(res) {
+  // ✅ v88.65: قراءة مرنة — الخادم الجديد يُرجع {items,paging}، القديم قد يُرجع مصفوفة
+  const data = res?.data ?? res;
+  if (Array.isArray(data)) return { items: data, paging: null };
+  const items = Array.isArray(data?.items) ? data.items : [];
+  return { items, paging: data?.paging || null };
 }
 
 export default function ChatSettings() {
@@ -74,6 +131,10 @@ export default function ChatSettings() {
   const [blockStatus, setBlockStatus] = useState({ can_chat: true, blocked_by_me: false, blocked_me: false });
   const [isMutedConversation, setIsMutedConversation] = useState(false);
   const [isPinnedConversation, setIsPinnedConversation] = useState(false);
+  const [totalLoaded, setTotalLoaded] = useState(0);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+
+  const messagesMapRef = useRef(new Map()); // id → message (لمنع التكرار عند الدمج اللحظي)
 
   useEffect(() => {
     if (!peer) return;
@@ -82,35 +143,81 @@ export default function ChatSettings() {
     setIsPinnedConversation(prefs.pinned.has(peer));
   }, [peer]);
 
+  // ✅ v88.65: جلب تاريخ المحادثة كاملاً بشكل تراكمي
+  const loadAllMessages = useCallback(async (signal) => {
+    const collected = [];
+    let beforeId;
+    let hasMore = true;
+    for (let page = 0; page < MAX_PAGES && hasMore; page += 1) {
+      if (signal?.aborted) return { items: [], hasMore: false };
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const res = await getMessages(peer, PAGE_SIZE, beforeId, { signal });
+        const { items, paging } = extractItemsFromResponse(res);
+        if (!items.length) { hasMore = false; break; }
+        collected.push(...items);
+        // paging.next_before_id هو أقدم id تم إرجاعه
+        beforeId = paging?.next_before_id;
+        hasMore = Boolean(paging?.has_more) && Boolean(beforeId);
+      } catch (err) {
+        if (err?.name === 'CanceledError' || err?.name === 'AbortError') return { items: [], hasMore: false };
+        hasMore = false;
+        break;
+      }
+    }
+    return { items: collected, hasMore };
+  }, [peer]);
+
+  const rebuildFromMap = useCallback(() => {
+    const list = Array.from(messagesMapRef.current.values());
+    // ترتيب صاعد حسب id/created_at لضمان استقرار الاستخراج
+    list.sort((a, b) => {
+      const ai = Number(a?.id || 0);
+      const bi = Number(b?.id || 0);
+      if (ai !== bi) return ai - bi;
+      return String(a?.created_at || '').localeCompare(String(b?.created_at || ''));
+    });
+    setMessages(list);
+    setTotalLoaded(list.length);
+  }, []);
+
   useEffect(() => {
-    if (!peer) return;
+    if (!peer) return undefined;
+    const controller = new AbortController();
     let active = true;
 
     const loadData = async () => {
       setLoading(true);
       try {
-        const [messagesRes, presenceRes, blockRes, threadsRes] = await Promise.allSettled([
-          getMessages(peer, 120),
-          getPresence(peer),
-          getBlockStatus(peer),
-          getChatThreads(),
+        const [historyRes, presenceRes, blockRes, threadsRes] = await Promise.allSettled([
+          loadAllMessages(controller.signal),
+          getPresence(peer, { signal: controller.signal }),
+          getBlockStatus(peer, { signal: controller.signal }),
+          getChatThreads({ signal: controller.signal }),
         ]);
 
         if (!active) return;
 
-        const nextMessages = messagesRes.status === 'fulfilled'
-          ? (Array.isArray(messagesRes.value?.data) ? messagesRes.value.data : (messagesRes.value?.data?.items || []))
-              .map((item) => ({ ...item, media_url: resolveMessageMediaUrl(item) }))
-          : [];
+        const historyItems = historyRes.status === 'fulfilled' ? (historyRes.value?.items || []) : [];
+        const hasMore = historyRes.status === 'fulfilled' ? Boolean(historyRes.value?.hasMore) : false;
+
+        // بناء الخريطة (منع التكرار)
+        const map = new Map();
+        historyItems.forEach((item) => {
+          const key = String(item?.id || item?.client_id || `${item?.created_at || ''}-${item?.sender || ''}`);
+          if (key) map.set(key, item);
+        });
+        messagesMapRef.current = map;
+        rebuildFromMap();
+        setHasMoreHistory(hasMore);
 
         const threads = threadsRes.status === 'fulfilled'
-          ? (Array.isArray(threadsRes.value?.data) ? threadsRes.value.data : [])
+          ? (Array.isArray(threadsRes.value?.data) ? threadsRes.value.data : (threadsRes.value?.data?.items || []))
           : [];
 
-        setMessages(nextMessages);
         setPresence(presenceRes.status === 'fulfilled' ? (presenceRes.value?.data || {}) : {});
         setBlockStatus(blockRes.status === 'fulfilled' ? (blockRes.value?.data || {}) : { can_chat: true, blocked_by_me: false, blocked_me: false });
-        setThreadMeta(threads.find((item) => item.username === peer) || null);
+        setThreadMeta(threads.find((item) => item?.username === peer || item?.peer === peer) || null);
       } catch {
         if (!active) return;
         pushToast?.({ type: 'error', title: 'تعذر تحميل إعدادات المحادثة' });
@@ -120,42 +227,113 @@ export default function ChatSettings() {
     };
 
     loadData();
+
+    // ✅ v88.65: تحديث لحظي — استقبال أي رسالة جديدة أثناء فتح الصفحة
+    const handleRealtimeMessage = (event) => {
+      const detail = event?.detail || {};
+      const msg = detail?.message || detail?.data || detail;
+      if (!msg || typeof msg !== 'object') return;
+      const sender = String(msg?.sender || '').trim();
+      const receiver = String(msg?.receiver || '').trim();
+      // اقبل فقط الرسائل المرتبطة بهذه المحادثة
+      if (sender !== peer && receiver !== peer) return;
+      const key = String(msg?.id || msg?.client_id || `${msg?.created_at || ''}-${sender}`);
+      if (!key) return;
+      messagesMapRef.current.set(key, { ...(messagesMapRef.current.get(key) || {}), ...msg });
+      rebuildFromMap();
+    };
+
+    // ✅ v88.65: تحديث دوري خفيف — يلتقط أي وسائط جديدة أُرسلت والصفحة مفتوحة
+    const refreshTimer = setInterval(async () => {
+      if (!active || document.hidden) return;
+      try {
+        const res = await getMessages(peer, PAGE_SIZE, undefined, { signal: controller.signal });
+        const { items } = extractItemsFromResponse(res);
+        let mutated = false;
+        items.forEach((item) => {
+          const key = String(item?.id || item?.client_id || `${item?.created_at || ''}-${item?.sender || ''}`);
+          if (!key) return;
+          if (!messagesMapRef.current.has(key)) mutated = true;
+          messagesMapRef.current.set(key, item);
+        });
+        if (mutated) rebuildFromMap();
+      } catch { /* تجاهل */ }
+    }, REFRESH_INTERVAL_MS);
+
+    window.addEventListener('yamshat:new-message', handleRealtimeMessage);
+    window.addEventListener('yamshat:message', handleRealtimeMessage);
+    window.addEventListener('chat:message', handleRealtimeMessage);
+
     return () => {
       active = false;
+      controller.abort();
+      clearInterval(refreshTimer);
+      window.removeEventListener('yamshat:new-message', handleRealtimeMessage);
+      window.removeEventListener('yamshat:message', handleRealtimeMessage);
+      window.removeEventListener('chat:message', handleRealtimeMessage);
     };
-  }, [peer, pushToast]);
+  }, [peer, pushToast, loadAllMessages, rebuildFromMap]);
 
-  const mediaItems = useMemo(() => messages
-    .filter((item) => resolveMessageMediaUrl(item))
-    .map((item, index) => ({
-      id: String(item?.id || item?.client_id || index),
-      url: resolveMessageMediaUrl(item),
-      type: resolveMediaType(item),
-      caption: item.content || item.message || '',
-    })), [messages]);
+  // ✅ v88.65: تصنيف صارم متبادل الاستبعاد
+  const classified = useMemo(() => {
+    const mediaItems = [];
+    const fileItems = [];
+    const mediaUrlsUsed = new Set();
 
-  const fileItems = useMemo(() => messages.filter((item) => (
-    item?.type === 'file'
-    || item?.type === 'voice'
-    || (Array.isArray(item?.attachments) && item.attachments.length > 0)
-  )), [messages]);
-
-  const sharedLinks = useMemo(() => {
-    const collected = [];
     messages.forEach((item, index) => {
-      const text = `${item?.content || ''} ${item?.message || ''}`;
-      const matches = text.match(URL_PATTERN) || [];
-      matches.forEach((url, linkIndex) => {
-        const normalized = url.startsWith('http') ? url : `https://${url}`;
-        collected.push({
-          id: `${item?.id || index}-${linkIndex}`,
-          url: normalized,
-          sender: item?.sender || 'غير معروف',
+      const kind = resolveMediaKind(item);
+      const url = resolveMessageMediaUrl(item);
+      const idKey = String(item?.id || item?.client_id || index);
+      if (kind === 'image' || kind === 'video') {
+        if (!url) return;
+        mediaItems.push({
+          id: idKey,
+          url,
+          type: kind,
+          caption: item?.content || item?.message || '',
+          sender: item?.sender || '',
         });
+        mediaUrlsUsed.add(url);
+      } else if (kind === 'audio' || kind === 'file') {
+        fileItems.push({
+          id: idKey,
+          url,
+          kind,
+          name: extractFileName(item),
+          sender: item?.sender || '',
+        });
+        if (url) mediaUrlsUsed.add(url);
+      }
+    });
+
+    // استخراج الروابط النصية فقط (استبعاد روابط المرفقات المُصنّفة)
+    const linkSet = new Map();
+    messages.forEach((item, index) => {
+      const text = `${item?.content || ''} ${item?.message || ''}`.trim();
+      if (!text) return;
+      const matches = text.match(URL_PATTERN) || [];
+      matches.forEach((raw, linkIndex) => {
+        const normalized = raw.startsWith('http') ? raw : `https://${raw}`;
+        // استبعاد الروابط التي هي نفسها روابط وسائط المرفقات
+        if (mediaUrlsUsed.has(normalized)) return;
+        if (!linkSet.has(normalized)) {
+          linkSet.set(normalized, {
+            id: `${item?.id || index}-${linkIndex}`,
+            url: normalized,
+            sender: item?.sender || 'غير معروف',
+          });
+        }
       });
     });
-    return collected.filter((entry, index, array) => array.findIndex((item) => item.url === entry.url) === index);
+
+    return {
+      mediaItems,
+      fileItems,
+      sharedLinks: Array.from(linkSet.values()),
+    };
   }, [messages]);
+
+  const { mediaItems, fileItems, sharedLinks } = classified;
 
   const handleBack = useCallback(() => {
     navigate(`/chat/${encodeURIComponent(peer)}`);
@@ -195,9 +373,6 @@ export default function ChatSettings() {
     <MainLayout hideNav lockScroll>
       <section className="yam-chat-settings-screen" dir="rtl">
         <style>{`
-          /* ✅ v85.8: تفعيل التمرير باللمس على الموبايل على body فقط.
-             المشكلة السابقة: المُغلف الخارجي كان overflow:hidden مع grid داخل lockScroll
-             دون تفعيل -webkit-overflow-scrolling و touch-action مما أوقف السحب بالأصبع. */
           .yam-chat-settings-screen {
             min-height: 100%;
             display: flex;
@@ -254,7 +429,6 @@ export default function ChatSettings() {
             font-size: 12px;
             margin-top: 4px;
           }
-          /* ✅ v85.8: تمرير لمسي مفعّل بالكامل للموبايل */
           .yam-chat-settings-body {
             flex: 1 1 auto;
             min-height: 0;
@@ -265,8 +439,6 @@ export default function ChatSettings() {
             display: grid;
             gap: 12px;
           }
-          /* ✅ v85.8: بطاقة أكثر ترتيباً — رأس واضح + محتوى منظم،
-             دون الحاجة لأشرطة لونية مقطوعة على اليمين/اليسار. */
           .yam-chat-settings-card {
             border-radius: 18px;
             border: 1px solid rgba(148,163,184,0.12);
@@ -314,8 +486,6 @@ export default function ChatSettings() {
             font-size: 16px;
             font-weight: 800;
           }
-          /* ✅ v85.8: تجاوز تصادم enhanced-ui.css الذي يجعل .yam-section-title
-             بحجم 24-36px مما يخترق ترتيب الصفحة. */
           .yam-chat-settings-body .yam-section-title {
             display: flex !important;
             align-items: center;
@@ -358,12 +528,22 @@ export default function ChatSettings() {
             border: 1px solid rgba(255,255,255,0.08);
             display: grid;
             place-items: center;
+            position: relative;
           }
           .yam-media-thumb img,
           .yam-media-thumb video {
             width: 100%;
             height: 100%;
             object-fit: cover;
+          }
+          .yam-media-thumb .yam-video-badge {
+            position: absolute;
+            inset: auto 6px 6px auto;
+            background: rgba(0,0,0,0.55);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
           }
           .yam-media-thumb .yam-video-placeholder {
             font-size: 34px;
@@ -444,6 +624,25 @@ export default function ChatSettings() {
             border-radius: 18px;
             border: 1px dashed rgba(255,255,255,0.12);
           }
+          .yam-live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: #86efac;
+            background: rgba(34,197,94,0.10);
+            border: 1px solid rgba(34,197,94,0.28);
+            padding: 3px 10px;
+            border-radius: 999px;
+          }
+          .yam-live-badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 999px;
+            background: #22c55e;
+            box-shadow: 0 0 8px #22c55e;
+          }
           @media (max-width: 560px) {
             .yam-chat-settings-body {
               padding: 12px 12px 40px;
@@ -454,7 +653,6 @@ export default function ChatSettings() {
               padding: 12px 12px 10px;
               border-radius: 16px;
             }
-            /* ✅ v85.8: الإحصائيات أحياناً 2×2 أفضل من عمود واحد — أرتب */
             .yam-meta-grid {
               grid-template-columns: repeat(2, minmax(0, 1fr));
               gap: 8px;
@@ -511,19 +709,24 @@ export default function ChatSettings() {
             <div>
               <h1>{peer}</h1>
               <p>{presence?.is_typing ? 'يكتب الآن...' : formatLastSeen(presence?.last_seen, Boolean(presence?.is_online))}</p>
+              {!loading ? (
+                <p style={{ marginTop: 6 }}>
+                  <span className="yam-live-badge">تحديث لحظي · {totalLoaded} رسالة{hasMoreHistory ? '+' : ''}</span>
+                </p>
+              ) : null}
             </div>
             <div className="yam-meta-grid">
               <div className="yam-stat-pill">
                 <span>الوسائط المشتركة</span>
-                <strong>{mediaItems.length}</strong>
+                <strong>{loading ? '…' : mediaItems.length}</strong>
               </div>
               <div className="yam-stat-pill">
                 <span>الروابط</span>
-                <strong>{sharedLinks.length}</strong>
+                <strong>{loading ? '…' : sharedLinks.length}</strong>
               </div>
               <div className="yam-stat-pill">
                 <span>الملفات والصوتيات</span>
-                <strong>{fileItems.length}</strong>
+                <strong>{loading ? '…' : fileItems.length}</strong>
               </div>
               <div className="yam-stat-pill">
                 <span>حالة المحادثة</span>
@@ -556,18 +759,25 @@ export default function ChatSettings() {
           <section className="yam-chat-settings-card">
             <div className="yam-section-title">
               <h2>الوسائط المشتركة</h2>
-              <small>{mediaItems.length} عنصر</small>
+              <small>{loading ? 'جاري الحساب…' : `${mediaItems.length} عنصر`}</small>
             </div>
             {loading ? <div className="yam-settings-empty">جاري تحميل الوسائط...</div> : null}
             {!loading && !mediaItems.length ? <div className="yam-settings-empty">لا توجد وسائط مشتركة في هذه المحادثة حالياً.</div> : null}
             {!loading && mediaItems.length ? (
               <div className="yam-media-strip">
-                {mediaItems.map((item) => (
+                {mediaItems.slice().reverse().map((item) => (
                   <a key={item.id} href={item.url} target="_blank" rel="noreferrer" className="yam-media-card">
                     <div className="yam-media-thumb">
-                      {item.type === 'image' ? <img src={item.url} alt={item.caption || 'وسائط مشتركة'} /> : <div className="yam-video-placeholder">🎬</div>}
+                      {item.type === 'image' ? (
+                        <img src={item.url} alt={item.caption || 'وسائط مشتركة'} loading="lazy" />
+                      ) : (
+                        <>
+                          <video src={item.url} muted playsInline preload="metadata" />
+                          <span className="yam-video-badge">فيديو</span>
+                        </>
+                      )}
                     </div>
-                    <p>{item.caption || 'عرض الوسائط'}</p>
+                    <p>{item.caption || (item.type === 'video' ? 'مقطع فيديو' : 'صورة مشتركة')}</p>
                   </a>
                 ))}
               </div>
@@ -577,12 +787,12 @@ export default function ChatSettings() {
           <section className="yam-chat-settings-card">
             <div className="yam-section-title">
               <h2>الروابط المشتركة</h2>
-              <small>{sharedLinks.length} رابط</small>
+              <small>{loading ? 'جاري الحساب…' : `${sharedLinks.length} رابط`}</small>
             </div>
-            {!sharedLinks.length ? <div className="yam-settings-empty">لا توجد روابط مشتركة في الرسائل الحالية.</div> : null}
+            {!loading && !sharedLinks.length ? <div className="yam-settings-empty">لا توجد روابط مشتركة في الرسائل الحالية.</div> : null}
             {sharedLinks.length ? (
               <div className="yam-link-list">
-                {sharedLinks.map((item) => (
+                {sharedLinks.slice().reverse().map((item) => (
                   <div key={item.id} className="yam-link-item">
                     <div className="yam-link-copy">
                       <strong>{item.url}</strong>
@@ -598,18 +808,18 @@ export default function ChatSettings() {
           <section className="yam-chat-settings-card">
             <div className="yam-section-title">
               <h2>الملفات والصوتيات</h2>
-              <small>{fileItems.length} ملف</small>
+              <small>{loading ? 'جاري الحساب…' : `${fileItems.length} ملف`}</small>
             </div>
-            {!fileItems.length ? <div className="yam-settings-empty">لا توجد ملفات أو رسائل صوتية مشتركة حتى الآن.</div> : null}
+            {!loading && !fileItems.length ? <div className="yam-settings-empty">لا توجد ملفات أو رسائل صوتية مشتركة حتى الآن.</div> : null}
             {fileItems.length ? (
               <div className="yam-file-list">
-                {fileItems.map((item, index) => (
-                  <div key={String(item?.id || item?.client_id || index)} className="yam-file-item">
+                {fileItems.slice().reverse().map((item) => (
+                  <div key={item.id} className="yam-file-item">
                     <div className="yam-file-copy">
-                      <strong>{extractFileName(item)}</strong>
-                      <span>{item?.type === 'voice' ? 'رسالة صوتية' : 'ملف مرفق'}</span>
+                      <strong>{item.name}</strong>
+                      <span>{item.kind === 'audio' ? '🎙️ رسالة صوتية' : '📎 ملف مرفق'} · {item.sender || 'غير معروف'}</span>
                     </div>
-                    {resolveMessageMediaUrl(item) ? <a className="yam-open-link" href={resolveMessageMediaUrl(item)} target="_blank" rel="noreferrer">فتح</a> : <span aria-hidden="true">📎</span>}
+                    {item.url ? <a className="yam-open-link" href={item.url} target="_blank" rel="noreferrer">فتح</a> : <span aria-hidden="true">📎</span>}
                   </div>
                 ))}
               </div>

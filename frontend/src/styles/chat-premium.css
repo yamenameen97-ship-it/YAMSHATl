@@ -176,10 +176,84 @@
 .yam-bubble.bubble-them .bubble-meta { color: var(--text-muted, #8fa2bd); }
 .yam-bubble.bubble-me   .bubble-meta { color: rgba(255, 255, 255, 0.85); }
 
+/* ✅ v88.63 FIX (2026-07-25): حذف نهائي بدون أي أثر — يظهر فقط نص "تم حذف الرسالة" */
 .yam-bubble .bubble-deleted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-style: italic;
-  opacity: 0.7;
+  opacity: 0.72;
   font-size: var(--text-sm, 0.875rem);
+  line-height: 1.35;
+  font-family: 'Noto Sans Arabic', system-ui, sans-serif;
+  direction: rtl;
+  color: inherit;
+}
+.yam-bubble .bubble-deleted-icon {
+  font-size: 0.9em;
+  opacity: 0.75;
+  line-height: 1;
+  filter: grayscale(0.4);
+}
+.yam-bubble .bubble-deleted-text {
+  white-space: nowrap;
+}
+
+/* تطبيع الفقاعة عند الحذف: إزالة أي مظهر خاص بالوسائط */
+.yam-bubble.is-deleted {
+  padding: 8px 12px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  width: auto !important;
+  max-width: fit-content !important;
+  border-radius: var(--ds-radius-lg, 14px) !important;
+  background: var(--chat-bubble-them-bg, rgba(30, 41, 59, 0.55)) !important;
+  box-shadow: none !important;
+  border: 1px dashed rgba(148, 163, 184, 0.25) !important;
+}
+.yam-bubble.is-deleted.bubble-me {
+  background: rgba(139, 92, 246, 0.18) !important;
+  border-color: rgba(139, 92, 246, 0.28) !important;
+}
+
+/* إخفاء قسري لأي محتوى متبقّي داخل الفقاعة المحذوفة */
+.yam-bubble.is-deleted .yam-media-button,
+.yam-bubble.is-deleted .yam-bubble-media,
+.yam-bubble.is-deleted .yam-video-preview-shell,
+.yam-bubble.is-deleted .yam-file-card,
+.yam-bubble.is-deleted .yam-reply-preview,
+.yam-bubble.is-deleted .bubble-text,
+.yam-bubble.is-deleted .bubble-forwarded-label,
+.yam-bubble.is-deleted .yam-bubble-toolbar,
+.yam-bubble.is-deleted .yam-reaction-chip,
+.yam-bubble.is-deleted .yam-bubble-media-overlay,
+.yam-bubble.is-deleted [class*="voice"],
+.yam-bubble.is-deleted [class*="call"],
+.yam-bubble.is-deleted audio,
+.yam-bubble.is-deleted video,
+.yam-bubble.is-deleted img:not(.avatar) {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* تعطيل أبعاد الفقاعة الخاصة بالوسائط إذا وُجدت مع is-deleted */
+.yam-bubble.is-deleted.is-image-only,
+.yam-bubble.is-deleted.is-video-only,
+.yam-bubble.is-deleted.is-media-only,
+.yam-bubble.is-deleted.is-voice-only,
+.yam-bubble.is-deleted.is-call-only {
+  aspect-ratio: auto !important;
+  height: auto !important;
+}
+
+/* meta يبقى مرئياً (الوقت) لكن مضغوط */
+.yam-bubble.is-deleted .bubble-meta {
+  margin-top: 2px;
+  opacity: 0.6;
 }
 
 /* ---------- 7) Search Highlight ---------- */

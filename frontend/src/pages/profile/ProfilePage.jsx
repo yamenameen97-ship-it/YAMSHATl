@@ -19,14 +19,18 @@ const TABS = {
   SAVED: 'saved',
   PINNED: 'pinned',
   TAGGED: 'tagged',
+  MEDIA: 'media',
+  REELS: 'reels',
 };
 
 const TAB_ITEMS = {
-  [TABS.POSTS]: { key: TABS.POSTS, label: 'المنشورات' },
+  [TABS.POSTS]: { key: TABS.POSTS, label: 'صفحتي' },
   [TABS.ARCHIVE]: { key: TABS.ARCHIVE, label: 'الأرشيف' },
   [TABS.SAVED]: { key: TABS.SAVED, label: 'المحفوظات' },
   [TABS.PINNED]: { key: TABS.PINNED, label: 'المثبتة', icon: '📌' },
   [TABS.TAGGED]: { key: TABS.TAGGED, label: 'المُعلَّمة', icon: '🏷️' },
+  [TABS.MEDIA]: { key: TABS.MEDIA, label: 'الوسائط' },
+  [TABS.REELS]: { key: TABS.REELS, label: 'الريلز' },
 };
 
 const normalizeRequestedTab = (value) => {
@@ -173,6 +177,9 @@ export default function ProfilePage() {
       items.push(TAB_ITEMS[TABS.SAVED]);
     }
 
+    // ✅ تمت الإضافة: تبويبات "الوسائط" و "الريلز" (أسماء فقط بدون ربط)
+    items.push(TAB_ITEMS[TABS.MEDIA]);
+    items.push(TAB_ITEMS[TABS.REELS]);
     items.push(TAB_ITEMS[TABS.TAGGED]);
     return items;
   }, [profile, pinnedPosts, isOwnProfile]);
@@ -456,6 +463,10 @@ export default function ProfilePage() {
         return pinnedPosts;
       case TABS.TAGGED:
         return profile.tagged_posts || [];
+      case TABS.MEDIA:
+        return [];
+      case TABS.REELS:
+        return [];
       default:
         return [];
     }

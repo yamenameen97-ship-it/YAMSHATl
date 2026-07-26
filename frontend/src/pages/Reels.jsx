@@ -102,9 +102,18 @@ function normalizeReel(item = {}) {
     likes_count: Number(item.likes_count ?? 0) || 0,
     comments_count: Number(item.comments_count ?? 0) || 0,
     share_count: Number(item.share_count ?? item.shares_count ?? 0) || 0,
+    // ✅ v88.78: عدّاد إعادة النشر (repost) — منفصل عن المشاركة العادية.
+    //    ملاحظة: زر إعادة النشر معروض في هذه النسخة بدون منطق فعلي؛ سيُربط لاحقاً في جلسة أخرى.
+    reposts_count: Number(item.reposts_count ?? item.repost_count ?? item.reshare_count ?? 0) || 0,
+    // ✅ v88.78: العدد الأساسي (baseline) للتفاعل الوارد من الخادم إن وُجد.
+    //    مؤشر التفاعل النهائي يُحسب محلياً بجمع: likes + comments + saves + shares + reposts
+    //    ثم يُضاف عليه هذا الرقم إن كان الخادم يُرسله جاهزاً.
+    saves_count: Number(item.saves_count ?? item.save_count ?? 0) || 0,
+    engagement_count: Number(item.engagement_count ?? 0) || 0,
     views_count: Number(item.views_count ?? 0) || 0,
     is_liked: Boolean(item.is_liked),
     is_saved: Boolean(item.is_saved),
+    is_reposted: Boolean(item.is_reposted ?? false),
     is_following: Boolean(item.is_following ?? item.user?.is_following ?? false),
     avatar: resolveMediaUrl(item.user?.avatar || item.user?.avatar_url || item.user_avatar || item.avatar || ''),
   };
@@ -184,6 +193,13 @@ export default function Reels() {
   //     - عند إعادة التشغيل التلقائي (loop) لا نعدّ ثانيةً — نتوقف عن العدّ نهائياً لهذا الريل.
   //   الـ endpoint: POST /reels/{id}/view  (موجود مسبقاً في الباك إند — يمنع التكرار من جهته أيضاً).
   const countedViewsRef = useRef(new Set());
+  // ✅ v88.78: تتبّع مؤشر التفاعل (Engagement Meter)
+  //   القاعدة: أي إجراء (إعجاب/تعليق/حفظ/مشاركة/إعادة نشر) يُمثّل تفاعلاً (+1)
+  //   لكن لا يُحتسب إلا إذا وصل المشاهد إلى نصّ الفيديو (>= 50%)
+  //   حتّى لو لم يُكمل المشاهدة كاملة. مرّة واحدة فقط لكل مشترك لكل ريل.
+  //   يُخزّن معرّف الريل في localStorage لمنع التكرار بين الجلسات.
+  const halfWatchedRef = useRef(new Set()); // الريلات التي تجاوز فيها المشاهد نص الفيديو
+  const countedEngagementRef = useRef(new Set()); // الريلات التي احتُسب تفاعلها (حتّى لا يزيد مرتين)
   useEffect(() => {
     try {
       const raw = window.localStorage?.getItem('yamshat.reel.viewed.ids');
@@ -192,7 +208,64 @@ export default function Reels() {
         if (Array.isArray(arr)) arr.forEach((id) => countedViewsRef.current.add(String(id)));
       }
     } catch { /* ignore */ }
+    // ✅ v88.78: تحميل معرّفات الريلات التي تجاوز فيها المشاهد نص الفيديو من الجلسة السابقة.
+    try {
+      const raw = window.localStorage?.getItem('yamshat.reel.half_watched.ids');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) arr.forEach((id) => halfWatchedRef.current.add(String(id)));
+      }
+    } catch { /* ignore */ }
+    try {
+      const raw = window.localStorage?.getItem('yamshat.reel.engagement_counted.ids');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) arr.forEach((id) => countedEngagementRef.current.add(String(id)));
+      }
+    } catch { /* ignore */ }
   }, []);
+
+  // ✅ v88.78: دوال مساعدة لحفظ المعرّفات في localStorage
+  const persistHalfWatchedId = useCallback((id) => {
+    try {
+      const key = 'yamshat.reel.half_watched.ids';
+      const raw = window.localStorage?.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      const set = new Set(Array.isArray(arr) ? arr.map(String) : []);
+      set.add(String(id));
+      const list = Array.from(set).slice(-500);
+      window.localStorage?.setItem(key, JSON.stringify(list));
+    } catch { /* ignore */ }
+  }, []);
+
+  const persistEngagementCountedId = useCallback((id) => {
+    try {
+      const key = 'yamshat.reel.engagement_counted.ids';
+      const raw = window.localStorage?.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      const set = new Set(Array.isArray(arr) ? arr.map(String) : []);
+      set.add(String(id));
+      const list = Array.from(set).slice(-500);
+      window.localStorage?.setItem(key, JSON.stringify(list));
+    } catch { /* ignore */ }
+  }, []);
+
+  // ✅ v88.78: وسم الريل بأنّ المشاهد وصل لنصف الفيديو (ومن ثمّ أي تفاعل لاحق أو سابق يُعتمد).
+  const markHalfWatched = useCallback((reel) => {
+    if (!reel || !reel.id) return;
+    const rid = String(reel.id);
+    if (halfWatchedRef.current.has(rid)) return;
+    halfWatchedRef.current.add(rid);
+    persistHalfWatchedId(rid);
+    // إذا كان المستخدم قد تفاعل مسبقاً ولم نحتسب → احتسب الآن
+    if (!countedEngagementRef.current.has(rid)) {
+      // نستطيع تحديث engagement_count محلياً — يُحسب المؤشر من الحقول مباشرة
+      countedEngagementRef.current.add(rid);
+      persistEngagementCountedId(rid);
+    }
+    // إعادة رسم (القيمة المعروضة تُحسب في computeEngagement)
+    setReels((prev) => prev.map((r) => (String(r.id) === rid ? { ...r, _half_watched: true } : r)));
+  }, [persistHalfWatchedId, persistEngagementCountedId]);
 
   const persistViewedId = useCallback((id) => {
     try {
@@ -776,6 +849,14 @@ export default function Reels() {
     if (!v.duration) return;
     const pct = v.currentTime / v.duration;
     setProgress(pct);
+    // ✅ v88.78: عند وصول المشاهد إلى نصف الفيديو (>=50%) نعتمد التفاعل لهذا الريل
+    //   حتى لو لم يُكمل المشاهدة كاملة. أي إعجاب/تعليق/حفظ/مشاركة/إعادة نشر
+    //   (سواء تم قبل تجاوز النصف أو بعده) يصبح محسوباً في مؤشر التفاعل.
+    if (pct >= 0.5) {
+      const idx = videoRefs.current.indexOf(v);
+      const reel = idx >= 0 ? reels[idx] : reels[activeIndex];
+      if (reel) markHalfWatched(reel);
+    }
     // ✅ v88.75: إذا وصل المشاهد لنهاية الريل (>=95%) نُسجّل مشاهدة واحدة.
     //   لا يعدّ ثانية عند إعادة التشغيل (loop) لأن countedViewsRef يحتفظ بالمعرّف.
     if (pct >= 0.95) {
@@ -783,7 +864,28 @@ export default function Reels() {
       const reel = idx >= 0 ? reels[idx] : reels[activeIndex];
       if (reel) recordReelView(reel);
     }
-  }, [reels, activeIndex, recordReelView]);
+  }, [reels, activeIndex, recordReelView, markHalfWatched]);
+
+  // ✅ v88.78: حساب رقم مؤشر التفاعل الذي يُعرض على الشاشة.
+  //   القاعدة: إذا كان الريل قد تجاوز نصف الفيديو من قِبَل هذا المشاهد (halfWatchedRef)
+  //     → نُظهر مجموع (likes + comments + saves + shares + reposts) + baseline من الخادم إن وُجد.
+  //   وإلا نُظهر فقط baseline الخادم (engagement_count) — أي التفاعل التراكمي من مشاهدين آخرين
+  //     — دون احتساب تفاعلات هذا المشاهد الحالية قبل تجاوز النصف.
+  //   هذا يطابق طلب المستخدم: يحسب التفاعل من هذه الأشياء حتى لو ما كمّل المشاهدة
+  //   طالما وصل المشاهد لنص الفيديو.
+  const computeEngagement = useCallback((reel) => {
+    if (!reel) return 0;
+    const base = Number(reel.engagement_count || 0) || 0;
+    const rid = String(reel.id || '');
+    const half = rid && halfWatchedRef.current.has(rid);
+    if (!half) return base;
+    const likes = Number(reel.likes_count || 0) || 0;
+    const comments = Number(reel.comments_count || 0) || 0;
+    const saves = Number(reel.saves_count || 0) || (reel.is_saved ? 1 : 0);
+    const shares = Number(reel.share_count || 0) || 0;
+    const reposts = Number(reel.reposts_count || 0) || 0;
+    return base + likes + comments + saves + shares + reposts;
+  }, []);
 
   // ✅ v88.75: عند حدث ended (loop = true فلا يُطلَق دائماً لكن نحتاطه للمتصفحات القديمة)
   const handleReelEnded = useCallback((reel) => {
@@ -1161,6 +1263,50 @@ export default function Reels() {
                     </svg>
                   </button>
                   <div className="ym-action-label">{fmtCount(reel.share_count)}</div>
+                </div>
+
+                {/* ✅ v88.78: مؤشر التفاعل (Engagement Meter)
+                     أيقونة أعمدة إحصائية مثل الصورة المرجعية من x.com.
+                     يجمع (إعجاب+تعليق+حفظ+مشاركة+إعادة نشر) ويُحسب عندما يصل المشاهد لنص الفيديو. */}
+                <div className="ym-action-group">
+                  <button
+                    type="button"
+                    className="ym-action-btn ym-engagement-btn"
+                    aria-label="مؤشر التفاعل"
+                    title="مؤشر التفاعل"
+                    onClick={() => pushToast?.({ type: 'info', title: 'مؤشر التفاعل', description: 'يجمع الإعجابات والتعليقات والحفظ والمشاركة وإعادة النشر، ويُحتسب عند وصول المشاهد لنصف الفيديو.' })}
+                  >
+                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      {/* أعمدة متدرجة تمثّل مؤشر تفاعل (مثل رمز x.com المرجعي) */}
+                      <line x1="5"  y1="20" x2="5"  y2="14" />
+                      <line x1="10" y1="20" x2="10" y2="11" />
+                      <line x1="15" y1="20" x2="15" y2="7" />
+                      <line x1="20" y1="20" x2="20" y2="4" />
+                    </svg>
+                  </button>
+                  <div className="ym-action-label">{fmtCount(computeEngagement(reel))}</div>
+                </div>
+
+                {/* ✅ v88.78: زر إعادة النشر (Repost)
+                     مطابق للصورة المرجعية: سهمان دائريان مع رقم الإعادات.
+                     ملاحظة: لا ربط منطقي في هذه النسخة — سيُربط لاحقاً في جلسة أخرى. */}
+                <div className="ym-action-group">
+                  <button
+                    type="button"
+                    className={`ym-action-btn ym-repost-btn ${reel.is_reposted ? 'is-reposted' : ''}`}
+                    aria-label="إعادة نشر"
+                    title="إعادة نشر"
+                    onClick={() => pushToast?.({ type: 'info', title: 'إعادة النشر', description: 'سيُفعّل هذا الزر في جلسة لاحقة.' })}
+                  >
+                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke={reel.is_reposted ? '#22c55e' : '#fff'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      {/* أيقونة إعادة النشر: سهمان دائريان (مثل تويتر/x.com) */}
+                      <polyline points="17 1 21 5 17 9" />
+                      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                      <polyline points="7 23 3 19 7 15" />
+                      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                    </svg>
+                  </button>
+                  <div className="ym-action-label">{fmtCount(reel.reposts_count)}</div>
                 </div>
 
                 {/* ✅ v59.13.16 FIX #1: زر إبلاغ على الريل */}
@@ -1957,6 +2103,16 @@ export default function Reels() {
           }
           .ym-action-btn:active { transform: scale(.9); }
           .ym-action-btn.is-liked svg { animation: ym-pop .25s ease; }
+          /* ✅ v88.78: تمييز بصري لزر مؤشر التفاعل (تدرج بنفسجي فاتح) */
+          .ym-engagement-btn svg line {
+            stroke: #c4b5fd;
+          }
+          .ym-engagement-btn:active svg { animation: ym-pop .25s ease; }
+          /* ✅ v88.78: تمييز بصري لزر إعادة النشر عند التفعيل (أخضر مثل x.com/تويتر) */
+          .ym-repost-btn.is-reposted svg {
+            animation: ym-pop .25s ease;
+          }
+          .ym-repost-btn:active svg { animation: ym-pop .25s ease; }
           @keyframes ym-pop {
             0% { transform: scale(1); }
             50% { transform: scale(1.25); }

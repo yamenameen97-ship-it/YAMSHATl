@@ -258,6 +258,23 @@ export default function Chat() {
   const [showDeleteBubble, setShowDeleteBubble] = useState(false);
   const [deleteSelectedIds, setDeleteSelectedIds] = useState(() => new Set());
   const [deleteForEveryone, setDeleteForEveryone] = useState(false);
+  // ✅ v88.73 — خلفية الدردشة + نمط الخط (من فقاعة الإعدادات)
+  const [chatWallpaper, setChatWallpaper] = useState(() => {
+    try { return localStorage.getItem('yamshat.chat.wallpaper') || null; } catch { return null; }
+  });
+  const [chatFontFamily, setChatFontFamily] = useState(() => {
+    try { return localStorage.getItem('yamshat.chat.fontFamily') || null; } catch { return null; }
+  });
+  useEffect(() => {
+    const onWp = (e) => setChatWallpaper(e?.detail ?? null);
+    const onFont = (e) => setChatFontFamily(e?.detail || null);
+    window.addEventListener('yamshat:wallpaper-changed', onWp);
+    window.addEventListener('yamshat:font-changed', onFont);
+    return () => {
+      window.removeEventListener('yamshat:wallpaper-changed', onWp);
+      window.removeEventListener('yamshat:font-changed', onFont);
+    };
+  }, []);
   const [showChatSettingsPanel, setShowChatSettingsPanel] = useState(false);
   const [settingsPanelData, setSettingsPanelData] = useState({ loading: true, mediaItems: [], sharedLinks: [], fileItems: [], blockStatus: { can_chat: true, blocked_by_me: false, blocked_me: false } });
   const [mediaViewerState, setMediaViewerState] = useState({ open: false, index: 0 });
@@ -788,6 +805,27 @@ export default function Chat() {
     const mediaUrl = payload?.media_url || '';
     if (!text && !mediaUrl) return;
 
+    // ✅ v88.73 — تحقق: إذا كان الطرف الأخر قد حظرني أو كتمني من الرسائل
+    try {
+      const blockedByPeer = Boolean(blockStatus?.blocked_by_them);
+      let mutedByPeer = false;
+      try {
+        const raw = localStorage.getItem('yamshat.chat.peerMutedMe');
+        if (raw) {
+          const map = JSON.parse(raw) || {};
+          mutedByPeer = Boolean(map[String(peer || '').toLowerCase()]);
+        }
+      } catch { /* ignore */ }
+      if (blockedByPeer || mutedByPeer) {
+        pushToast({
+          type: 'warning',
+          title: 'تعذر إرسال الرسالة',
+          description: 'أنت محظور ومكتوم من قبل الطرف الآخر',
+        });
+        return;
+      }
+    } catch { /* ignore */ }
+
     const tempId = `tmp-${Date.now()}`;
     const requestPayload = {
       receiver: peer,
@@ -1252,7 +1290,21 @@ export default function Chat() {
         />
       ) : null}
 
-      <section className="yam-conversation-screen" dir="rtl" data-yam-chat-root="true" style={{ fontFamily: "'Noto Sans Arabic', 'Cairo', 'Tajawal', 'Tahoma', system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+      <section
+        className="yam-conversation-screen"
+        dir="rtl"
+        data-yam-chat-root="true"
+        style={{
+          fontFamily: chatFontFamily || "'Noto Sans Arabic', 'Cairo', 'Tajawal', 'Tahoma', system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+          ...(chatWallpaper ? {
+            backgroundImage: `linear-gradient(rgba(4,7,20,0.72), rgba(4,7,20,0.72)), url(${chatWallpaper})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            backgroundAttachment: 'fixed',
+          } : null),
+        }}
+      >
         <style>{`
           .yam-conversation-screen {
             /* ⭐ v59.13.31 — لا transform/filter يكسر إطار التمرير لأبنائه (.yam-messages-area) */

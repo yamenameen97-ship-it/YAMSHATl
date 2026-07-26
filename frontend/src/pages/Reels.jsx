@@ -1178,6 +1178,14 @@ export default function Reels() {
               {String(menuReel.username || '').toLowerCase() === String(currentUsername || '').toLowerCase() ? (
                 <>
                   <button type="button" className="ym-reel-menu-delete" onClick={removeReel} disabled={reelActionLoading}>حذف الريلز</button>
+                  {/* ✅ v88.72: صف عدد المشاهدات — يظهر تحت زر "حذف الريلز" لصاحب الريل */}
+                  <div className="ym-reel-menu-views" role="status" aria-label="عدد المشاهدات">
+                    <span className="ym-reel-menu-views-icon" aria-hidden>
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 12s4-7.5 10.5-7.5S22.5 12 22.5 12s-4 7.5-10.5 7.5S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </span>
+                    <span className="ym-reel-menu-views-label">عدد المشاهدات</span>
+                    <span className="ym-reel-menu-views-count">{fmtCount(menuReel.views_count || 0)}</span>
+                  </div>
                   <label className="ym-reel-edit-label">تعديل الوصف</label>
                   <textarea className="ym-reel-edit-input" value={editCaption} onChange={(e) => setEditCaption(e.target.value)} maxLength={2000} placeholder="اكتب وصف الريل" />
                   <button type="button" className="ym-reel-menu-save" onClick={saveReelCaption} disabled={reelActionLoading}>{reelActionLoading ? 'جارٍ الحفظ...' : 'حفظ الوصف'}</button>
@@ -1191,6 +1199,14 @@ export default function Reels() {
                   >
                     حذف الريلز
                   </button>
+                  {/* ✅ v88.72: صف عدد المشاهدات يظهر أيضاً للمستخدمين الآخرين للاطلاع */}
+                  <div className="ym-reel-menu-views" role="status" aria-label="عدد المشاهدات">
+                    <span className="ym-reel-menu-views-icon" aria-hidden>
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 12s4-7.5 10.5-7.5S22.5 12 22.5 12s-4 7.5-10.5 7.5S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </span>
+                    <span className="ym-reel-menu-views-label">عدد المشاهدات</span>
+                    <span className="ym-reel-menu-views-count">{fmtCount(menuReel.views_count || 0)}</span>
+                  </div>
                   <button
                     type="button"
                     className="ym-reel-menu-save"
@@ -1500,6 +1516,18 @@ export default function Reels() {
           .ym-reel-menu-search:hover { background:linear-gradient(135deg, #374151, #4b5563); }
           .ym-reel-menu-save:disabled,.ym-reel-menu-delete:disabled,.ym-reel-menu-search:disabled { opacity:.6; cursor:wait; }
           .ym-reel-menu-note { color:rgba(255,255,255,.72); line-height:1.7; padding:8px 0; }
+          /* ✅ v88.72: صف عدد المشاهدات داخل قائمة خيارات الريل */
+          .ym-reel-menu-views {
+            display:flex; align-items:center; justify-content:space-between;
+            gap:10px; margin-top:10px; padding:12px 14px;
+            border:1px solid rgba(255,255,255,.10);
+            border-radius:13px;
+            background:linear-gradient(135deg, rgba(124,58,237,.14), rgba(168,85,247,.10));
+            color:#fff; font-weight:700;
+          }
+          .ym-reel-menu-views-icon { display:inline-flex; align-items:center; color:#c4b5fd; }
+          .ym-reel-menu-views-label { flex:1; text-align:right; font-size:14px; color:rgba(255,255,255,.92); }
+          .ym-reel-menu-views-count { font-size:16px; font-weight:900; color:#c4b5fd; }
 
           /* ===== ✅ v88.21: شبكة تاب اكتشف مطابقة لتيك توك ===== */
           .ym-explore-wrap {

@@ -23,6 +23,10 @@ export const getPresence = (username, options = {}) => API.get(`/presence/${enco
 export const getBlockStatus = (username, options = {}) => API.get(`/chat_block_status/${encodeURIComponent(username)}`, { signal: options.signal, cache: true, cacheTtlMs: 15_000 });
 export const blockUserApi = (username) => API.post('/block_user', { username });
 export const unblockUserApi = (username) => API.post('/unblock_user', { username });
+// ✅ v88.72: حذف المحادثة مع مستخدم (لجانبنا فقط)
+export const deleteThreadApi = (username) => API.post('/delete_thread', { username });
+// ✅ v88.72: حذف المحادثة + حظر المستخدم دفعة واحدة
+export const deleteAndBlockThreadApi = (username) => API.post('/delete_and_block_thread', { username });
 export const translateMessageApi = (payload) => API.post('/translate_message', payload);
 export const updateOnline = (online) => API.post('/update_online', { online });
 export const uploadMedia = (formData, onUploadProgress) =>

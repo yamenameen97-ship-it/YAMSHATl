@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
-import { getChatThreads, markMessagesSeen } from '../api/chat.js';
+import { getChatThreads, markMessagesSeen, deleteThreadApi, deleteAndBlockThreadApi } from '../api/chat.js';
 import { getNotifications, markNotificationRead, markNotificationsRead } from '../api/notifications.js';
 import { getGroups, createGroup } from '../api/groups.js';
 import { getMe, getUsers } from '../api/users.js';
@@ -9,6 +9,8 @@ import { useToast } from '../components/admin/ToastProvider.jsx';
 import useIsMobile from '../hooks/useIsMobile.js';
 // v59.1 — شريط الستوريات الدائري تحت هيدر الشات (أصدقاء فقط)
 import StoriesBar from '../components/stories/StoriesBar.jsx';
+// v88.73 — فقاعة إعدادات الشات (بجانب البحث)
+import ChatSettingsPopover from '../components/chat/ChatSettingsPopover.jsx';
 
 /**
  * Inbox (v36) — الصفحة الرئيسية للشات
@@ -561,6 +563,78 @@ export default function Inbox() {
   const [groups, setGroups] = useState([]);
   const [profile, setProfile] = useState(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  // ✅ v88.73: زر إعدادات الشات + فقاعة الإعدادات
+  const settingsBtnRef = useRef(null);
+  const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
+  const [settingsAnchorRect, setSettingsAnchorRect] = useState(null);
+  const handleOpenChatSettings = useCallback(() => {
+    try {
+      const rect = settingsBtnRef.current?.getBoundingClientRect?.();
+      if (rect) setSettingsAnchorRect({ top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left });
+    } catch { /* ignore */ }
+    setChatSettingsOpen(true);
+  }, []);
+  // ✅ v88.72: قائمة سياقية (فقاعة) عند الضغط المطوّل على محادثة
+  const [threadActionSheet, setThreadActionSheet] = useState(null); // { username, title }
+  const [threadActionLoading, setThreadActionLoading] = useState(false);
+  const longPressTimerRef = useRef(null);
+  const longPressFiredRef = useRef(false);
+
+  // حارس الضغط المطوّل — إذا استمر 550مس نفتح الفقاعة
+  const startLongPress = useCallback((thread) => {
+    if (!thread?.username) return;
+    longPressFiredRef.current = false;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      longPressFiredRef.current = true;
+      setThreadActionSheet({ username: thread.username, title: thread.title || thread.username });
+      // اهتزاز خفيف للتغذية الراجعة (إن دعمه الجهاز)
+      try { if (navigator.vibrate) navigator.vibrate(35); } catch { /* ignore */ }
+    }, 550);
+  }, []);
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+  const closeThreadSheet = useCallback(() => {
+    if (!threadActionLoading) setThreadActionSheet(null);
+  }, [threadActionLoading]);
+
+  const confirmDeleteThread = useCallback(async () => {
+    if (!threadActionSheet?.username) return;
+    if (!window.confirm(`هل تريد حذف دردشتك مع ${threadActionSheet.title}؟`)) return;
+    const username = threadActionSheet.username;
+    setThreadActionLoading(true);
+    try {
+      await deleteThreadApi(username);
+      setThreads((prev) => prev.filter((t) => (t.username || '').toLowerCase() !== username.toLowerCase()));
+      setThreadActionSheet(null);
+      pushToast?.({ type: 'success', title: 'تم حذف الدردشة' });
+    } catch (error) {
+      pushToast?.({ type: 'error', title: 'تعذر حذف الدردشة', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setThreadActionLoading(false);
+    }
+  }, [threadActionSheet]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const confirmDeleteAndBlock = useCallback(async () => {
+    if (!threadActionSheet?.username) return;
+    if (!window.confirm(`سيتم حذف الدردشة وحظر ${threadActionSheet.title}. هل تريد المتابعة؟`)) return;
+    const username = threadActionSheet.username;
+    setThreadActionLoading(true);
+    try {
+      await deleteAndBlockThreadApi(username);
+      setThreads((prev) => prev.filter((t) => (t.username || '').toLowerCase() !== username.toLowerCase()));
+      setThreadActionSheet(null);
+      pushToast?.({ type: 'success', title: 'تم الحذف والحظر' });
+    } catch (error) {
+      pushToast?.({ type: 'error', title: 'تعذر الحذف والحظر', description: error?.response?.data?.detail || error?.message });
+    } finally {
+      setThreadActionLoading(false);
+    }
+  }, [threadActionSheet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ✅ v59.13.9 FIX #5 (جزء ب): حماية setState الـ 8+ في loadData عند الخروج
   // من صفحة الشات (المستخدم غالباً يضغط تجريدة/مجموعة قبل انتهاء التحميل)
@@ -797,18 +871,43 @@ export default function Inbox() {
             onOpenComposer={() => navigate('/stories')}
           />
 
-          {/* ============== شريط البحث ============== */}
-          <div className="yam-search-box" role="search">
-            <SearchIcon />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="البحث في المحادثات"
-              aria-label="البحث في المحادثات"
-            />
-            {refreshing ? <span className="yam-refresh-spinner" aria-hidden="true" /> : null}
+          {/* ============== شريط البحث + زر إعدادات الشات ============== */}
+          <div className="yam-search-row">
+            <div className="yam-search-box" role="search">
+              <SearchIcon />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="البحث في المحادثات"
+                aria-label="البحث في المحادثات"
+              />
+              {refreshing ? <span className="yam-refresh-spinner" aria-hidden="true" /> : null}
+            </div>
+            <button
+              type="button"
+              ref={settingsBtnRef}
+              className="yam-cs-open-btn"
+              onClick={handleOpenChatSettings}
+              aria-label="إعدادات الشات"
+              title="إعدادات الشات"
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                <path
+                  d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Zm7.4-2.1c.06-.45.1-.9.1-1.4s-.04-.95-.1-1.4l2-1.55a.5.5 0 0 0 .12-.63l-1.9-3.3a.5.5 0 0 0-.6-.22l-2.35.95a7.3 7.3 0 0 0-2.42-1.4l-.35-2.5a.5.5 0 0 0-.5-.42h-3.8a.5.5 0 0 0-.5.42l-.35 2.5a7.3 7.3 0 0 0-2.42 1.4l-2.35-.95a.5.5 0 0 0-.6.22l-1.9 3.3a.5.5 0 0 0 .12.63l2 1.55c-.06.45-.1.9-.1 1.4s.04.95.1 1.4l-2 1.55a.5.5 0 0 0-.12.63l1.9 3.3a.5.5 0 0 0 .6.22l2.35-.95a7.3 7.3 0 0 0 2.42 1.4l.35 2.5a.5.5 0 0 0 .5.42h3.8a.5.5 0 0 0 .5-.42l.35-2.5a7.3 7.3 0 0 0 2.42-1.4l2.35.95a.5.5 0 0 0 .6-.22l1.9-3.3a.5.5 0 0 0-.12-.63l-2-1.55Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
           </div>
+          <ChatSettingsPopover
+            open={chatSettingsOpen}
+            onClose={() => setChatSettingsOpen(false)}
+            anchorRect={settingsAnchorRect}
+          />
 
           {/* ============== التبويبات الثلاثة ============== */}
           <div className="yam-tabs" role="tablist">
@@ -964,7 +1063,26 @@ export default function Inbox() {
                     type="button"
                     className="yam-row"
                     role="listitem"
-                    onClick={() => handleOpenThread(item)}
+                    onClick={(e) => {
+                      // ✅ v88.72: تجاهل النقر إذا تم الضغط المطوّل لإظهار الفقاعة
+                      if (longPressFiredRef.current) {
+                        longPressFiredRef.current = false;
+                        e.preventDefault();
+                        return;
+                      }
+                      handleOpenThread(item);
+                    }}
+                    onPointerDown={() => startLongPress(item)}
+                    onPointerUp={cancelLongPress}
+                    onPointerLeave={cancelLongPress}
+                    onPointerCancel={cancelLongPress}
+                    onContextMenu={(e) => {
+                      // ✅ v88.72: دعم النقر بالزر الأيمن على الدسكتوب
+                      e.preventDefault();
+                      cancelLongPress();
+                      longPressFiredRef.current = true;
+                      setThreadActionSheet({ username: item.username, title: item.title || item.username });
+                    }}
                   >
                     <div className="yam-row-side">
                       <span className="yam-row-time">{formatTime(item.timestamp)}</span>
@@ -1002,8 +1120,79 @@ export default function Inbox() {
           </div>
         </div>
 
+        {/* ✅ v88.72: فقاعة الخيارات عند الضغط المطوّل على محادثة */}
+        {threadActionSheet && (
+          <div className="yam-thread-sheet-layer" dir="rtl" role="dialog" aria-modal="true" aria-label="خيارات الدردشة">
+            <button type="button" className="yam-thread-sheet-backdrop" onClick={closeThreadSheet} aria-label="إغلاق" />
+            <div className="yam-thread-sheet">
+              <div className="yam-thread-sheet-head">
+                <strong>{threadActionSheet.title}</strong>
+                <button type="button" onClick={closeThreadSheet} disabled={threadActionLoading} aria-label="إغلاق">✕</button>
+              </div>
+              <button
+                type="button"
+                className="yam-thread-sheet-btn yam-thread-sheet-delete"
+                onClick={confirmDeleteThread}
+                disabled={threadActionLoading}
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                <span>حذف الدردشة</span>
+              </button>
+              <button
+                type="button"
+                className="yam-thread-sheet-btn yam-thread-sheet-block"
+                onClick={confirmDeleteAndBlock}
+                disabled={threadActionLoading}
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="10"/><path d="M4.93 4.93l14.14 14.14"/></svg>
+                <span>الحذف والحظر</span>
+              </button>
+              {threadActionLoading ? (
+                <div className="yam-thread-sheet-loading">جارٍ التنفيذ…</div>
+              ) : null}
+            </div>
+          </div>
+        )}
+
         {/* ============== الأنماط (CSS) ============== */}
         <style>{`
+          /* ✅ v88.72: فقاعة خيارات الدردشة */
+          .yam-thread-sheet-layer { position:fixed; inset:0; z-index:150; display:flex; align-items:flex-end; justify-content:center; }
+          .yam-thread-sheet-backdrop { position:absolute; inset:0; border:0; background:rgba(0,0,0,.55); }
+          .yam-thread-sheet {
+            position:relative; width:min(100%, 480px); margin:0 12px 18px 12px;
+            padding:18px; border-radius:22px;
+            background:#121222; color:#fff; box-shadow:0 -8px 30px rgba(0,0,0,.55);
+            animation: yam-sheet-in .18s ease-out;
+          }
+          @keyframes yam-sheet-in { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+          @media (min-width: 768px) {
+            .yam-thread-sheet-layer { align-items:center; }
+            .yam-thread-sheet { margin:0; }
+          }
+          .yam-thread-sheet-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; font-size:16px; }
+          .yam-thread-sheet-head button { border:0; background:transparent; color:#fff; font-size:20px; cursor:pointer; padding:4px 8px; border-radius:8px; }
+          .yam-thread-sheet-head button:hover { background:rgba(255,255,255,.08); }
+          .yam-thread-sheet-btn {
+            display:flex; align-items:center; justify-content:center; gap:10px;
+            width:100%; border:0; border-radius:13px; padding:14px;
+            margin-top:10px; color:#fff; font:inherit; font-weight:800;
+            cursor:pointer; transition: all .15s ease;
+          }
+          .yam-thread-sheet-btn:disabled { opacity:.6; cursor:wait; }
+          .yam-thread-sheet-delete { background:rgba(239,68,68,.18); color:#ff8585; }
+          .yam-thread-sheet-delete:hover:not(:disabled) { background:rgba(239,68,68,.28); }
+          .yam-thread-sheet-block { background:linear-gradient(135deg,#7c2d12,#b91c1c); color:#fff; }
+          .yam-thread-sheet-block:hover:not(:disabled) { background:linear-gradient(135deg,#991b1b,#dc2626); }
+          .yam-thread-sheet-loading { text-align:center; margin-top:12px; color:rgba(255,255,255,.72); font-size:14px; }
+
+          /* ✅ v88.72: تعطيل تحديد النص أثناء الضغط المطوّل على المحادثات */
+          .yam-row {
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            user-select: none;
+          }
+
           /* ⭐ v59.13.31 — .yam-inbox-page هي scroll container بصمة .yam-groups-page تماماً
              height ثابت + overflow-y:auto + momentum scroll + touch-action:pan-y
              هذا يحلّ مشكلة عدم استجابة السحب من منتصف الشاشة. */
@@ -1061,7 +1250,39 @@ export default function Inbox() {
             pointer-events: auto;
           }
 
-          /* ============== شريط البحث ============== */
+          /* ============== شريط البحث + زر الإعدادات ============== */
+          .yam-search-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+          }
+          .yam-search-row .yam-search-box {
+            flex: 1;
+            margin-bottom: 0;
+          }
+          .yam-cs-open-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            background: #0E1530;
+            border: 1px solid rgba(255,255,255,0.05);
+            color: #A78BFA;
+            display: inline-grid;
+            place-items: center;
+            cursor: pointer;
+            transition: background 0.18s ease, transform 0.15s ease, color 0.18s ease;
+            flex-shrink: 0;
+          }
+          .yam-cs-open-btn:hover {
+            background: rgba(139, 92, 246, 0.15);
+            color: #C4B5FD;
+            transform: rotate(30deg);
+          }
+          .yam-cs-open-btn:active {
+            transform: rotate(60deg) scale(0.95);
+          }
+
           .yam-search-box {
             display: flex;
             align-items: center;

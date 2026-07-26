@@ -491,6 +491,81 @@ def unblock_user(payload: dict = Body(...), db: Session = Depends(get_db), curre
     }
 
 
+# ✅ v88.72: حذف الدردشة بأكملها مع مستخدم محدد (لجانبنا فقط — لا تُمس رسائل الطرف الآخر)
+@router.post('/delete_thread')
+def delete_thread(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    username = str(payload.get('username') or '').strip()
+    if not username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username is required')
+    other_user = _find_active_user_by_username(db, username)
+    if other_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    if other_user.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Cannot delete self thread')
+
+    # نميّز رسائل هذه المحادثة كمحذوفة لجانب المستخدم الحالي فقط.
+    # (deleted_for_everyone=False يضمن أن الطرف الآخر لن يفقد رسائله)
+    now = datetime.utcnow()
+    q = db.query(Message).filter(
+        or_(
+            and_(Message.sender_id == current_user.id, Message.receiver_id == other_user.id),
+            and_(Message.sender_id == other_user.id, Message.receiver_id == current_user.id),
+        ),
+        Message.deleted_at.is_(None),
+    )
+    removed = 0
+    for m in q.all():
+        m.deleted_at = now
+        removed += 1
+    db.commit()
+    return {'username': other_user.username, 'removed': removed, 'deleted': True}
+
+
+# ✅ v88.72: حذف الدردشة + حظر المستخدم دفعة واحدة (لخيار "الحذف والحظر")
+@router.post('/delete_and_block_thread')
+def delete_and_block_thread(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    username = str(payload.get('username') or '').strip()
+    if not username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username is required')
+    other_user = _find_active_user_by_username(db, username)
+    if other_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    if other_user.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Cannot block yourself')
+
+    # 1) حذف المحادثة لجانبنا
+    now = datetime.utcnow()
+    q = db.query(Message).filter(
+        or_(
+            and_(Message.sender_id == current_user.id, Message.receiver_id == other_user.id),
+            and_(Message.sender_id == other_user.id, Message.receiver_id == current_user.id),
+        ),
+        Message.deleted_at.is_(None),
+    )
+    removed = 0
+    for m in q.all():
+        m.deleted_at = now
+        removed += 1
+
+    # 2) إضافة حظر إن لم يكن موجوداً
+    existing = db.query(UserBlock).filter(
+        UserBlock.blocker_id == current_user.id,
+        UserBlock.blocked_id == other_user.id,
+    ).first()
+    if existing is None:
+        db.add(UserBlock(blocker_id=current_user.id, blocked_id=other_user.id))
+
+    db.commit()
+    return {
+        'username': other_user.username,
+        'removed': removed,
+        'deleted': True,
+        'blocked_by_me': True,
+        'blocked_me': False,
+        'can_chat': False,
+    }
+
+
 @router.post('/delete_message')
 async def delete_message(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     message_id = int(payload.get('message_id') or 0)

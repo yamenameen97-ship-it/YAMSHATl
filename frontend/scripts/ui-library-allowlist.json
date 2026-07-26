@@ -169,6 +169,7 @@
         "src/components/notifications/AdminAlertNotificationCard.jsx",
         "src/components/notifications/RestrictionNotificationCard.jsx",
         "src/components/profile/ProfileFeedList.jsx",
+        "src/components/chat/ChatSettingsPopover.jsx",
         "src/components/profile/ProfileMediaGrid.jsx",
         "src/components/profile/ProfileReelsGrid.jsx",
         "src/components/yamshat/YamshatIcon.jsx"

@@ -188,6 +188,13 @@ export default function CallExperience({
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const [callState, setCallState] = useState(null);
+  // ✅ v88.74 FIX (2026-07-26): قفل صلب لمنع إطلاق حدث نهاية المكالمة مرّتين
+  //    (المشكلة كانت تظهر حصريًا في مكالمات الفيديو لأنّ getUserMedia للكاميرا
+  //    أبطأ من الميكروفون، فيصل زر الإنهاء قبل استقرار callState.callId → كلّ
+  //    استدعاء يولّد stableCallId عشوائي مختلف يُفلت من الـ dedup في Chat.jsx.
+  //    الحل: نُثبّت call_id واحد لهذا المكوّن + قفل يمنع الإطلاق الثاني.
+  const stableCallIdRef = useRef(null);
+  const callEndedEmittedRef = useRef(false);
   const [muted, setMuted] = useState(CALL_DEFAULT_SETTINGS.muted);
   const [speakerEnabled, setSpeakerEnabled] = useState(CALL_DEFAULT_SETTINGS.speaker);
   const [cameraEnabled, setCameraEnabled] = useState(mode === 'video');
@@ -223,6 +230,9 @@ export default function CallExperience({
   useEffect(() => {
     if (!open) return undefined;
     sheetLifecycleRef.current = { sawActive: false, mounted: true };
+    // ✅ v88.74 FIX (2026-07-26): إعادة تهيئة القفل ومعرّف المكالمة عند فتح مكالمة جديدة
+    callEndedEmittedRef.current = false;
+    stableCallIdRef.current = null;
     const unsubscribe = subscribeCall((snapshot) => {
       // Ignore the priming null-snapshot fired synchronously on subscribe.
       if (!snapshot && !sheetLifecycleRef.current.sawActive) {
@@ -394,6 +404,13 @@ export default function CallExperience({
   // - إذا كانت المدة = 0 وكنّا المتلقّين (callee)     → missed
   const emitCallEndedEvent = (reason = 'hangup') => {
     try {
+      // ✅ v88.74 FIX (2026-07-26): قفل صلب — إن أُطلق الحدث مسبقًا لهذه
+      //    الجلسة (سواء من handleHangup أو من subscribeCall snapshot=null)
+      //    نُتجاهل الاستدعاء الثاني كليًّا. هذا يحلّ نهائيًا مشكلة فقاعتَي
+      //    مكالمة الفيديو التي كانت تظهر عند إنهاء المتصل قبل ردّ الطرف الآخر.
+      if (callEndedEmittedRef.current) return;
+      callEndedEmittedRef.current = true;
+
       const startedAt = callState?.startedAt || 0;
       const duration = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
       const isCaller = !incomingInvite;
@@ -407,9 +424,17 @@ export default function CallExperience({
       if (reason === 'missed') status = 'missed';
 
       const now = new Date();
-      // ✅ v88.58 FIX #1 (2026-07-24): call_id ثابت لمنع إدراج فقاعتين لنفس المكالمة.
-      //    السلوك السابق: Chat.jsx كان يولّد id عشوائيًا في كلّ استدعاء → تكرار.
-      const stableCallId = callState?.callId || `call-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`;
+      // ✅ v88.74 FIX (2026-07-26): call_id مُثبَّت في ref خارج دورة الرندر —
+      //    السبب الجذري لتكرار فقاعات الفيديو أنّ callState?.callId يبقى null
+      //    عند الإنهاء المبكّر (getUserMedia الكاميرا أبطأ من الميكروفون)،
+      //    فيولّد سطر السقوط الاحتياطي كلّ مرة معرّفًا عشوائيًا مختلفًا يُفلت
+      //    من الـ dedup في Chat.jsx. الآن نُثبّته بشكل دائم لهذا المكوّن.
+      if (!stableCallIdRef.current) {
+        stableCallIdRef.current = callState?.callId
+          || callService.getActiveCall()?.callId
+          || `call-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`;
+      }
+      const stableCallId = stableCallIdRef.current;
       const detail = {
         peer: callTarget,
         call_id: stableCallId,

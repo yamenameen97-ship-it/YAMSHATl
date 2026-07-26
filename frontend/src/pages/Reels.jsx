@@ -176,6 +176,60 @@ export default function Reels() {
   const isMountedRef = useRef(true);
   useEffect(() => () => { isMountedRef.current = false; }, []);
 
+  // ✅ v88.75: تتبّع المشاهدات — عدّاد لمرة واحدة لكل مشترك.
+  //   القاعدة (كما طلب المستخدم):
+  //     - نعدّ +1 فقط عندما يشاهد المشترك الريل حتى النهاية (>= 95% من المدة أو حدث ended).
+  //     - لمرة واحدة فقط لكل مشترك لكل ريل — نحفظ الـ ids المُحتسَبة داخل الجلسة
+  //       + localStorage حتى لا يتكرر العدّ عند إعادة التشغيل (loop) أو إعادة تحميل الصفحة.
+  //     - عند إعادة التشغيل التلقائي (loop) لا نعدّ ثانيةً — نتوقف عن العدّ نهائياً لهذا الريل.
+  //   الـ endpoint: POST /reels/{id}/view  (موجود مسبقاً في الباك إند — يمنع التكرار من جهته أيضاً).
+  const countedViewsRef = useRef(new Set());
+  useEffect(() => {
+    try {
+      const raw = window.localStorage?.getItem('yamshat.reel.viewed.ids');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) arr.forEach((id) => countedViewsRef.current.add(String(id)));
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const persistViewedId = useCallback((id) => {
+    try {
+      const key = 'yamshat.reel.viewed.ids';
+      const raw = window.localStorage?.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      const set = new Set(Array.isArray(arr) ? arr.map(String) : []);
+      set.add(String(id));
+      // احتفظ بأحدث 500 معرّف فقط لتجنّب تضخم localStorage
+      const list = Array.from(set).slice(-500);
+      window.localStorage?.setItem(key, JSON.stringify(list));
+    } catch { /* ignore */ }
+  }, []);
+
+  const recordReelView = useCallback(async (reel) => {
+    if (!reel || !reel.id) return;
+    const rid = String(reel.id);
+    if (countedViewsRef.current.has(rid)) return; // عُدّ سابقاً — لا نعيد
+    // نضع القفل أولاً لتفادي السباق (double-count) عند حدثَي ended + timeupdate معاً.
+    countedViewsRef.current.add(rid);
+    persistViewedId(rid);
+    try {
+      const res = await API.post(`/reels/${encodeURIComponent(rid)}/view`);
+      const newCount = Number(res?.data?.views_count);
+      if (Number.isFinite(newCount) && isMountedRef.current) {
+        // حدّث العدّاد المعروض في القائمة (خيارات الريل) للحظة.
+        setReels((prev) => prev.map((r) => (
+          String(r.id) === rid ? { ...r, views_count: newCount } : r
+        )));
+      }
+    } catch {
+      // في حال فشل الشبكة، نُرجع الحالة لنسمح بمحاولة أخرى لاحقاً — لكن نحتفظ بالمعرّف
+      // محلياً لتفادي spamming الخادم من نفس الجلسة. الباك إند يمنع التكرار من جهته.
+      /* ignore — لا نُظهر رسالة خطأ للمستخدم */
+    }
+  }, [persistViewedId]);
+
   // ✅ v88.43: إنشاء قلوب طائرة محلياً (تظهر لصاحب الحركة فوراً).
   //   نستخدم مُعرِّفاً شديد الفرادة (perf.now + random) لتفادي أي تصادم بين الضغطات المتقاربة.
   const spawnFloatingHearts = useCallback((reel, count = 1) => {
@@ -720,8 +774,21 @@ export default function Reels() {
   const handleTimeUpdate = useCallback((e) => {
     const v = e.currentTarget;
     if (!v.duration) return;
-    setProgress(v.currentTime / v.duration);
-  }, []);
+    const pct = v.currentTime / v.duration;
+    setProgress(pct);
+    // ✅ v88.75: إذا وصل المشاهد لنهاية الريل (>=95%) نُسجّل مشاهدة واحدة.
+    //   لا يعدّ ثانية عند إعادة التشغيل (loop) لأن countedViewsRef يحتفظ بالمعرّف.
+    if (pct >= 0.95) {
+      const idx = videoRefs.current.indexOf(v);
+      const reel = idx >= 0 ? reels[idx] : reels[activeIndex];
+      if (reel) recordReelView(reel);
+    }
+  }, [reels, activeIndex, recordReelView]);
+
+  // ✅ v88.75: عند حدث ended (loop = true فلا يُطلَق دائماً لكن نحتاطه للمتصفحات القديمة)
+  const handleReelEnded = useCallback((reel) => {
+    if (reel) recordReelView(reel);
+  }, [recordReelView]);
 
   return (
     <MainLayout hideNav={false} lockScroll>
@@ -881,6 +948,7 @@ export default function Reels() {
                       console.warn('Reel video load error', reel.id, e.currentTarget?.error);
                     }}
                     onTimeUpdate={i === activeIndex ? handleTimeUpdate : undefined}
+                    onEnded={() => handleReelEnded(reel)}
                     /* ✅ v88.47: pointer events تلتقط اللمس على الجوال بشكل موثوق */
                     onPointerUp={() => handleReelTap(reel, i, { fromVideo: true })}
                     onClick={(e) => {

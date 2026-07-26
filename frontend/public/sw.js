@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v88.71-share-target-choice-1785000000000';
+const VERSION = 'yamshat-v88.75-share-target-hashrouter-fix-1785500000000';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -104,11 +104,12 @@ async function handleShareTarget(request) {
       files: normalizedFiles,
     });
 
-    // ✅ v88.71: نوجّه دائماً إلى صفحة المشاركة التي تعرض خياري الريلز/المنشور.
-    //    ندعم طريقتي التوجيه (BrowserRouter و HashRouter) لضمان التوافق مع أي تطبيقات مُجهّزة.
-    return Response.redirect('/share-target?shared=1', 303);
+    // ✅ v88.75 FIX جذري: التطبيق يستخدم HashRouter (راجع main.jsx)، ولذلك أي توجيه إلى مسار
+    //    بدون "#/" لا يطابق أي مسار في React Router → تظهر شاشة بيضاء ويظل التطبيق يعيد التحميل.
+    //    الحل: نوجّه إلى /#/share-target?shared=1 حتى تتقاطع مع مسار React (في App.jsx).
+    return Response.redirect('/#/share-target?shared=1', 303);
   } catch (error) {
-    return Response.redirect('/share-target?shared=0', 303);
+    return Response.redirect('/#/share-target?shared=0', 303);
   }
 }
 

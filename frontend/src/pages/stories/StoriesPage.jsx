@@ -10,6 +10,7 @@ import {
 } from '../../api/stories.js';
 import { getMe } from '../../api/users.js';
 import { motion, AnimatePresence } from 'framer-motion';
+import offlineCache from '../../offline/offlineSessionCache.js';
 
 export default function StoriesPage() {
   const [activeTab, setActiveTab] = useState('feed');
@@ -26,6 +27,15 @@ export default function StoriesPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    // ✅ v88.76 Offline PWA: عرض فوري من كاش IndexedDB إن وُجد ثم تحديث خلفي
+    try {
+      const cachedGroups = await offlineCache.getCachedStoryGroups();
+      if (cachedGroups && cachedGroups.length) {
+        setGroups(cachedGroups);
+        setLoading(false);
+      }
+    } catch (_) { /* ignore */ }
+
     const results = await Promise.allSettled([
       getStoriesGrouped(),
       getStoryArchive(),
@@ -34,13 +44,23 @@ export default function StoriesPage() {
       getMe(),
     ]);
     const [gRes, aRes, analyticsRes, highlightsRes, meRes] = results;
-    setGroups(gRes.status === 'fulfilled' ? (gRes.value?.data || []) : []);
+    const nextGroups = gRes.status === 'fulfilled' ? (gRes.value?.data || []) : [];
+    if (nextGroups.length || gRes.status === 'fulfilled') setGroups(nextGroups);
     setArchive(aRes.status === 'fulfilled' ? (aRes.value?.data || []) : []);
     setAnalytics(analyticsRes.status === 'fulfilled' ? (analyticsRes.value?.data || null) : null);
     setHighlights(highlightsRes.status === 'fulfilled' ? (highlightsRes.value?.data || []) : []);
     setMe(meRes.status === 'fulfilled' ? (meRes.value?.data || null) : null);
     setLoading(false);
   }, []);
+
+  // ✅ v88.76 Offline PWA: حفظ آخر 10 مجموعات ستوري مُشاهَدة تلقائياً في IndexedDB
+  useEffect(() => {
+    if (!Array.isArray(groups) || !groups.length) return;
+    const current = groups[activeGroupIndex];
+    if (!current) return;
+    const gid = current.id || current.user?.id || current.user?.username || activeGroupIndex;
+    offlineCache.cacheStoryGroup(gid, current).catch(() => {});
+  }, [activeGroupIndex, groups]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

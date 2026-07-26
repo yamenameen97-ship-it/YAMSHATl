@@ -1,44 +1,41 @@
 /**
- * ChatSettings.jsx — v88.70 (2026-07-25)
+ * ChatSettings.jsx — v88.76 (2026-07-26)
  *
- * ✅ إصلاحات هذا الإصدار — استكمال جذري لـ v88.69:
- *   المشكلة: بعد v88.69 لا تزال «الوسائط المشتركة» و«الملفات والصوتيات»
- *   تظهر فارغة داخل الصناديق رغم وجود صور/فيديو/صوت في المحادثة، والعدادات
- *   ما زالت 0.
+ * ✅ إصلاحات جذرية نهائية — لماذا كانت الوسائط/الملفات/الروابط تظهر 0
+ *    والصناديق فارغة رغم الرسائل الفعلية:
  *
- * السبب الجذري الفعلي (بعد تدقيق أعمق ومقارنة الواجهة بالخادم):
- *   1) 🔴 عطل حرج في `api/chat.js#getMessages`:
- *      كان يمرّر `signal + cache + cacheTtlMs` فقط إلى axios، لكن **لم يمرّر
- *      `forceRefresh`** إطلاقاً. لذلك حتى عندما كانت v88.69 تنادي بـ
- *      `{ forceRefresh: true }` كانت الحمولة تُبتلع صامتاً، والكاش يعود
- *      بنفس النسخة القديمة (غالباً فارغة) بلا رسائل. → تم إصلاحه في
- *      `frontend/src/api/chat.js` بتمرير `forceRefresh` صراحة.
+ *   1) 🔴 كان الرندر يعتمد على `!loading && mediaItems.length` فقط.
+ *      أي نبضة بولنغ لاحقة كانت أحياناً تُعيد ضبط setLoading(true) (عبر
+ *      re-fetch من useEffect) فيختفي المحتوى الظاهر مسبقاً لثوانٍ.
+ *      → الحل: نستخدم `initialLoading` منفصل عن نبضات التحديث،
+ *      ولا نُظهر «جاري التحميل» إلا عند الجلب الأول فقط.
  *
- *   2) 🔴 `getAttachments` كان يقبل فقط `message.attachments` — بينما بعض
- *      استجابات الخادم/الطبقات القديمة تستخدم `attachments_list` أو
- *      `media_attachments` أو `attached_files`. → توسيع القبول.
+ *   2) 🔴 العدادات كانت تعرض 0 حتى ولو كانت `mediaItems.length > 0`
+ *      أثناء إعادة الرندر، لأنها كانت تعرض `loading ? '…' : n`.
+ *      أي عودة loading=true تُخفي الرقم الحقيقي.
+ *      → الحل: نعرض الرقم دائماً إذا كان > 0، ونعرض `…` فقط
+ *      عند الجلب الأول قبل وصول أي بيانات.
  *
- *   3) 🔴 التصنيف كان يعتمد على وجود `url` قبل تحديد النوع، فإذا كان
- *      المرفق موجوداً بحقل `file_name`/`kind` فقط دون url ظاهر (مثلاً
- *      قبل انتهاء الرفع) كان يُقصى تماماً. → الآن نستخرج `kind` أولاً ثم
- *      نستخدم url للفلترة النهائية فقط عند العرض.
+ *   3) 🔴 `getMessages` كان يعتمد على cache حتى مع forceRefresh عبر
+ *      طبقات وسيطة قديمة. الآن نمرر `cache:false` صراحة عند forceRefresh
+ *      في نفس `chat.js`، وهنا نرسل `forceRefresh:true` في كل نبضة.
  *
- *   4) 🔴 `socketManager.on` قد يُعاد قبل أن يتصل الـ socket (إذا فُتحت
- *      الصفحة مباشرة عبر URL دون المرور بمكوّن الـ hook الرئيسي). كان لا
- *      يوجد أي استدعاء لـ `socketManager.connect()` هنا. → أضفنا استدعاءه
- *      لضمان استقبال الأحداث اللحظية.
+ *   4) 🔴 كان يتم فقدان المرفقات إذا وصلت الرسالة عبر socket بحقل
+ *      `attachment` (مفرد) أو `file` أو `media` بدل `attachments`.
+ *      → توسيع getAttachments ليشمل كل الأسماء المعروفة + دعم الحقل المفرد.
  *
- *   5) 🔴 حلقة البولنغ كانت تستخدم `controller.signal` بعد `abort`، ما
- *      يُلقي CanceledError صامتاً ويوقف التحديث. → البولنغ صار يستخدم
- *      `AbortController` مستقل لكل نبضة.
+ *   5) 🔴 `classifyEntity` كان يتخطى الرسائل الصوتية عندما يكون
+ *      `message_type=voice_note` أو `voice_message`. → قائمة أنواع موسّعة.
  *
- *   6) 🔴 قسم «الوسائط المشتركة» داخل صندوق الإعدادات كان يظهر «لا توجد
- *      وسائط» بينما العدادات فوقه (بعد المزامنة) قد تعكس أعداداً غير 0.
- *      كان الرندر يعتمد على `!loading && !mediaItems.length` لكن السبب
- *      الحقيقي أن `mediaItems` نفسها فارغة بسبب البنود ١–٣ أعلاه.
- *      بعد إصلاح تلك البنود يظهر المحتوى فعلياً داخل الصندوق.
+ *   6) 🔴 عند إعادة استخدام mediaItems/fileItems داخل الصناديق كنا نستخدم
+ *      `slice().reverse()` مرتين لنفس البيانات المحسوبة، ما يسبب أحياناً
+ *      إعادة رسم مضاعفة. الآن reverse مرة واحدة داخل useMemo.
  *
- *   7) ✅ إضافة سجل تشخيصي مختصر عند `DEV` لتسهيل التحقق مستقبلاً.
+ *   7) 🔴 إضافة استماع لحدث `message:sent` (بعث محلي) و `message:received`
+ *      لتحديث فوري بدون انتظار البولنغ.
+ *
+ *   8) ✅ زر «تحديث» يدوي داخل ترويسة كل صندوق لإعادة الجلب فوراً بدون
+ *      انتظار البولنغ (تجربة مستخدم).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -67,21 +64,38 @@ const PAGE_SIZE = 200;
 const MAX_PAGES = 12;                 // 12 × 200 = 2400 رسالة
 const REFRESH_INTERVAL_MS = 8_000;    // بولنغ خلفي كل 8 ثوان
 
+const IMAGE_KINDS = new Set(['image', 'photo', 'media_image', 'sticker', 'gif', 'animated_gif']);
+const VIDEO_KINDS = new Set(['video', 'media_video', 'clip', 'reel']);
+const AUDIO_KINDS = new Set(['voice', 'audio', 'media_audio', 'voice_note', 'voice_message', 'audio_message']);
+const FILE_KINDS  = new Set(['file', 'document', 'attachment', 'pdf', 'doc']);
+
 function safeUrl(value) {
   const str = String(value || '').trim();
   return str && str !== 'null' && str !== 'undefined' ? str : '';
 }
 
-// ✅ v88.70: نقبل عدة أسماء للحقل تفادياً لعدم توافق نسخ الخادم
+/**
+ * ✅ v88.76: نقبل كل الأسماء المعروفة للحقل + الحقل المفرد أيضاً.
+ */
 function getAttachments(message = {}) {
-  const candidates = [
+  const listCandidates = [
     message?.attachments,
     message?.attachments_list,
     message?.media_attachments,
     message?.attached_files,
+    message?.files,
+    message?.media,
   ];
-  for (const list of candidates) {
+  for (const list of listCandidates) {
     if (Array.isArray(list) && list.length) return list;
+  }
+  const singleCandidates = [
+    message?.attachment,
+    message?.file,
+    message?.media_file,
+  ];
+  for (const single of singleCandidates) {
+    if (single && typeof single === 'object') return [single];
   }
   return [];
 }
@@ -93,24 +107,16 @@ function pickBestUrl(source = {}) {
     || safeUrl(source?.mediaUrl)
     || safeUrl(source?.cdn_url)
     || safeUrl(source?.cdnUrl)
+    || safeUrl(source?.file_url)
+    || safeUrl(source?.fileUrl)
+    || safeUrl(source?.download_url)
     || safeUrl(source?.thumbnail_url)
     || safeUrl(source?.thumbnailUrl)
   );
 }
 
-function resolveMessageMediaUrl(message = {}) {
-  const direct = safeUrl(message?.media_url) || safeUrl(message?.media_urls?.[0]);
-  if (direct) return direct;
-  const atts = getAttachments(message);
-  for (const att of atts) {
-    const url = pickBestUrl(att);
-    if (url) return url;
-  }
-  return '';
-}
-
 function extractFileName(source = {}, fallbackUrl = '') {
-  const name = source?.file_name || source?.fileName || source?.name || source?.attachment_name;
+  const name = source?.file_name || source?.fileName || source?.name || source?.attachment_name || source?.original_name;
   if (name) return String(name);
   const url = fallbackUrl || pickBestUrl(source);
   if (!url) return 'ملف مرفق';
@@ -123,26 +129,24 @@ function extractFileName(source = {}, fallbackUrl = '') {
 }
 
 /**
- * ✅ v88.70: يُرجع نوع الوسيط دون اشتراط وجود URL في البداية.
- *   يعتمد على kind/mime أولاً ثم extension إذا لزم. للتصنيف النهائي
- *   داخل الصناديق نستخدم URL فقط للعرض/الفتح.
+ * ✅ v88.76: تصنيف موسّع — يعتمد kind/mime أولاً ثم extension.
  */
 function classifyEntity(entity = {}, rawTypeHint = '') {
   const url = pickBestUrl(entity).toLowerCase();
-  const kind = String(entity?.kind || entity?.type || rawTypeHint || '').trim().toLowerCase();
-  const mime = String(entity?.mime_type || entity?.mimeType || '').trim().toLowerCase();
+  const kind = String(entity?.kind || entity?.type || entity?.message_type || rawTypeHint || '').trim().toLowerCase();
+  const mime = String(entity?.mime_type || entity?.mimeType || entity?.content_type || '').trim().toLowerCase();
 
-  if (['video', 'media_video'].includes(kind) || mime.startsWith('video/') || VIDEO_MEDIA_RE.test(url)) return 'video';
-  if (['image', 'photo', 'media_image', 'sticker', 'gif'].includes(kind) || mime.startsWith('image/') || IMAGE_MEDIA_RE.test(url)) return 'image';
-  if (['voice', 'audio', 'media_audio'].includes(kind) || mime.startsWith('audio/') || AUDIO_MEDIA_RE.test(url)) return 'audio';
-  if (url || kind === 'file' || kind === 'document') return 'file';
+  if (VIDEO_KINDS.has(kind) || mime.startsWith('video/') || VIDEO_MEDIA_RE.test(url)) return 'video';
+  if (IMAGE_KINDS.has(kind) || mime.startsWith('image/') || IMAGE_MEDIA_RE.test(url)) return 'image';
+  if (AUDIO_KINDS.has(kind) || mime.startsWith('audio/') || AUDIO_MEDIA_RE.test(url)) return 'audio';
+  if (FILE_KINDS.has(kind) || url) return 'file';
   return '';
 }
 
 function extractItemsFromResponse(res) {
   const data = res?.data ?? res;
   if (Array.isArray(data)) return { items: data, paging: null };
-  const items = Array.isArray(data?.items) ? data.items : [];
+  const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data?.messages) ? data.messages : []);
   return { items, paging: data?.paging || null };
 }
 
@@ -152,7 +156,9 @@ export default function ChatSettings() {
   const { pushToast } = useToast();
   const peer = decodeURIComponent(userId || '').trim();
 
-  const [loading, setLoading] = useState(true);
+  // ✅ v88.76: نفصل initialLoading (يظهر مرة واحدة) عن refreshing (بولنغ صامت)
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [messages, setMessages] = useState([]);
   const [presence, setPresence] = useState({});
   const [threadMeta, setThreadMeta] = useState(null);
@@ -163,6 +169,7 @@ export default function ChatSettings() {
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
 
   const messagesMapRef = useRef(new Map());
+  const dataReceivedRef = useRef(false);
 
   useEffect(() => {
     if (!peer) return;
@@ -171,7 +178,6 @@ export default function ChatSettings() {
     setIsPinnedConversation(prefs.pinned.has(peer));
   }, [peer]);
 
-  // ✅ v88.70: forceRefresh:true يُمرَّر الآن فعلياً بعد إصلاح api/chat.js
   const fetchPage = useCallback((beforeId, signal) => (
     getMessages(peer, PAGE_SIZE, beforeId, { signal, forceRefresh: true })
   ), [peer]);
@@ -209,6 +215,7 @@ export default function ChatSettings() {
     });
     setMessages(list);
     setTotalLoaded(list.length);
+    if (list.length) dataReceivedRef.current = true;
   }, []);
 
   const mergeMessages = useCallback((items) => {
@@ -225,16 +232,28 @@ export default function ChatSettings() {
     return mutated;
   }, [rebuildFromMap]);
 
+  const doRefresh = useCallback(async () => {
+    if (!peer) return;
+    setRefreshing(true);
+    const pulseController = new AbortController();
+    try {
+      const res = await fetchPage(undefined, pulseController.signal);
+      const { items } = extractItemsFromResponse(res);
+      mergeMessages(items);
+    } catch { /* تجاهل */ }
+    finally { setRefreshing(false); }
+  }, [peer, fetchPage, mergeMessages]);
+
   useEffect(() => {
     if (!peer) return undefined;
     const controller = new AbortController();
     let active = true;
 
-    // ✅ v88.70: نضمن أن الـ socket متصل حتى لو فُتحت الصفحة مباشرة عبر URL
     try { socketManager.connect?.(); } catch { /* ignore */ }
 
     const loadData = async () => {
-      setLoading(true);
+      // ✅ v88.76: initialLoading يبقى true حتى نستقبل أول دفعة أو نُقر بأن لا رسائل
+      setInitialLoading(true);
       try {
         const [historyRes, presenceRes, blockRes, threadsRes] = await Promise.allSettled([
           loadAllMessages(controller.signal),
@@ -268,13 +287,12 @@ export default function ChatSettings() {
         if (!active) return;
         pushToast?.({ type: 'error', title: 'تعذر تحميل إعدادات المحادثة' });
       } finally {
-        if (active) setLoading(false);
+        if (active) setInitialLoading(false);
       }
     };
 
     loadData();
 
-    // ✅ v88.70: مستمع socket مباشر — المصدر الحقيقي للأحداث اللحظية
     const handleSocketMessage = (message) => {
       if (!message || typeof message !== 'object') return;
       const sender = String(message?.sender || '').trim();
@@ -283,7 +301,6 @@ export default function ChatSettings() {
       mergeMessages([message]);
     };
 
-    // نُبقي أحداث النافذة كخط دفاع إضافي (إن أُطلقت مستقبلاً)
     const handleWindowMessage = (event) => {
       const detail = event?.detail || {};
       const msg = detail?.message || detail?.data || detail;
@@ -291,14 +308,14 @@ export default function ChatSettings() {
     };
 
     let unsubscribeSocket = () => {};
+    let unsubscribeSocketSent = () => {};
+    let unsubscribeSocketRecv = () => {};
     try {
       unsubscribeSocket = socketManager.on('new_private_message', handleSocketMessage) || (() => {});
-    } catch {
-      unsubscribeSocket = () => {};
-    }
+      unsubscribeSocketSent = socketManager.on('message:sent', handleSocketMessage) || (() => {});
+      unsubscribeSocketRecv = socketManager.on('message:received', handleSocketMessage) || (() => {});
+    } catch { /* ignore */ }
 
-    // ✅ v88.70: كل نبضة بولنغ لها AbortController مستقل حتى لا يُقتل الطلب
-    // إذا أُغلقت الصفحة أثناء النبضة السابقة
     const refreshTimer = setInterval(async () => {
       if (!active || document.hidden) return;
       const pulseController = new AbortController();
@@ -310,7 +327,6 @@ export default function ChatSettings() {
       } catch { /* تجاهل */ }
     }, REFRESH_INTERVAL_MS);
 
-    // إعادة جلب فوري عند العودة إلى التبويب
     const handleVisibility = async () => {
       if (document.hidden || !active) return;
       const pulseController = new AbortController();
@@ -333,13 +349,15 @@ export default function ChatSettings() {
       clearInterval(refreshTimer);
       document.removeEventListener('visibilitychange', handleVisibility);
       try { unsubscribeSocket?.(); } catch { /* ignore */ }
+      try { unsubscribeSocketSent?.(); } catch { /* ignore */ }
+      try { unsubscribeSocketRecv?.(); } catch { /* ignore */ }
       window.removeEventListener('yamshat:new-message', handleWindowMessage);
       window.removeEventListener('yamshat:message', handleWindowMessage);
       window.removeEventListener('chat:message', handleWindowMessage);
     };
   }, [peer, pushToast, loadAllMessages, rebuildFromMap, mergeMessages, fetchPage]);
 
-  // ✅ v88.70: تصنيف صارم — يفحص كل مرفق داخل الرسالة على حدة
+  // ✅ v88.76: تصنيف صارم + reverse مرة واحدة (الأحدث أولاً)
   const classified = useMemo(() => {
     const mediaItems = [];
     const fileItems = [];
@@ -353,8 +371,6 @@ export default function ChatSettings() {
       const rawType = rawTypeOf(item);
       const atts = getAttachments(item);
 
-      // 1) اجمع الكيانات المرشحة: المرفقات إن وُجدت + الرسالة إذا كانت
-      //    تحمل media_url مباشر لم يُغطَّ بالمرفقات
       const entities = [];
       if (atts.length) {
         atts.forEach((att, i) => entities.push({ entity: att, sub: i }));
@@ -363,9 +379,7 @@ export default function ChatSettings() {
       if (directUrl && !atts.some((a) => pickBestUrl(a) === directUrl)) {
         entities.push({ entity: { url: directUrl, mime_type: '', kind: rawType }, sub: 'root' });
       }
-      // ✅ v88.70: إذا لم يوجد أي مرفق ولا media_url، لكن نوع الرسالة
-      //   يدل على وسيط (voice/audio/image/video/file) — عاملها ككيان ذاتي
-      if (!entities.length && ['voice', 'audio', 'image', 'video', 'file', 'document'].includes(rawType)) {
+      if (!entities.length && ['voice', 'voice_note', 'voice_message', 'audio', 'image', 'video', 'file', 'document'].includes(rawType)) {
         entities.push({ entity: item, sub: 'self' });
       }
 
@@ -399,7 +413,7 @@ export default function ChatSettings() {
       });
     });
 
-    // 2) الروابط النصية (استبعاد روابط المرفقات)
+    // الروابط النصية
     const linkSet = new Map();
     messages.forEach((item, index) => {
       const text = `${item?.content || ''} ${item?.message || ''}`.trim();
@@ -418,25 +432,35 @@ export default function ChatSettings() {
       });
     });
 
-    // ✅ v88.70: سجل تشخيصي مختصر في بيئة التطوير
+    // ✅ v88.76: reverse مرة واحدة هنا (الأحدث أولاً) لتفادي إعادة الحساب في الرندر
+    mediaItems.reverse();
+    fileItems.reverse();
+    const sharedLinks = Array.from(linkSet.values()).reverse();
+
     if (typeof window !== 'undefined' && (window?.location?.hostname === 'localhost' || window?.__YAM_DEBUG__)) {
       // eslint-disable-next-line no-console
-      console.debug('[ChatSettings v88.70] classify', {
+      console.debug('[ChatSettings v88.76] classify', {
         totalMessages: messages.length,
         media: mediaItems.length,
         files: fileItems.length,
-        links: linkSet.size,
+        links: sharedLinks.length,
       });
     }
 
-    return {
-      mediaItems,
-      fileItems,
-      sharedLinks: Array.from(linkSet.values()),
-    };
+    return { mediaItems, fileItems, sharedLinks };
   }, [messages]);
 
   const { mediaItems, fileItems, sharedLinks } = classified;
+
+  // ✅ v88.76: helper — اعرض الرقم دائماً إن كان > 0، وإلا اعرض … عند الجلب الأول فقط
+  const showCount = (n) => {
+    if (n > 0) return n;
+    if (initialLoading && !dataReceivedRef.current) return '…';
+    return 0;
+  };
+
+  const showEmpty = (n) => (!initialLoading || dataReceivedRef.current) && n === 0;
+  const showList  = (n) => n > 0;
 
   const handleBack = useCallback(() => {
     navigate(`/chat/${encodeURIComponent(peer)}`);
@@ -609,6 +633,16 @@ export default function ChatSettings() {
             color: #94a3b8;
             font-size: 11px;
           }
+          .yam-refresh-btn {
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(167,139,250,0.35);
+            background: rgba(167,139,250,0.08);
+            color: #c4b5fd;
+            cursor: pointer;
+          }
+          .yam-refresh-btn:disabled { opacity: 0.55; }
           .yam-media-strip {
             display: grid;
             grid-auto-flow: column;
@@ -812,24 +846,22 @@ export default function ChatSettings() {
             <div>
               <h1>{peer}</h1>
               <p>{presence?.is_typing ? 'يكتب الآن...' : formatLastSeen(presence?.last_seen, Boolean(presence?.is_online))}</p>
-              {!loading ? (
-                <p style={{ marginTop: 6 }}>
-                  <span className="yam-live-badge">تحديث لحظي · {totalLoaded} رسالة{hasMoreHistory ? '+' : ''}</span>
-                </p>
-              ) : null}
+              <p style={{ marginTop: 6 }}>
+                <span className="yam-live-badge">تحديث لحظي · {totalLoaded} رسالة{hasMoreHistory ? '+' : ''}</span>
+              </p>
             </div>
             <div className="yam-meta-grid">
               <div className="yam-stat-pill">
                 <span>الوسائط المشتركة</span>
-                <strong>{loading ? '…' : mediaItems.length}</strong>
+                <strong>{showCount(mediaItems.length)}</strong>
               </div>
               <div className="yam-stat-pill">
                 <span>الروابط</span>
-                <strong>{loading ? '…' : sharedLinks.length}</strong>
+                <strong>{showCount(sharedLinks.length)}</strong>
               </div>
               <div className="yam-stat-pill">
                 <span>الملفات والصوتيات</span>
-                <strong>{loading ? '…' : fileItems.length}</strong>
+                <strong>{showCount(fileItems.length)}</strong>
               </div>
               <div className="yam-stat-pill">
                 <span>حالة المحادثة</span>
@@ -862,13 +894,16 @@ export default function ChatSettings() {
           <section className="yam-chat-settings-card">
             <div className="yam-section-title">
               <h2>الوسائط المشتركة</h2>
-              <small>{loading ? 'جاري الحساب…' : `${mediaItems.length} عنصر`}</small>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <small>{mediaItems.length} عنصر</small>
+                <button type="button" className="yam-refresh-btn" onClick={doRefresh} disabled={refreshing}>
+                  {refreshing ? '…' : '⟳'}
+                </button>
+              </div>
             </div>
-            {loading ? <div className="yam-settings-empty">جاري تحميل الوسائط...</div> : null}
-            {!loading && !mediaItems.length ? <div className="yam-settings-empty">لا توجد وسائط مشتركة في هذه المحادثة حالياً.</div> : null}
-            {!loading && mediaItems.length ? (
+            {showList(mediaItems.length) ? (
               <div className="yam-media-strip">
-                {mediaItems.slice().reverse().map((item) => (
+                {mediaItems.map((item) => (
                   <a key={item.id} href={item.url} target="_blank" rel="noreferrer" className="yam-media-card">
                     <div className="yam-media-thumb">
                       {item.type === 'image' ? (
@@ -884,18 +919,21 @@ export default function ChatSettings() {
                   </a>
                 ))}
               </div>
-            ) : null}
+            ) : showEmpty(mediaItems.length) ? (
+              <div className="yam-settings-empty">لا توجد وسائط مشتركة في هذه المحادثة حالياً.</div>
+            ) : (
+              <div className="yam-settings-empty">جاري تحميل الوسائط...</div>
+            )}
           </section>
 
           <section className="yam-chat-settings-card">
             <div className="yam-section-title">
               <h2>الروابط المشتركة</h2>
-              <small>{loading ? 'جاري الحساب…' : `${sharedLinks.length} رابط`}</small>
+              <small>{sharedLinks.length} رابط</small>
             </div>
-            {!loading && !sharedLinks.length ? <div className="yam-settings-empty">لا توجد روابط مشتركة في الرسائل الحالية.</div> : null}
-            {sharedLinks.length ? (
+            {showList(sharedLinks.length) ? (
               <div className="yam-link-list">
-                {sharedLinks.slice().reverse().map((item) => (
+                {sharedLinks.map((item) => (
                   <div key={item.id} className="yam-link-item">
                     <div className="yam-link-copy">
                       <strong>{item.url}</strong>
@@ -905,18 +943,19 @@ export default function ChatSettings() {
                   </div>
                 ))}
               </div>
+            ) : showEmpty(sharedLinks.length) ? (
+              <div className="yam-settings-empty">لا توجد روابط مشتركة في الرسائل الحالية.</div>
             ) : null}
           </section>
 
           <section className="yam-chat-settings-card">
             <div className="yam-section-title">
               <h2>الملفات والصوتيات</h2>
-              <small>{loading ? 'جاري الحساب…' : `${fileItems.length} ملف`}</small>
+              <small>{fileItems.length} ملف</small>
             </div>
-            {!loading && !fileItems.length ? <div className="yam-settings-empty">لا توجد ملفات أو رسائل صوتية مشتركة حتى الآن.</div> : null}
-            {fileItems.length ? (
+            {showList(fileItems.length) ? (
               <div className="yam-file-list">
-                {fileItems.slice().reverse().map((item) => (
+                {fileItems.map((item) => (
                   <div key={item.id} className="yam-file-item">
                     <div className="yam-file-copy">
                       <strong>{item.name}</strong>
@@ -926,6 +965,8 @@ export default function ChatSettings() {
                   </div>
                 ))}
               </div>
+            ) : showEmpty(fileItems.length) ? (
+              <div className="yam-settings-empty">لا توجد ملفات أو رسائل صوتية مشتركة حتى الآن.</div>
             ) : null}
           </section>
         </div>

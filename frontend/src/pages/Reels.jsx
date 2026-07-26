@@ -258,11 +258,11 @@ export default function Reels() {
       return merged.length > 80 ? merged.slice(merged.length - 80) : merged;
     });
     const ids = items.map((it) => it.id);
-    // ✅ v88.55: زيادة زمن التنظيف ليتوافق مع المدة الجديدة (5.5s + هامش)
+    // ✅ v88.77: زيادة زمن التنظيف ليتوافق مع المدة الجديدة للجوال (16s + هامش أمان)
     setTimeout(() => {
       if (!isMountedRef.current) return;
       setFloatingHearts((prev) => prev.filter((it) => !ids.includes(it.id)));
-    }, 6500);
+    }, 17500);
   }, []);
 
   // ✅ v88.43: بث القلوب لصاحب الريل والمشاهدين الآخرين عبر Socket.IO لحظياً.
@@ -1565,9 +1565,10 @@ export default function Reels() {
           }
 
           /* v88.10 — رفع خيارات الريل من أسفل الشاشة إلى أعلى تحت زر النقاط الثلاث (منتصف الصفحة) */
-          .ym-reel-menu-layer { position:fixed; inset:0; z-index:100; display:flex; align-items:flex-start; justify-content:center; padding-top: 64px; }
-          .ym-reel-menu-backdrop { position:absolute; inset:0; border:0; background:rgba(0,0,0,.55); }
-          .ym-reel-menu-sheet { position:relative; width:min(100%, 520px); margin: 0 12px; padding:18px; border-radius:22px; background:#121222; color:#fff; box-shadow:0 12px 40px rgba(0,0,0,.55); max-height: calc(100vh - 140px); overflow-y: auto; }
+          /* ✅ v88.77: تفعيل النقر خارج الصندوق لإغلاقه — backdrop يستقبل النقر بشكل صريح والشيت يستهلك حدثه فقط */
+          .ym-reel-menu-layer { position:fixed; inset:0; z-index:100; display:flex; align-items:flex-start; justify-content:center; padding-top: 64px; pointer-events: auto; }
+          .ym-reel-menu-backdrop { position:absolute; inset:0; border:0; margin:0; padding:0; background:rgba(0,0,0,.55); cursor:pointer; z-index:0; pointer-events:auto; }
+          .ym-reel-menu-sheet { position:relative; width:min(100%, 520px); margin: 0 12px; padding:18px; border-radius:22px; background:#121222; color:#fff; box-shadow:0 12px 40px rgba(0,0,0,.55); max-height: calc(100vh - 140px); overflow-y: auto; z-index:1; pointer-events:auto; }
           @media (min-width: 768px) {
             .ym-reel-menu-layer { align-items:center; padding-top: 0; }
             .ym-reel-menu-sheet { margin: 0; }
@@ -1891,14 +1892,15 @@ export default function Reels() {
             /* منع أي وراثة تصغّر الحجم */
             line-height: 1;
           }
-          /* ✅ v88.62: keyframes خاص بالجوال — رحلة أطول (من قاع الشاشة إلى قمّتها) وأبطأ بكثير */
+          /* ✅ v88.77: keyframes خاص بالجوال — نفس المسار لكن بطيء نسبياً بشكل ملحوظ لتظهر القلوب بوضوح للمستخدم */
           @keyframes ym-reel-heart-rise-mobile {
             0%   { opacity: 0;    transform: translateY(40px)   translateX(0)                                            scale(.55) rotate(-8deg); }
-            8%   { opacity: 1;    transform: translateY(-20px)  translateX(calc(var(--drift, 0px) * .08))                scale(1)    rotate(3deg); }
-            25%  { opacity: 1;    transform: translateY(-180px) translateX(calc(var(--drift, 0px) * .25))                scale(1.15) rotate(-2deg); }
-            45%  { opacity: 1;    transform: translateY(-340px) translateX(calc(var(--drift, 0px) * .45))                scale(1.2)  rotate(2deg); }
-            65%  { opacity: .95;  transform: translateY(-500px) translateX(calc(var(--drift, 0px) * .65))                scale(1.22) rotate(-3deg); }
-            85%  { opacity: .55;  transform: translateY(-680px) translateX(calc(var(--drift, 0px) * .85))                scale(1.24) rotate(3deg); }
+            6%   { opacity: 1;    transform: translateY(-20px)  translateX(calc(var(--drift, 0px) * .06))                scale(1)    rotate(3deg); }
+            20%  { opacity: 1;    transform: translateY(-140px) translateX(calc(var(--drift, 0px) * .20))                scale(1.12) rotate(-2deg); }
+            40%  { opacity: 1;    transform: translateY(-300px) translateX(calc(var(--drift, 0px) * .40))                scale(1.18) rotate(2deg); }
+            60%  { opacity: 1;    transform: translateY(-460px) translateX(calc(var(--drift, 0px) * .60))                scale(1.22) rotate(-3deg); }
+            78%  { opacity: .9;   transform: translateY(-620px) translateX(calc(var(--drift, 0px) * .78))                scale(1.24) rotate(3deg); }
+            92%  { opacity: .5;   transform: translateY(-780px) translateX(calc(var(--drift, 0px) * .92))                scale(1.26) rotate(-2deg); }
             100% { opacity: 0;    transform: translateY(-88dvh) translateX(var(--drift, 0px))                            scale(1.3)  rotate(0deg); }
           }
           /* ✅ v88.55: حركة صعود بطيئة + ارتفاع أقل + مراحل ثبات ليمكث القلب مرئياً وقتاً أطول */
@@ -1919,8 +1921,8 @@ export default function Reels() {
               min-width: 1.4em;
               /* تكبير الحجم قسراً على الجوال بغضّ النظر عن قيمة inline style (نستخدم !important لأن fontSize يُطبَّق عبر style prop) */
               font-size: clamp(96px, 22vw, 150px) !important;
-              /* ✅ v88.62: استبدال keyframes بالكامل + مدّة أبطأ بكثير (8s) لرحلة كاملة من الأسفل للأعلى */
-              animation: ym-reel-heart-rise-mobile 8s cubic-bezier(.18,.55,.35,1) forwards;
+              /* ✅ v88.77: إبطاء ملحوظ — من 8s إلى 16s (ضعف المدة) ليظهر القلب ببطء واضح للمستخدم عبر كامل الشاشة */
+              animation: ym-reel-heart-rise-mobile 16s cubic-bezier(.22,.61,.36,1) forwards !important;
               /* توهج أقوى ملحوظ فوق الفيديو */
               text-shadow:
                 0 0 14px rgba(255, 143, 208, 0.9),
@@ -1929,11 +1931,11 @@ export default function Reels() {
               filter: drop-shadow(0 4px 12px rgba(0,0,0,.55));
             }
           }
-          /* ✅ v88.62: على شاشات الجوال الأصغر جداً (< 380px مثل iPhone SE) نُبقي الحجم كبيراً وواضحاً */
+          /* ✅ v88.77: على شاشات الجوال الأصغر جداً (< 380px مثل iPhone SE) نُبقي الحجم كبيراً وواضحاً ونبطئ أكثر قليلاً */
           @media (max-width: 380px) {
             .ym-reels-flying-heart {
               font-size: clamp(88px, 26vw, 130px) !important;
-              animation-duration: 8.5s;
+              animation-duration: 17s !important;
             }
           }
           .ym-action-group {

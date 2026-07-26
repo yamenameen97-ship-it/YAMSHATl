@@ -1,11 +1,29 @@
-const VERSION = 'yamshat-v88.75-share-target-hashrouter-fix-1785500000000';
+const VERSION = 'yamshat-v88.76-offline-pwa-session-cache-1817500000000';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
   MEDIA: `${VERSION}:media`,
   API: `${VERSION}:api`,
   OFFLINE: `${VERSION}:offline`,
+  // ✅ v88.76 Offline PWA: كاش منفصل للصفحات الديناميكية المُتصفّحة
+  PAGES: `${VERSION}:pages`,
+  APIS_VISITED: `${VERSION}:apis-visited`,
 };
+
+// ✅ v88.76: حدود تقليم كاش الجلسات (لتجنّب التخمة)
+const PAGES_MAX = 40;
+const APIS_VISITED_MAX = 120;
+
+async function trimCache(cacheName, maxEntries) {
+  try {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    if (keys.length <= maxEntries) return;
+    // حذف الأقدم (FIFO حسب ترتيب keys)
+    const toDelete = keys.slice(0, keys.length - maxEntries);
+    await Promise.all(toDelete.map((k) => cache.delete(k)));
+  } catch (_) { /* ignore */ }
+}
 
 const SHARE_DB_NAME = 'yamshat-pwa-db';
 const SHARE_STORE_NAME = 'shared-content';
@@ -185,16 +203,27 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
+    // ✅ v88.76 Offline PWA: حفظ كل تنقل إلى صفحة في كاش PAGES
+    //   (HashRouter SPA → المسارات في hash، لذا index.html يخدم الجميع)
     event.respondWith(
       fetch(request, { cache: 'no-store' })
         .then(async (response) => {
-          const cache = await caches.open(CACHE_NAMES.SHELL);
-          cache.put(request, response.clone()).catch(() => null);
+          const shellCache = await caches.open(CACHE_NAMES.SHELL);
+          shellCache.put(request, response.clone()).catch(() => null);
+          const pagesCache = await caches.open(CACHE_NAMES.PAGES);
+          pagesCache.put(request, response.clone()).catch(() => null);
+          trimCache(CACHE_NAMES.PAGES, PAGES_MAX);
           return response;
         })
         .catch(async () => {
-          const cache = await caches.open(CACHE_NAMES.SHELL);
-          const fallback = (await cache.match(request)) || (await cache.match('/offline.html')) || (await cache.match('/index.html'));
+          // ارتداد للصفحة المحددة إن كانت في الكاش، وإلا index.html للـSPA
+          const pagesCache = await caches.open(CACHE_NAMES.PAGES);
+          const pageHit = await pagesCache.match(request);
+          if (pageHit) return pageHit;
+          const shellCache = await caches.open(CACHE_NAMES.SHELL);
+          const fallback = (await shellCache.match(request))
+            || (await shellCache.match('/index.html'))
+            || (await shellCache.match('/offline.html'));
           return fallback || emptyResponse(503, 'Offline');
         })
     );
@@ -209,7 +238,28 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (/\/(api|notifications)\//i.test(url.pathname)) {
-    event.respondWith(networkFirst(request, CACHE_NAMES.API));
+    // ✅ v88.76 Offline PWA: أي API تم إحضاره مرة يُحفظ في كاش APIS_VISITED
+    //   يستخدم network-first مع ارتداد إلى الكاش عند انقطاع النت
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request, { cache: 'no-store' });
+        if (response && response.ok) {
+          const cache = await caches.open(CACHE_NAMES.APIS_VISITED);
+          cache.put(request, response.clone()).catch(() => null);
+          trimCache(CACHE_NAMES.APIS_VISITED, APIS_VISITED_MAX);
+        }
+        return response;
+      } catch (_) {
+        // ارتداد: الرد من كاش الويزت ثم من كاش API القديم
+        const visitedCache = await caches.open(CACHE_NAMES.APIS_VISITED);
+        const hit = await visitedCache.match(request);
+        if (hit) return hit;
+        const apiCache = await caches.open(CACHE_NAMES.API);
+        const legacy = await apiCache.match(request);
+        if (legacy) return legacy;
+        return emptyResponse(503, 'Offline');
+      }
+    })());
     return;
   }
 

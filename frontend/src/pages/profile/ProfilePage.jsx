@@ -15,6 +15,8 @@ import { getProfileBundle, updateMyProfile, followUser } from '../../api/users.j
 import { clearStoredUser } from '../../utils/auth.js';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
 import { getCurrentUsername } from '../../utils/auth.js';
+// ✅ v88.76 — كاش الجلسات للتصفح بلا نت (Offline PWA) — IndexedDB يرافق localStorage لدعم ملفات متعددة
+import offlineCache from '../../offline/offlineSessionCache.js';
 
 const TABS = {
   POSTS: 'posts',
@@ -237,8 +239,18 @@ export default function ProfilePage() {
       const { data } = await getProfileBundle(username, { forceRefresh: forceRefresh || background });
       applyProfileData(data);
       writeCachedProfile(data);
+      // ✅ v88.76: حفظ في IndexedDB أيضاً ليدعم فتح ملفات متعددة بلا نت
+      offlineCache.cacheProfile(username, data).catch(() => {});
     } catch (err) {
       if (!background) {
+        // ✅ v88.76 Offline PWA: محاولة أخيرة من IndexedDB قبل إظهار الخطأ
+        try {
+          const idbCached = await offlineCache.getCachedProfile(username);
+          if (idbCached) {
+            applyProfileData(idbCached);
+            return;
+          }
+        } catch (_) { /* ignore */ }
         // إذا لم تكن لدينا أي نسخة مخزّنة نسجل خطأ مرئياً
         setError('فشل تحميل الملف الشخصي');
       }
@@ -249,6 +261,7 @@ export default function ProfilePage() {
   }, [username, applyProfileData, writeCachedProfile]);
 
   // ✅ المرحلة الأولى: إظهار فوري من الكاش ثم تحديث في الخلفية (SWR pattern)
+  // ✅ v88.76 Offline PWA: دمج localStorage + IndexedDB — تعمل في وضع بلا نت
   useEffect(() => {
     let cancelled = false;
     const cached = readCachedProfile();
@@ -258,8 +271,22 @@ export default function ProfilePage() {
       // تحديث خلفي صامت من الخادم (stale-while-revalidate)
       loadProfile({ background: true });
     } else {
-      setLoading(true);
-      loadProfile({ background: false });
+      // ✅ v88.76: محاولة IndexedDB قبل إظهار مؤشر التحميل (مفيد للملفات التي خُزّنت بجلسة أخرى)
+      (async () => {
+        try {
+          const idbCached = await offlineCache.getCachedProfile(username);
+          if (!cancelled && idbCached) {
+            applyProfileData(idbCached);
+            setLoading(false);
+            loadProfile({ background: true });
+            return;
+          }
+        } catch (_) { /* ignore */ }
+        if (!cancelled) {
+          setLoading(true);
+          loadProfile({ background: false });
+        }
+      })();
     }
     return () => { cancelled = true; void cancelled; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

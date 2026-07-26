@@ -611,6 +611,49 @@ if (typeof window !== 'undefined') {
       // ملاحظة: pwaInitializer.init() يتولى الآن تسجيل sw.js بشكل موحد
       // لضمان عدم وجود تعارضات وسرعة في التحميل
       console.log('[Yamshat] Service Worker registration deferred to PWA Initializer');
+
+      // ✅ v88.76 Offline PWA — تفعيل جسر كاش الجلسات
+      // يراقب تغيرات HashRouter ويسجّل كل صفحة مُتصفّحة في IndexedDB
+      // ينبّه في أول تشغيل standalone بأن التصفح بلا نت مفعّل
+      try {
+        const mod = await import('./offline/offlineSessionCache.js');
+        const offlineCache = mod.default || mod;
+
+        const recordCurrentPage = () => {
+          try {
+            const hash = window.location.hash || '#/';
+            const path = hash.replace(/^#/, '') || '/';
+            offlineCache.markPageVisited(path, { title: document.title, hash });
+          } catch (_) { /* ignore */ }
+        };
+
+        // تسجيل أولي للمسار الحالي + مراقبة التنقل (HashRouter)
+        recordCurrentPage();
+        window.addEventListener('hashchange', recordCurrentPage);
+        window.addEventListener('popstate', recordCurrentPage);
+
+        // إشعار أول تشغيل في وضع PWA standalone
+        if (offlineCache.isStandalonePWA()) {
+          const NOTIFIED_KEY = 'yamshat:offline-pwa-notified-v88.76';
+          if (!localStorage.getItem(NOTIFIED_KEY)) {
+            try {
+              window.dispatchEvent(new CustomEvent('yamshat:toast', {
+                detail: {
+                  type: 'success',
+                  title: 'تم تفعيل التصفح بلا إنترنت ✓',
+                  description: 'أخر الستوريات، الدردشات، والملفات ستظل متاحة حتى مع انقطاع النت.',
+                },
+              }));
+            } catch (_) { /* ignore */ }
+            localStorage.setItem(NOTIFIED_KEY, String(Date.now()));
+          }
+          console.log('[Offline-PWA] session cache active (standalone mode detected)');
+        } else {
+          console.log('[Offline-PWA] session cache active (browser mode)');
+        }
+      } catch (err) {
+        console.warn('[Offline-PWA] session cache init failed:', err);
+      }
     });
   }
 }

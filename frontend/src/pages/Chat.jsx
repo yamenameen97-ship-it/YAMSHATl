@@ -36,6 +36,8 @@ import { CHAT_NAV_ITEMS, buildContacts, getContactDetails } from '../features/ch
 import BrandLogo from '../components/ui/BrandLogo.jsx';
 // ✅ v59.13.17 FIX #1+#2: ReportModal الموحّد بدلاً من window.prompt للإبلاغ، ومحرّر تعديل داخلي بدلاً من window.prompt للتعديل
 import ReportModal from '../components/reports/ReportModal.jsx';
+// ✅ v88.76 — كاش الجلسات لعرض الرسائل بلا نت (Offline PWA)
+import offlineCache from '../offline/offlineSessionCache.js';
 // ✅ v59.13.36 FIX: socketManager للاستماع المباشر لحدث typing_update داخل الصفحة
 // كألية احتياطية تضمن ظهور مؤشر “يكتب الآن...” حتى لو فشل تحديث useChatStore
 import socketManager from '../services/socketManager.js';
@@ -403,15 +405,32 @@ export default function Chat() {
   const loadMessages = useCallback(async (forPeer, mySeq) => {
     if (!forPeer) return;
     setMsgLoading(true);
+
+    // ✅ v88.76 Offline PWA: عرض فوري من IndexedDB إن وُجد ثم تحديث خلفي
+    try {
+      const cachedItems = await offlineCache.getCachedMessagesForPeer(forPeer);
+      if (Array.isArray(cachedItems) && cachedItems.length && mySeq === peerLoadSeqRef.current) {
+        replaceConversationMessages(forPeer, cachedItems, {
+          hasMore: true,
+          oldestMessageId: null,
+          limit: 250,
+        });
+        setMsgLoading(false);
+      }
+    } catch (_) { /* ignore */ }
+
     try {
       const { data } = await getMessages(forPeer, 60);
       // تجاهل الاستجابة إذا تغيّر peer أو أُطلق تحميل أحدث
       if (mySeq !== peerLoadSeqRef.current) return;
-      replaceConversationMessages(forPeer, data?.items || [], {
+      const items = data?.items || [];
+      replaceConversationMessages(forPeer, items, {
         hasMore: Boolean(data?.paging?.has_more),
         oldestMessageId: data?.paging?.next_before_id,
         limit: 250,
       });
+      // ✅ v88.76: حفظ آخر الرسائل في كاش الجلسات لعرضها بلا نت
+      if (items.length) offlineCache.cacheMessagesForPeer(forPeer, items).catch(() => {});
       // ✅ v88.58 FIX #2 (2026-07-24): إخطار مستمعي سجلّ المكالمات لإعادة حقن الفقاعات
       //    بعد أن يكون replaceConversationMessages قد مسحها من الـ store.
       try {

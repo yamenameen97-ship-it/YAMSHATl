@@ -11,6 +11,8 @@ import useIsMobile from '../hooks/useIsMobile.js';
 import StoriesBar from '../components/stories/StoriesBar.jsx';
 // v88.73 — فقاعة إعدادات الشات (بجانب البحث)
 import ChatSettingsPopover from '../components/chat/ChatSettingsPopover.jsx';
+// ✅ v88.76 — كاش الجلسات للتصفح بلا نت (Offline PWA)
+import offlineCache from '../offline/offlineSessionCache.js';
 
 /**
  * Inbox (v36) — الصفحة الرئيسية للشات
@@ -644,6 +646,21 @@ export default function Inbox() {
     return () => { inboxMountedRef.current = false; };
   }, []);
 
+  // ✅ v88.76 Offline PWA: تحميل قائمة الدردشات من IndexedDB فوراً عند البدء
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cachedThreads = await offlineCache.getCachedThreadsSnapshot();
+        if (!cancelled && Array.isArray(cachedThreads) && cachedThreads.length) {
+          setThreads(cachedThreads);
+          setLoading(false);
+        }
+      } catch (_) { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const loadData = useCallback(
     async (silent = false) => {
       if (silent) setRefreshing(true);
@@ -663,9 +680,13 @@ export default function Inbox() {
 
       if (threadsRes.status === 'fulfilled') {
         const nextThreads = Array.isArray(threadsRes.value?.data) ? threadsRes.value.data : [];
-        setThreads(nextThreads.map(normalizeThread).filter((item) => item.username));
+        const normalized = nextThreads.map(normalizeThread).filter((item) => item.username);
+        setThreads(normalized);
+        // ✅ v88.76: تخزين سناب-شوت لعرض الدردشات بلا نت
+        offlineCache.cacheThreadsSnapshot(normalized).catch(() => {});
       } else {
-        setThreads([]);
+        // ⚠️ v88.76: لا نمسح الدردشات المُخزّنة إن فشل الطلب — نبقي كاش IndexedDB
+        setThreads((prev) => prev && prev.length ? prev : []);
       }
 
       if (notificationsRes.status === 'fulfilled') {

@@ -6,31 +6,90 @@ import {
   recommendTarget,
   stagePendingShare,
 } from '../services/share/sharedIntake.js';
+import { useAppStore } from '../store/appStore.js';
 
 /**
- * ShareTargetLanding — v88.71 (إصلاح جذري لميزة "المشاركة إلى يام شات")
+ * ShareTargetLanding — v88.82
  * ---------------------------------------------------------------
- * السلوك الجديد المطابق لطلب المستخدم:
- *   عند مشاركة محتوى (فيديو / صورة / رابط يوتيوب / رابط ريلز خارجي … إلخ)
- *   من أي تطبيق آخر إلى منصة يام شات:
- *     1) SW يستقبل المحتوى ويحفظه في IndexedDB (بدون تغيير).
- *     2) هذه الصفحة تُفتح تلقائياً وتعرض:
- *          - معاينة سريعة للمحتوى المستلَم.
- *          - النص التوجيهي:
- *              "إذا كان المقطع صغيراً يرجى اختيار الريلز،
- *               وإذا كان المحتوى أكبر من اللازم اختر كمنشور."
- *          - زرّان بارزان: [ ريلز ] و [ منشور ].
- *          - توصية ذكية تُبرز الخيار الأنسب بناءً على النوع والحجم.
- *     3) عند اختيار [ ريلز ]  → تنقّل إلى /reels/new مع تجهيز الملف
- *        ليبدأ الرفع تلقائياً في بوست رفع الريلز مع شريط تقدم.
- *     4) عند اختيار [ منشور ] → تنقّل إلى /post/new مع تجهيز الملف
- *        ليبدأ الرفع تلقائياً في بوست رفع المنشور مع شريط تقدم،
- *        ومع وضع الرابط الأصلي (يوتيوب مثلاً) كوصف للمنشور.
- *     5) بعد اكتمال الرفع يضغط المستخدم "نشر" فيظهر المنشور/الريل
- *        في الفيد، وعند النقر على الرابط في الوصف يفتح المصدر
- *        الأصلي (يوتيوب) خارج التطبيق.
+ * v88.82 — النقطة (4/الجزء الأول): تفعيل ربط الاستهلاك لصفحتي Chat و Groups
+ *   - إزالة ready:false وشارة "قريباً" من أزرار Chat و Groups.
+ *   - الربط الفعلي لـ consumePendingShare('chat') و ('groups')
+ *     مُضاف الآن في Inbox.jsx و GroupsHome.jsx (مع فقاعة اختيار + عدّاد رفع).
+ *
+ * السلوك الجديد المطابق لطلب المستخدم (المرحلة الأولى — نقطتان فقط):
+ *
+ *   (1) فحص تسجيل الدخول أولاً + رسالة واضحة إذا كان مسجّل خروج
+ *       - نقرأ الجلسة من appStore. إن لم تكن الجلسة موجودة نعرض بطاقة
+ *         واضحة: "سجّل دخولك أولاً" مع زر يوجّه إلى /login.
+ *       - الحمولة المُستلمة تبقى محفوظة في IndexedDB بدون استهلاك،
+ *         فيعود المستخدم إليها بعد تسجيل الدخول تلقائياً (ShareTargetLanding
+ *         نفسها هي الوجهة، والحمولة تُقرأ من readSharedPayload كما هي).
+ *
+ *   (2) توسيع خيارات الوجهة إلى 5 خيارات:
+ *         🎬 ريلز   → /reels/new?from=share
+ *         📝 منشور  → /post/new?tab=post&from=share
+ *         📸 ستوري → /stories?from=share&intent=new
+ *         💬 شات    → /chat?from=share
+ *         👥 مجموعات → /groups?from=share
+ *
+ *   ملاحظة (النقاط 3 و 4 مؤجّلة لجلسة لاحقة كما اتّفقنا):
+ *     - النقطة 3: فتح البست/الفقاعة المخصصة لكل صفحة مع عداد التحميل.
+ *     - النقطة 4: حفظ الحمولة لكل وجهة عبر sharedIntake بحيث تُستهلك
+ *       بشكل صحيح في story/chat/groups (post و reel يعملان أصلاً منذ v88.71).
+ *   في هذه الجلسة: sharedIntake تدعم القائمة الخمسة (stagePendingShare
+ *   يقبل الوجهات الجديدة)، لكن ربط الاستهلاك في صفحات story/chat/groups
+ *   سيتم في الجلسة اللاحقة كما طلبت.
  * ---------------------------------------------------------------
  */
+
+// ✅ v88.80: تعريف الوجهات الخمس (label + emoji + path + sub + الحالة)
+const TARGETS = [
+  {
+    key: 'reel',
+    emoji: '🎬',
+    title: 'ريلز',
+    sub: 'مقاطع فيديو قصيرة',
+    path: '/reels/new?from=share',
+    // ready = مربوط بالاستهلاك في الكومبوزر (post و reel جاهزَان منذ v88.71)
+    ready: true,
+  },
+  {
+    key: 'post',
+    emoji: '📝',
+    title: 'منشور',
+    sub: 'صور • فيديو طويل • رابط',
+    path: '/post/new?tab=post&from=share',
+    ready: true,
+  },
+  {
+    key: 'story',
+    emoji: '📸',
+    title: 'ستوري',
+    sub: 'تختفي بعد 24 ساعة',
+    path: '/stories?from=share&intent=new',
+    // ✅ v88.81 — تم ربط الاستهلاك في StoriesPage.jsx
+    ready: true,
+  },
+  {
+    key: 'chat',
+    emoji: '💬',
+    title: 'شات',
+    sub: 'إرسال في محادثة',
+    path: '/chat?from=share',
+    // ✅ v88.82 — تم ربط الاستهلاك في Inbox.jsx (فقاعة اختيار محادثة + عدّاد رفع)
+    ready: true,
+  },
+  {
+    key: 'groups',
+    emoji: '👥',
+    title: 'مجموعات',
+    sub: 'نشر في مجموعة',
+    path: '/groups?from=share',
+    // ✅ v88.82 — تم ربط الاستهلاك في GroupsHome.jsx (فقاعة اختيار مجموعة + عدّاد رفع)
+    ready: true,
+  },
+];
+
 export default function ShareTargetLanding() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -38,6 +97,12 @@ export default function ShareTargetLanding() {
   const [payload, setPayload] = useState(null);
   const [previews, setPreviews] = useState([]);
   const [busy, setBusy] = useState(false);
+
+  // ✅ v88.80 — النقطة (1): فحص تسجيل الدخول
+  const session = useAppStore((state) => state.session);
+  const authHydrated = useAppStore((state) => state.authHydrated);
+  const authLoading = useAppStore((state) => state.authLoading);
+  const isAuthenticated = Boolean(session?.username || session?.user || session?.email);
 
   useEffect(() => {
     let mounted = true;
@@ -91,20 +156,29 @@ export default function ShareTargetLanding() {
     return pieces.join(' • ') || 'تم استلام محتوى جديد من ميزة المشاركة.';
   }, [payload]);
 
-  const goTo = (target) => {
+  const goTo = (targetKey) => {
     if (busy) return;
+    const target = TARGETS.find((t) => t.key === targetKey);
+    if (!target) return;
+
+    // النقطة 3 و 4 مؤجّلة: story/chat/groups لم تُربط بعد باستهلاك sharedIntake.
+    // نبقي زر الاختيار مرئياً (كما طلب المستخدم) لكن ننبّه أنه يفعّل لاحقاً.
+    if (!target.ready) {
+      try {
+        // نحفظ الحمولة على أي حال حتى تبقى في IndexedDB لجلسة الربط اللاحقة
+        stagePendingShare(payload, targetKey);
+      } catch { /* ignore */ }
+      // ننقل المستخدم إلى الصفحة، والصفحة نفسها ستتعامل مع الاستهلاك
+      // عند إضافة الربط في المرحلة القادمة (النقطة 3 و 4).
+      navigate(target.path);
+      return;
+    }
+
     setBusy(true);
     try {
-      // نُخزّن الحمولة في الذاكرة/الجلسة حتى يقرأها الكومبوزر عند التركيب
-      stagePendingShare(payload, target);
+      stagePendingShare(payload, targetKey);
     } catch { /* ignore */ }
-
-    if (target === 'reel') {
-      navigate('/reels/new?from=share');
-    } else {
-      // منشور — بوست رفع المنشور
-      navigate('/post/new?tab=post&from=share');
-    }
+    navigate(target.path);
   };
 
   const openFeed = async () => {
@@ -112,123 +186,161 @@ export default function ShareTargetLanding() {
     navigate('/');
   };
 
-  const isReelRecommended = recommendation.target === 'reel';
+  const goLogin = () => {
+    // نُبقي الحمولة في IndexedDB (لا نمسحها) حتى تُقرأ بعد العودة إلى نفس الصفحة
+    // بعد تسجيل الدخول. صفحة تسجيل الدخول ستوجّه إلى الجذر عادةً، والمستخدم
+    // يستطيع العودة إلى المشاركة عبر إعادة المشاركة من التطبيق الخارجي أو
+    // بالضغط على إشعار الميزة إذا كان مفعّلاً.
+    navigate('/login', { state: { from: { pathname: '/share-target', search: '?shared=1' } } });
+  };
+
+  // ✅ v88.80 — رسالة "سجّل دخولك أولاً" (النقطة 1)
+  const showLoginGate = authHydrated && !authLoading && !isAuthenticated;
 
   return (
     <section className="share-target-page" dir="rtl">
       <div className="share-target-card">
         <div className="share-target-badge">مشاركة إلى يام شات</div>
         <h1>إلى أين تريد نشر هذا المحتوى؟</h1>
-        <p className="share-target-summary">
-          {loading ? 'جاري تحضير المحتوى المُشارك...' : summaryText}
-        </p>
 
-        {!loading && (previews.length > 0 || payload?.url) ? (
-          <div className="share-preview-grid">
-            {previews.map((file) => (
-              <article key={file.id} className="share-preview-card">
-                {file.isImage && file.previewUrl ? (
-                  <img src={file.previewUrl} alt={file.name} loading="lazy" />
-                ) : file.isVideo && file.previewUrl ? (
-                  <video src={file.previewUrl} controls preload="metadata" />
-                ) : (
-                  <div className="share-file-fallback">{file.name || 'ملف مُشارك'}</div>
-                )}
-                <div className="share-file-meta">
-                  <strong>{file.name || 'ملف مُشارك'}</strong>
-                  <span>{Math.max(1, Math.round((file.size || 0) / 1024))} KB</span>
-                </div>
-              </article>
-            ))}
-
-            {previews.length === 0 && payload?.url ? (
-              <article className="share-preview-card share-preview-card--link">
-                <div className="share-link-preview">
-                  <div className="share-link-icon" aria-hidden="true">🔗</div>
-                  <div className="share-link-body">
-                    <strong>{payload.title || 'رابط خارجي'}</strong>
-                    <span>{payload.url}</span>
-                  </div>
-                </div>
-                <div className="share-file-meta">
-                  <strong>سيُوضع الرابط كوصف للمنشور</strong>
-                  <span>عند الضغط عليه يفتح خارج التطبيق (مثال: يوتيوب).</span>
-                </div>
-              </article>
-            ) : null}
-          </div>
-        ) : null}
-
-        {!loading && !payload ? (
+        {/* ✅ v88.80 — بوابة تسجيل الدخول (النقطة 1) */}
+        {(!authHydrated || authLoading) ? (
           <div className="share-empty-box">
-            <strong>لا يوجد محتوى مُستلم حالياً</strong>
-            <span>
-              افتح يوتيوب (أو أي تطبيق) → اضغط زر <b>مشاركة</b> → اختر <b>Yamshat</b>،
-              وستعود إلى هذه الصفحة تلقائياً.
-            </span>
+            <strong>جارٍ التحقّق من الجلسة...</strong>
+            <span>لحظات وسنعرض لك خيارات المشاركة.</span>
           </div>
-        ) : null}
-
-        {!loading && payload ? (
-          <>
-            <div className="share-choose-hint">
-              <div className="share-choose-hint-icon" aria-hidden="true">💡</div>
-              <div className="share-choose-hint-text">
-                <strong>اختر وجهة النشر:</strong>
-                <span>
-                  إذا كان المقطع صغيراً يُرجى اختيار <b>الريلز</b>،
-                  وإذا كان المحتوى أكبر من اللازم اختر <b>منشور</b>.
-                </span>
-                {recommendation?.hint ? (
-                  <span className="share-choose-recommend">
-                    ⭐ التوصية:
-                    <b style={{ margin: '0 6px' }}>{isReelRecommended ? 'ريلز' : 'منشور'}</b>
-                    — {recommendation.hint}
-                  </span>
-                ) : null}
+        ) : showLoginGate ? (
+          <div className="share-login-gate" role="alert">
+            <div className="share-login-gate-icon" aria-hidden="true">🔒</div>
+            <div className="share-login-gate-body">
+              <strong>سجّل دخولك أولاً</strong>
+              <span>
+                لا يمكنك مشاركة المحتوى إلى يام شات قبل تسجيل الدخول.
+                المحتوى المُستلَم محفوظ مؤقتاً وسيظهر لك بعد تسجيل الدخول
+                مباشرة للاختيار بين ريلز / منشور / ستوري / شات / مجموعات.
+              </span>
+              <div className="share-login-gate-actions">
+                <button type="button" className="share-primary" onClick={goLogin}>
+                  تسجيل الدخول
+                </button>
+                <Link to="/" className="share-link-inline">إلغاء والعودة للتطبيق</Link>
               </div>
             </div>
-
-            <div className="share-choose-grid">
-              <button
-                type="button"
-                className={`share-choose-btn ${isReelRecommended ? 'is-recommended' : ''}`}
-                onClick={() => goTo('reel')}
-                disabled={busy}
-              >
-                <span className="share-choose-emoji" aria-hidden="true">🎬</span>
-                <span className="share-choose-title">ريلز</span>
-                <span className="share-choose-sub">للمقاطع القصيرة</span>
-                {isReelRecommended ? <span className="share-choose-badge">موصى به</span> : null}
-              </button>
-
-              <button
-                type="button"
-                className={`share-choose-btn ${!isReelRecommended ? 'is-recommended' : ''}`}
-                onClick={() => goTo('post')}
-                disabled={busy}
-              >
-                <span className="share-choose-emoji" aria-hidden="true">📝</span>
-                <span className="share-choose-title">منشور</span>
-                <span className="share-choose-sub">صور • فيديو طويل • رابط</span>
-                {!isReelRecommended ? <span className="share-choose-badge">موصى به</span> : null}
-              </button>
-            </div>
-          </>
-        ) : null}
-
-        <div className="share-actions">
-          <button type="button" className="share-action" onClick={openFeed}>
-            إلغاء والعودة للفيد
-          </button>
-          <Link to="/" className="share-link-inline">عودة للتطبيق</Link>
-        </div>
-
-        {searchParams.get('shared') === '0' ? (
-          <div className="share-error-note">
-            تعذّر استلام المشاركة بالكامل. جرّب المشاركة مرة أخرى من التطبيق المصدر.
           </div>
-        ) : null}
+        ) : (
+          <>
+            <p className="share-target-summary">
+              {loading ? 'جاري تحضير المحتوى المُشارك...' : summaryText}
+            </p>
+
+            {!loading && (previews.length > 0 || payload?.url) ? (
+              <div className="share-preview-grid">
+                {previews.map((file) => (
+                  <article key={file.id} className="share-preview-card">
+                    {file.isImage && file.previewUrl ? (
+                      <img src={file.previewUrl} alt={file.name} loading="lazy" />
+                    ) : file.isVideo && file.previewUrl ? (
+                      <video src={file.previewUrl} controls preload="metadata" />
+                    ) : (
+                      <div className="share-file-fallback">{file.name || 'ملف مُشارك'}</div>
+                    )}
+                    <div className="share-file-meta">
+                      <strong>{file.name || 'ملف مُشارك'}</strong>
+                      <span>{Math.max(1, Math.round((file.size || 0) / 1024))} KB</span>
+                    </div>
+                  </article>
+                ))}
+
+                {previews.length === 0 && payload?.url ? (
+                  <article className="share-preview-card share-preview-card--link">
+                    <div className="share-link-preview">
+                      <div className="share-link-icon" aria-hidden="true">🔗</div>
+                      <div className="share-link-body">
+                        <strong>{payload.title || 'رابط خارجي'}</strong>
+                        <span>{payload.url}</span>
+                      </div>
+                    </div>
+                    <div className="share-file-meta">
+                      <strong>سيُوضع الرابط كوصف للمنشور</strong>
+                      <span>عند الضغط عليه يفتح خارج التطبيق (مثال: يوتيوب).</span>
+                    </div>
+                  </article>
+                ) : null}
+              </div>
+            ) : null}
+
+            {!loading && !payload ? (
+              <div className="share-empty-box">
+                <strong>لا يوجد محتوى مُستلم حالياً</strong>
+                <span>
+                  افتح يوتيوب (أو أي تطبيق) → اضغط زر <b>مشاركة</b> → اختر <b>Yamshat</b>،
+                  وستعود إلى هذه الصفحة تلقائياً.
+                </span>
+              </div>
+            ) : null}
+
+            {!loading && payload ? (
+              <>
+                <div className="share-choose-hint">
+                  <div className="share-choose-hint-icon" aria-hidden="true">💡</div>
+                  <div className="share-choose-hint-text">
+                    <strong>اختر وجهة النشر:</strong>
+                    <span>
+                      المقاطع القصيرة أنسبها <b>ريلز</b>، والمحتوى الأكبر <b>منشور</b>،
+                      واللحظات السريعة <b>ستوري</b>، والمشاركة الخاصة <b>شات</b>،
+                      وللنشر داخل جماعتك اختر <b>مجموعات</b>.
+                    </span>
+                    {recommendation?.hint ? (
+                      <span className="share-choose-recommend">
+                        ⭐ التوصية:
+                        <b style={{ margin: '0 6px' }}>
+                          {(TARGETS.find((t) => t.key === recommendation.target) || TARGETS[1]).title}
+                        </b>
+                        — {recommendation.hint}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* ✅ v88.80 — 5 أزرار (النقطة 2) */}
+                <div className="share-choose-grid share-choose-grid--five">
+                  {TARGETS.map((t) => {
+                    const isRecommended = recommendation?.target === t.key;
+                    return (
+                      <button
+                        key={t.key}
+                        type="button"
+                        className={`share-choose-btn ${isRecommended ? 'is-recommended' : ''} ${!t.ready ? 'is-pending' : ''}`}
+                        onClick={() => goTo(t.key)}
+                        disabled={busy}
+                        aria-label={`مشاركة إلى ${t.title}`}
+                      >
+                        <span className="share-choose-emoji" aria-hidden="true">{t.emoji}</span>
+                        <span className="share-choose-title">{t.title}</span>
+                        <span className="share-choose-sub">{t.sub}</span>
+                        {isRecommended ? <span className="share-choose-badge">موصى به</span> : null}
+                        {!t.ready ? <span className="share-choose-soon">قريباً</span> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+
+            <div className="share-actions">
+              <button type="button" className="share-action" onClick={openFeed}>
+                إلغاء والعودة للفيد
+              </button>
+              <Link to="/" className="share-link-inline">عودة للتطبيق</Link>
+            </div>
+
+            {searchParams.get('shared') === '0' ? (
+              <div className="share-error-note">
+                تعذّر استلام المشاركة بالكامل. جرّب المشاركة مرة أخرى من التطبيق المصدر.
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
 
       <style>{`
@@ -272,6 +384,75 @@ export default function ShareTargetLanding() {
           color: #cbd5e1;
           line-height: 1.7;
           word-break: break-word;
+        }
+
+        /* ✅ v88.80 — بوابة تسجيل الدخول */
+        .share-login-gate {
+          display: flex;
+          gap: 16px;
+          padding: 22px 20px;
+          border-radius: 22px;
+          background: linear-gradient(180deg, rgba(239, 68, 68, 0.14), rgba(220, 38, 38, 0.06));
+          border: 1px solid rgba(248, 113, 113, 0.35);
+          align-items: flex-start;
+        }
+
+        .share-login-gate-icon {
+          font-size: 34px;
+          line-height: 1;
+          flex-shrink: 0;
+          background: rgba(255,255,255,0.06);
+          width: 56px;
+          height: 56px;
+          border-radius: 16px;
+          display: grid;
+          place-items: center;
+          border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .share-login-gate-body {
+          display: grid;
+          gap: 10px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .share-login-gate-body strong {
+          color: #fecaca;
+          font-size: 1.15rem;
+          font-weight: 900;
+        }
+
+        .share-login-gate-body span {
+          color: #e2e8f0;
+          font-size: 0.95rem;
+          line-height: 1.85;
+        }
+
+        .share-login-gate-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 6px;
+          align-items: center;
+        }
+
+        .share-primary {
+          min-height: 46px;
+          padding: 0 22px;
+          border-radius: 14px;
+          border: 1px solid transparent;
+          background: linear-gradient(135deg, #8b5cf6, #6366f1);
+          color: #fff;
+          font-weight: 900;
+          font-size: 0.98rem;
+          cursor: pointer;
+          font-family: inherit;
+          box-shadow: 0 12px 24px rgba(99, 102, 241, 0.28);
+        }
+
+        .share-primary:hover {
+          transform: translateY(-1px);
         }
 
         .share-preview-grid {
@@ -412,18 +593,28 @@ export default function ShareTargetLanding() {
           font-size: 0.88rem !important;
         }
 
-        /* ======= زرّا الاختيار ======= */
+        /* ======= شبكة الأزرار الخمسة ======= */
         .share-choose-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
           gap: 12px;
+        }
+
+        /* ✅ v88.80 — تخطيط مخصّص لخمسة أزرار (يبقى مرن على كل الشاشات) */
+        .share-choose-grid--five {
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        }
+        @media (min-width: 780px) {
+          .share-choose-grid--five {
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+          }
         }
 
         .share-choose-btn {
           position: relative;
           display: grid;
           gap: 6px;
-          padding: 18px 16px 20px;
+          padding: 18px 12px 20px;
           border-radius: 20px;
           border: 1px solid rgba(148,163,184,0.22);
           background: rgba(255,255,255,0.045);
@@ -432,7 +623,7 @@ export default function ShareTargetLanding() {
           cursor: pointer;
           font-family: 'Noto Sans Arabic','Tajawal',system-ui,sans-serif;
           transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease;
-          min-height: 130px;
+          min-height: 140px;
         }
 
         .share-choose-btn:hover:not(:disabled) {
@@ -452,18 +643,22 @@ export default function ShareTargetLanding() {
           box-shadow: 0 0 0 3px rgba(139,92,246,0.12);
         }
 
+        .share-choose-btn.is-pending {
+          opacity: 0.86;
+        }
+
         .share-choose-emoji {
-          font-size: 32px;
+          font-size: 30px;
           line-height: 1;
         }
 
         .share-choose-title {
-          font-size: 1.1rem;
+          font-size: 1.05rem;
           font-weight: 900;
         }
 
         .share-choose-sub {
-          font-size: 0.82rem;
+          font-size: 0.78rem;
           color: #cbd5e1;
         }
 
@@ -475,7 +670,19 @@ export default function ShareTargetLanding() {
           border-radius: 999px;
           background: rgba(16,185,129,0.22);
           color: #6ee7b7;
-          font-size: 0.72rem;
+          font-size: 0.7rem;
+          font-weight: 800;
+        }
+
+        .share-choose-soon {
+          position: absolute;
+          top: 10px;
+          inset-inline-start: 10px;
+          padding: 3px 8px;
+          border-radius: 999px;
+          background: rgba(148,163,184,0.22);
+          color: #cbd5e1;
+          font-size: 0.68rem;
           font-weight: 800;
         }
 

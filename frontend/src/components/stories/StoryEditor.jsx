@@ -161,12 +161,13 @@ function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
   if (stroke) ctx.stroke();
 }
 
-export default function StoryEditor({ file, onClose, onSuccess }) {
+export default function StoryEditor({ file, onClose, onSuccess, initialCaption = '', sharedIntake = null, sharedPrepareProgress = 0 }) {
   const [previewUrl, setPreviewUrl] = useState(() => (file ? URL.createObjectURL(file) : ''));
   const [mediaType, setMediaType] = useState(() => (file?.type?.startsWith('video') ? 'video' : file ? 'image' : 'text'));
   const [stickers, setStickers] = useState([]);
   const [texts, setTexts] = useState([]);
-  const [caption, setCaption] = useState('');
+  // ✅ v88.81 — النقطة (3): إدراج الوصف/الرابط المُشارَك تلقائياً ك caption افتراضي
+  const [caption, setCaption] = useState(initialCaption || '');
   const [privacy, setPrivacy] = useState(() => _readDefaultPrivacy());
   const [filterName, setFilterName] = useState('');
   const [music, setMusic] = useState('');
@@ -414,6 +415,32 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
           </button>
         </div>
 
+        {/* ✅ v88.81 — النقطة (3): شارة + عدّاد تحضير للمحتوى الوارد من مشاركة خارجية */}
+        {sharedIntake ? (
+          <div className="yam-story-share-intake">
+            <div className="yam-story-share-intake-row">
+              <span className="yam-story-share-intake-badge">📥 محتوى مُشارك خارجي</span>
+              {sharedIntake.sourceUrl ? (
+                <a href={sharedIntake.sourceUrl} target="_blank" rel="noreferrer noopener" className="yam-story-share-intake-link">
+                  {sharedIntake.sourceTitle || sharedIntake.sourceUrl}
+                </a>
+              ) : null}
+            </div>
+            {sharedIntake.fileMeta && sharedPrepareProgress < 100 ? (
+              <div className="yam-story-share-intake-status">
+                <span>جارٍ تحضير الملف للرفع… {sharedPrepareProgress}%</span>
+                <div className="yam-story-share-intake-track">
+                  <div className="yam-story-share-intake-fill" style={{ width: `${sharedPrepareProgress}%` }} />
+                </div>
+              </div>
+            ) : sharedIntake.fileMeta ? (
+              <div className="yam-story-share-intake-status ready">✅ اكتمل التحضير — اضغط “نشر” لرفع القصة.</div>
+            ) : (
+              <div className="yam-story-share-intake-status ready">✅ تمت إضافة الرابط/النص إلى وصف القصة.</div>
+            )}
+          </div>
+        ) : null}
+
         <div ref={stageRef} className={`yam-editor-stage ${mediaType === 'text' ? 'text-mode' : ''}`}>
           {mediaType === 'video' ? (
             <video src={previewUrl} autoPlay loop muted playsInline style={{ filter: activeFilterCss }} className="yam-editor-media" />
@@ -573,6 +600,15 @@ export default function StoryEditor({ file, onClose, onSuccess }) {
 }
 
 const editorStyles = `
+.yam-story-share-intake { background:linear-gradient(180deg,rgba(139,92,246,.16),rgba(99,102,241,.08)); border:1px solid rgba(167,139,250,.35); border-radius:14px; margin:10px 12px 0; padding:10px 12px; color:#fff; display:grid; gap:6px; }
+.yam-story-share-intake-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.yam-story-share-intake-badge { background:rgba(139,92,246,.22); color:#e9d5ff; border-radius:999px; padding:3px 10px; font-size:12px; font-weight:800; }
+.yam-story-share-intake-link { color:#93c5fd; font-size:12px; text-decoration:underline; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:ltr; max-width:100%; }
+.yam-story-share-intake-status { color:#cbd5e1; font-size:12px; }
+.yam-story-share-intake-status.ready { color:#a7f3d0; }
+.yam-story-share-intake-track { height:4px; background:rgba(255,255,255,.14); border-radius:999px; overflow:hidden; margin-top:4px; }
+.yam-story-share-intake-fill { height:100%; background:linear-gradient(90deg,#8b5cf6,#ec4899); transition:width .2s ease; }
+
 .yam-story-editor-overlay { font-family:'Noto Sans Arabic','Tajawal',system-ui,sans-serif; position:fixed; inset:0; background:rgba(0,0,0,.94); z-index:2100; display:flex; align-items:stretch; justify-content:center; overflow:hidden; }
 .yam-story-editor { width:100%; height:100%; max-width:100vw; background:#0a0a10; display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; }
 @media (min-width: 900px) { .yam-story-editor-overlay { padding:20px; align-items:center; } .yam-story-editor { max-width:460px; max-height:96vh; border-radius:18px; box-shadow:0 20px 60px rgba(0,0,0,.7); } }

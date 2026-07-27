@@ -1,15 +1,18 @@
-// services/share/sharedIntake.js — v88.71
+// services/share/sharedIntake.js — v88.80 (5 وجهات + فحص تسجيل الدخول)
 // ---------------------------------------------------------------
 // جسر (Bridge) بين Service Worker (share_target) والمكوّنات في الواجهة.
 // عندما يقوم المستخدم بمشاركة محتوى من تطبيق آخر (YouTube، Instagram،
 // المعرض، متصفح آخر… إلخ) إلى منصة يام شات:
 //   1) SW يستقبل الطلب POST /share-target ويحفظ الحمولة في IndexedDB.
 //   2) SW يوجّه إلى /#/share-target?shared=1 (ShareTargetLanding).
-//   3) ShareTargetLanding يستدعي readSharedPayload() لعرض الخيارين
-//      (ريلز / منشور) — بناءً على حجم الملف يعرض توصية ذكية.
+//   3) ShareTargetLanding يتحقّق أولاً من تسجيل الدخول (v88.80):
+//        - إن لم يكن مسجّلاً → يعرض رسالة واضحة "سجّل دخولك أولاً"
+//          مع زر لصفحة تسجيل الدخول، ويحتفظ بالحمولة معلّقة في IndexedDB
+//          لتُستهلَك تلقائياً بعد تسجيل الدخول والعودة.
+//        - إن كان مسجّلاً → يعرض المعاينة و 5 خيارات: ريلز/منشور/ستوري/شات/مجموعات.
 //   4) عند الاختيار، نُخزّن الحمولة في sessionStorage (كـ blob URL + meta)
-//      ونحوّل المستخدم إلى PostComposer أو ReelComposer.
-//   5) الكومبوزر المستهدف يقرأ consumePendingShare() تلقائياً عند التركيب،
+//      ونحوّل المستخدم إلى الصفحة/الكومبوزر المناسب.
+//   5) الكومبوزر المستهدف يقرأ consumePendingShare(target) تلقائياً عند التركيب،
 //      يبدأ الرفع مع شريط تقدم، ويضع الرابط الأصلي (YouTube …) في الوصف.
 // ---------------------------------------------------------------
 
@@ -19,6 +22,9 @@ const SHARE_KEY = 'latest';
 
 // مفتاح in-memory + sessionStorage لتمرير الحمولة إلى الكومبوزر
 const PENDING_KEY = 'yamshat.pendingShare';
+
+// ✅ v88.80: قائمة الوجهات المدعومة (5 وجهات)
+export const SHARE_TARGETS = ['reel', 'post', 'story', 'chat', 'groups'];
 
 // ---- في الذاكرة (للـ Blob الأصلي — لا يُسلسل في sessionStorage) ----
 let _memoryPending = null;
@@ -67,13 +73,15 @@ export async function clearSharedPayload() {
   }
 }
 
-// ---------- التصنيف الذكي: ريلز أو منشور؟ ----------
-// معايير التوصية:
+// ---------- التصنيف الذكي: أي وجهة موصى بها؟ ----------
+// معايير التوصية (v88.80 — 5 وجهات):
 //   - لا يوجد ملف (رابط فقط مثل YouTube link)  → post  (منشور مع رابط في الوصف)
-//   - ملف صورة                                 → post  (المنشور يدعم الصور)
+//   - ملف صورة صغير جداً (≤ 5MB)              → story (ستوري صور مناسب لـ 24 ساعة)
+//   - ملف صورة أكبر                            → post  (المنشور يدعم الصور)
+//   - فيديو ≤ 30 ثانية أو ≤ 30MB               → story (ستوري فيديو قصير)
 //   - فيديو ≤ 90 ثانية أو ≤ 60MB               → reel  (ريلز)
 //   - فيديو أطول أو أكبر                       → post  (منشور فيديو طويل)
-// نُرجع فقط توصية — القرار النهائي للمستخدم عبر الأزرار.
+// نُرجع فقط توصية — القرار النهائي للمستخدم عبر الأزرار الخمسة.
 export function recommendTarget(payload) {
   if (!payload) return { target: 'post', reason: 'no-payload' };
 
@@ -93,6 +101,13 @@ export function recommendTarget(payload) {
   const sizeMB = Number(firstFile.size || 0) / (1024 * 1024);
 
   if (type.startsWith('image/')) {
+    if (sizeMB <= 5) {
+      return {
+        target: 'story',
+        reason: 'small-image',
+        hint: 'صورة صغيرة — مناسبة تماماً لستوري تختفي بعد 24 ساعة.',
+      };
+    }
     return {
       target: 'post',
       reason: 'image',
@@ -101,8 +116,15 @@ export function recommendTarget(payload) {
   }
 
   if (type.startsWith('video/')) {
+    // فيديو قصير جداً → ستوري
+    if (sizeMB <= 30) {
+      return {
+        target: 'story',
+        reason: 'micro-video',
+        hint: 'مقطع قصير جداً — الأنسب لستوري 24 ساعة.',
+      };
+    }
     // الحد الحاسم: 60MB. الفيديوهات الأصغر عادةً قصيرة (ريلز).
-    // الأكبر منها تُوجّه كمنشور طويل.
     if (sizeMB <= 60) {
       return {
         target: 'reel',
@@ -110,6 +132,7 @@ export function recommendTarget(payload) {
         hint: 'المقطع قصير — الأنسب رفعه كريلز.',
       };
     }
+    // الأكبر منها تُوجّه كمنشور طويل.
     return {
       target: 'post',
       reason: 'long-video',
@@ -130,6 +153,9 @@ export function stagePendingShare(payload, chosenTarget) {
     return null;
   }
 
+  // ✅ v88.80: تحقّق أن الوجهة ضمن القائمة المعتمدة
+  const target = SHARE_TARGETS.includes(chosenTarget) ? chosenTarget : 'post';
+
   const files = Array.isArray(payload.files) ? payload.files : [];
   const firstFile = files[0] || null;
 
@@ -141,7 +167,7 @@ export function stagePendingShare(payload, chosenTarget) {
 
   // نضع Blob في الذاكرة، وميتاداتا في sessionStorage
   _memoryPending = {
-    target: chosenTarget, // 'reel' | 'post'
+    target, // 'reel' | 'post' | 'story' | 'chat' | 'groups'
     file: firstFile ? firstFile.blob : null,
     fileMeta: firstFile ? {
       name: firstFile.name || 'shared',
@@ -159,7 +185,7 @@ export function stagePendingShare(payload, chosenTarget) {
   // (مثل reload بعد الاختيار قبل استهلاك الحمولة).
   try {
     sessionStorage.setItem(PENDING_KEY, JSON.stringify({
-      target: chosenTarget,
+      target,
       fileMeta: _memoryPending.fileMeta,
       description,
       sourceUrl: url,
@@ -172,8 +198,8 @@ export function stagePendingShare(payload, chosenTarget) {
   return _memoryPending;
 }
 
-// يستدعيها الكومبوزر (Post أو Reel) عند التركيب. تُرجع الحمولة إن وُجدت،
-// وتمسحها فوراً حتى لا تُعاد قراءتها في تنقل لاحق.
+// يستدعيها الكومبوزر (Post/Reel/Story/Chat/Groups) عند التركيب.
+// تُرجع الحمولة إن وُجدت، وتمسحها فوراً حتى لا تُعاد قراءتها في تنقل لاحق.
 export function consumePendingShare(expectedTarget) {
   const pending = _memoryPending;
   if (!pending) return null;

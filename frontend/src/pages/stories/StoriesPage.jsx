@@ -11,6 +11,8 @@ import {
 import { getMe } from '../../api/users.js';
 import { motion, AnimatePresence } from 'framer-motion';
 import offlineCache from '../../offline/offlineSessionCache.js';
+// ✅ v88.81 — النقطة (3): استهلاك حمولة المشاركة الواردة إلى صفحة Stories
+import { consumePendingShare } from '../../services/share/sharedIntake.js';
 
 export default function StoriesPage() {
   const [activeTab, setActiveTab] = useState('feed');
@@ -24,6 +26,12 @@ export default function StoriesPage() {
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
   const optimisticBlobUrlsRef = useRef(new Set());
+
+  // ✅ v88.81 — النقطة (3): حالة محتوى المشاركة الواردة
+  const [sharedIntake, setSharedIntake] = useState(null);
+  const [sharedCaption, setSharedCaption] = useState('');
+  const [sharedPrepareProgress, setSharedPrepareProgress] = useState(0);
+  const shareConsumedRef = useRef(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -63,6 +71,67 @@ export default function StoriesPage() {
   }, [activeGroupIndex, groups]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // ✅ v88.81 — النقطة (3): عند فتح الصفحة تفحّص إن كان هناك محتوى مُشارَك موجّه لـ story
+  // وتفتح فقاعة الرفع تلقائياً + عدّاد تحضير تقدّمي للملف.
+  useEffect(() => {
+    if (shareConsumedRef.current) return;
+    const pending = consumePendingShare('story');
+    if (!pending) return;
+    shareConsumedRef.current = true;
+
+    // الوصف/الرابط المشارك يدخل إلى الكابشن الافتراضي
+    setSharedCaption(pending.description || pending.sourceUrl || '');
+    setSharedIntake({
+      fileMeta: pending.fileMeta || null,
+      sourceUrl: pending.sourceUrl || '',
+      sourceTitle: pending.sourceTitle || '',
+      sourceText: pending.sourceText || '',
+      receivedAt: pending.receivedAt || null,
+    });
+
+    if (pending.file && pending.fileMeta) {
+      // محاكاة تحضير تدريجي للملف (لإظهار شريط تقدّم) ثم تمريره للمحرّر
+      setSharedPrepareProgress(5);
+      const total = Math.max(1, Number(pending.fileMeta.size || 0));
+      const start = Date.now();
+      // تقدّم تدريجي حتى يجهز الملف داخل المحرّر (مُقدّر حسب الحجم)
+      const estimatedMs = Math.min(1600, 400 + Math.round(total / (1024 * 512))); // ~0.5MB/tick
+      const timer = setInterval(() => {
+        const elapsed = Date.now() - start;
+        const pct = Math.min(95, Math.round((elapsed / estimatedMs) * 95));
+        setSharedPrepareProgress(pct);
+        if (pct >= 95) clearInterval(timer);
+      }, 80);
+
+      // تجهيز الملف للمحرّر (Blob جاهز فعلياً)
+      try {
+        const blob = pending.file;
+        const nativeFile = (blob instanceof File)
+          ? blob
+          : new File([blob], pending.fileMeta.name || 'shared', { type: pending.fileMeta.type || blob.type || 'application/octet-stream' });
+        setSelectedFile(nativeFile);
+        setActiveTab('create');
+        // إتمام العدّاد
+        setTimeout(() => {
+          clearInterval(timer);
+          setSharedPrepareProgress(100);
+        }, 220);
+      } catch (_) {
+        clearInterval(timer);
+        setSharedPrepareProgress(100);
+        setSelectedFile(null);
+        setActiveTab('create');
+      }
+
+      return () => clearInterval(timer);
+    }
+
+    // لا يوجد ملف — رابط/نص فقط → فتح قصة نصية
+    setSelectedFile(null);
+    setActiveTab('create');
+    setSharedPrepareProgress(100);
+  }, []);
 
   useEffect(() => () => {
     optimisticBlobUrlsRef.current.forEach((url) => {
@@ -330,8 +399,24 @@ export default function StoriesPage() {
         {activeTab === 'create' && (
           <StoryEditor
             file={selectedFile ?? null}
-            onClose={() => { setActiveTab('feed'); setSelectedFile(undefined); }}
-            onSuccess={handleUploadSuccess}
+            onClose={() => {
+              setActiveTab('feed');
+              setSelectedFile(undefined);
+              // ✅ v88.81 — مسح حالة المشاركة عند إغلاق المحرر
+              setSharedIntake(null);
+              setSharedCaption('');
+              setSharedPrepareProgress(0);
+            }}
+            onSuccess={(uploadedStory, ctx) => {
+              // ✅ v88.81 — مسح حالة المشاركة بعد النجاح
+              setSharedIntake(null);
+              setSharedCaption('');
+              setSharedPrepareProgress(0);
+              handleUploadSuccess(uploadedStory, ctx);
+            }}
+            initialCaption={sharedCaption}
+            sharedIntake={sharedIntake}
+            sharedPrepareProgress={sharedPrepareProgress}
           />
         )}
 

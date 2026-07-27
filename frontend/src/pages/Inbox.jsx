@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
-import { getChatThreads, markMessagesSeen, deleteThreadApi, deleteAndBlockThreadApi } from '../api/chat.js';
+import { getChatThreads, markMessagesSeen, deleteThreadApi, deleteAndBlockThreadApi, sendMessageApi } from '../api/chat.js';
 import { getNotifications, markNotificationRead, markNotificationsRead } from '../api/notifications.js';
 import { getGroups, createGroup } from '../api/groups.js';
 import { getMe, getUsers } from '../api/users.js';
@@ -13,6 +13,9 @@ import StoriesBar from '../components/stories/StoriesBar.jsx';
 import ChatSettingsPopover from '../components/chat/ChatSettingsPopover.jsx';
 // ✅ v88.76 — كاش الجلسات للتصفح بلا نت (Offline PWA)
 import offlineCache from '../offline/offlineSessionCache.js';
+// ✅ v88.82 — استهلاك مشاركة خارجية موجّهة للشات (Chat) + رفع الملف
+import { consumePendingShare } from '../services/share/sharedIntake.js';
+import mediaUploadService from '../services/media/mediaUploadService.js';
 
 /**
  * Inbox (v36) — الصفحة الرئيسية للشات
@@ -582,6 +585,17 @@ export default function Inbox() {
   const longPressTimerRef = useRef(null);
   const longPressFiredRef = useRef(false);
 
+  // ✅ v88.82 — فقاعة اختيار محادثة لاستقبال المحتوى المُشارَك خارجياً
+  //   sharePicker = { pending, previewUrl } | null
+  //   pending: الحمولة القادمة من consumePendingShare('chat')
+  //   previewUrl: blob URL لعرض معاينة الملف داخل الفقاعة
+  const [sharePicker, setSharePicker] = useState(null);
+  const [shareUploading, setShareUploading] = useState(false);
+  const [shareUploadPercent, setShareUploadPercent] = useState(0);
+  const [shareUploadStage, setShareUploadStage] = useState('idle');
+  const [shareError, setShareError] = useState('');
+  const shareConsumedRef = useRef(false);
+
   // حارس الضغط المطوّل — إذا استمر 550مس نفتح الفقاعة
   const startLongPress = useCallback((thread) => {
     if (!thread?.username) return;
@@ -645,6 +659,140 @@ export default function Inbox() {
     inboxMountedRef.current = true;
     return () => { inboxMountedRef.current = false; };
   }, []);
+
+  // ✅ v88.82 — استهلاك المشاركة الخارجية عند تركيب صفحة الشات
+  //   الوجهة المُتوقّعة هنا 'chat'. إذا وُجدت حمولة نفتح فقاعة اختيار المحادثة.
+  //   الحمولة تُستهلك مرّة واحدة فقط بحماية shareConsumedRef.
+  useEffect(() => {
+    if (shareConsumedRef.current) return;
+    const pending = consumePendingShare('chat');
+    if (!pending) return;
+    shareConsumedRef.current = true;
+    let previewUrl = '';
+    try {
+      if (pending.file) previewUrl = URL.createObjectURL(pending.file);
+    } catch { /* ignore */ }
+    setSharePicker({ pending, previewUrl });
+    setShareUploadPercent(0);
+    setShareUploadStage('idle');
+    setShareError('');
+    return () => {
+      // تنظيف عند إعادة التحميل
+      if (previewUrl) {
+        try { URL.revokeObjectURL(previewUrl); } catch { /* ignore */ }
+      }
+    };
+  }, []);
+
+  const closeSharePicker = useCallback(() => {
+    if (shareUploading) return; // لا نغلق أثناء الرفع
+    setSharePicker((prev) => {
+      if (prev?.previewUrl) {
+        try { URL.revokeObjectURL(prev.previewUrl); } catch { /* ignore */ }
+      }
+      return null;
+    });
+    setShareUploadPercent(0);
+    setShareUploadStage('idle');
+    setShareError('');
+  }, [shareUploading]);
+
+  // ✅ v88.82 — عند اختيار محادثة كوجهة نهائية: نرفع الملف (إن وجد)
+  //   ثم نستدعي sendMessageApi ثم ننتقل إلى /chat/<username>.
+  const handlePickThreadForShare = useCallback(async (thread) => {
+    if (!sharePicker?.pending || shareUploading) return;
+    const peer = thread?.username;
+    if (!peer) return;
+    const pending = sharePicker.pending;
+
+    setShareUploading(true);
+    setShareError('');
+    setShareUploadPercent(0);
+    setShareUploadStage('preparing');
+
+    try {
+      let mediaUrl = '';
+      let attachments = [];
+      let type = 'text';
+
+      // (أ) إذا لدينا ملف Blob → لُفّه في File صحيح ثم ارفعه
+      if (pending.file) {
+        const meta = pending.fileMeta || {};
+        const asFile = pending.file instanceof File
+          ? pending.file
+          : new File([pending.file], meta.name || 'shared', {
+              type: meta.type || pending.file?.type || 'application/octet-stream',
+            });
+        const uploadResult = await mediaUploadService.uploadFile(asFile, {
+          onProgress: (payload) => {
+            const pct = typeof payload === 'number' ? payload : Number(payload?.percent || 0);
+            setShareUploadPercent(Math.max(0, Math.min(100, Math.round(pct))));
+            if (payload?.stage) setShareUploadStage(payload.stage);
+          },
+        });
+        mediaUrl = uploadResult?.mediaUrl || uploadResult?.url || uploadResult?.cdnUrl || '';
+        const mime = String(meta.type || asFile.type || '').toLowerCase();
+        if (mime.startsWith('image/')) type = 'image';
+        else if (mime.startsWith('video/')) type = 'video';
+        else if (mime.startsWith('audio/')) type = 'audio';
+        else type = 'media';
+        attachments = [{
+          url: mediaUrl,
+          media_url: mediaUrl,
+          kind: type,
+          mime_type: mime,
+          file_name: meta.name || asFile.name,
+          file_size: Number(meta.size || asFile.size || 0),
+        }];
+      }
+
+      // (ب) رسالة نصية: نص الوصف/الرابط المُشارَك
+      const messageText = String(pending.description || '').trim();
+
+      setShareUploadStage('sending');
+      const clientId = `share-${Date.now()}`;
+      const requestPayload = {
+        receiver: peer,
+        message: messageText,
+        media_url: mediaUrl,
+        media_urls: mediaUrl ? [mediaUrl] : [],
+        type: mediaUrl ? type : 'text',
+        attachments,
+        client_id: clientId,
+      };
+      await sendMessageApi(requestPayload).catch((err) => {
+        // في حال فشل الإرسال، ننتقل للمحادثة على أي حال ليعيد المستخدم المحاولة يدوياً
+        console.warn('[share→chat] send failed:', err?.message || err);
+      });
+
+      setShareUploadPercent(100);
+      setShareUploadStage('done');
+
+      pushToast?.({
+        type: 'success',
+        title: 'تمت المشاركة',
+        description: `تم إرسال المحتوى إلى ${thread.title || peer}.`,
+      });
+
+      // نظّف حالة الفقاعة قبل الانتقال
+      if (sharePicker.previewUrl) {
+        try { URL.revokeObjectURL(sharePicker.previewUrl); } catch { /* ignore */ }
+      }
+      setSharePicker(null);
+      setShareUploading(false);
+      // انتقل إلى المحادثة نفسها
+      navigate(`/chat/${encodeURIComponent(peer)}`);
+    } catch (error) {
+      setShareUploading(false);
+      setShareUploadStage('failed');
+      setShareError(error?.message || 'تعذّر إرسال المحتوى. حاول مرة أخرى.');
+      pushToast?.({
+        type: 'error',
+        title: 'فشل المشاركة إلى الشات',
+        description: error?.message || 'حاول مجدداً بعد قليل.',
+      });
+    }
+  }, [sharePicker, shareUploading, navigate, pushToast]);
 
   // ✅ v88.76 Offline PWA: تحميل قائمة الدردشات من IndexedDB فوراً عند البدء
   useEffect(() => {
@@ -1141,6 +1289,121 @@ export default function Inbox() {
           </div>
         </div>
 
+        {/* ✅ v88.82 — فقاعة اختيار محادثة لاستقبال محتوى مُشارَك خارجياً */}
+        {sharePicker && (
+          <div
+            className="yam-share-picker-layer"
+            dir="rtl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="اختر محادثة للمشاركة"
+          >
+            <button
+              type="button"
+              className="yam-share-picker-backdrop"
+              onClick={closeSharePicker}
+              aria-label="إغلاق"
+              disabled={shareUploading}
+            />
+            <div className="yam-share-picker">
+              <div className="yam-share-picker-head">
+                <div>
+                  <strong>📥 محتوى مُشارك خارجي</strong>
+                  <span>اختر المحادثة التي تريد إرسال المحتوى إليها</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeSharePicker}
+                  disabled={shareUploading}
+                  aria-label="إغلاق"
+                >✕</button>
+              </div>
+
+              {/* معاينة المحتوى المُشارَك */}
+              <div className="yam-share-picker-preview">
+                {sharePicker.previewUrl && sharePicker.pending?.fileMeta?.type?.startsWith('image/') ? (
+                  <img src={sharePicker.previewUrl} alt="معاينة" />
+                ) : sharePicker.previewUrl && sharePicker.pending?.fileMeta?.type?.startsWith('video/') ? (
+                  <video src={sharePicker.previewUrl} controls preload="metadata" />
+                ) : sharePicker.pending?.fileMeta ? (
+                  <div className="yam-share-picker-file">
+                    <span aria-hidden="true">📎</span>
+                    <div>
+                      <strong>{sharePicker.pending.fileMeta.name || 'ملف مُشارك'}</strong>
+                      <small>{Math.max(1, Math.round((sharePicker.pending.fileMeta.size || 0) / 1024))} KB</small>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="yam-share-picker-link">
+                    <span aria-hidden="true">🔗</span>
+                    <div>
+                      <strong>{sharePicker.pending?.sourceTitle || 'رابط/نص مُشارَك'}</strong>
+                      <small>{sharePicker.pending?.sourceUrl || sharePicker.pending?.description || ''}</small>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* عدّاد الرفع */}
+              {shareUploading || shareUploadStage === 'done' ? (
+                <div className="yam-share-picker-progress">
+                  <div className="yam-share-picker-progress-head">
+                    <span>
+                      {shareUploadStage === 'done'
+                        ? '✅ تمت المشاركة بنجاح'
+                        : shareUploadStage === 'sending'
+                          ? 'جارٍ إرسال الرسالة…'
+                          : 'جارٍ تحضير/رفع الملف…'}
+                    </span>
+                    <strong>{shareUploadPercent}%</strong>
+                  </div>
+                  <div className="yam-share-picker-progress-track">
+                    <div
+                      className="yam-share-picker-progress-bar"
+                      style={{ width: `${Math.max(4, shareUploadPercent)}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {shareError ? (
+                <div className="yam-share-picker-error" role="alert">{shareError}</div>
+              ) : null}
+
+              {/* قائمة المحادثات المتاحة */}
+              <div className="yam-share-picker-list">
+                {threads.length === 0 ? (
+                  <div className="yam-share-picker-empty">
+                    لا توجد محادثات بعد. ابدأ محادثة جديدة ثم أعد المشاركة.
+                  </div>
+                ) : (
+                  threads.map((thread) => (
+                    <button
+                      key={thread.id || thread.username}
+                      type="button"
+                      className="yam-share-picker-thread"
+                      onClick={() => handlePickThreadForShare(thread)}
+                      disabled={shareUploading}
+                    >
+                      <Avatar
+                        name={thread.title}
+                        avatar={thread.avatar}
+                        size={42}
+                        online={thread.isOnline}
+                      />
+                      <div className="yam-share-picker-thread-body">
+                        <strong>{thread.title || thread.username}</strong>
+                        <span>{thread.preview || 'محادثة فردية'}</span>
+                      </div>
+                      <span className="yam-share-picker-send" aria-hidden="true">➤</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ✅ v88.72: فقاعة الخيارات عند الضغط المطوّل على محادثة */}
         {threadActionSheet && (
           <div className="yam-thread-sheet-layer" dir="rtl" role="dialog" aria-modal="true" aria-label="خيارات الدردشة">
@@ -1177,6 +1440,51 @@ export default function Inbox() {
 
         {/* ============== الأنماط (CSS) ============== */}
         <style>{`
+          /* ✅ v88.82: فقاعة اختيار محادثة لمحتوى مُشارَك خارجياً */
+          .yam-share-picker-layer { position:fixed; inset:0; z-index:170; display:flex; align-items:center; justify-content:center; }
+          .yam-share-picker-backdrop { position:absolute; inset:0; border:0; background:rgba(2,6,23,.72); backdrop-filter: blur(3px); }
+          .yam-share-picker-backdrop:disabled { cursor:not-allowed; }
+          .yam-share-picker {
+            position:relative; width:min(94vw, 520px); max-height: 86vh; overflow:auto;
+            padding:18px 16px 16px; border-radius:22px;
+            background:#0f172a; color:#fff;
+            border:1px solid rgba(139,92,246,.35);
+            box-shadow:0 30px 60px rgba(2,6,23,.55);
+            animation: yam-share-in .2s ease-out;
+          }
+          @keyframes yam-share-in { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+          .yam-share-picker-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:12px; }
+          .yam-share-picker-head strong { display:block; font-size:15px; color:#f5f3ff; font-weight:900; margin-bottom:4px; }
+          .yam-share-picker-head span { display:block; font-size:12.5px; color:#94a3b8; line-height:1.6; }
+          .yam-share-picker-head button { border:0; background:transparent; color:#fff; font-size:20px; cursor:pointer; padding:4px 10px; border-radius:8px; }
+          .yam-share-picker-head button:hover:not(:disabled) { background:rgba(255,255,255,.08); }
+          .yam-share-picker-head button:disabled { opacity:.5; cursor:wait; }
+
+          .yam-share-picker-preview { border-radius:14px; overflow:hidden; background:rgba(255,255,255,.04); border:1px solid rgba(148,163,184,.14); margin-bottom:12px; }
+          .yam-share-picker-preview img,
+          .yam-share-picker-preview video { display:block; width:100%; max-height:220px; object-fit:cover; background:#020617; }
+          .yam-share-picker-file, .yam-share-picker-link { display:flex; gap:12px; padding:14px; align-items:center; }
+          .yam-share-picker-file span, .yam-share-picker-link span { width:44px; height:44px; border-radius:12px; background:rgba(139,92,246,.16); display:grid; place-items:center; font-size:22px; flex-shrink:0; }
+          .yam-share-picker-file strong, .yam-share-picker-link strong { display:block; font-size:14px; }
+          .yam-share-picker-file small, .yam-share-picker-link small { display:block; color:#94a3b8; font-size:12px; margin-top:2px; direction:ltr; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+          .yam-share-picker-progress { margin:6px 0 10px; padding:10px 12px; border-radius:12px; background:linear-gradient(180deg, rgba(139,92,246,.14), rgba(99,102,241,.08)); border:1px solid rgba(167,139,250,.28); }
+          .yam-share-picker-progress-head { display:flex; justify-content:space-between; font-size:12.5px; color:#c4b5fd; margin-bottom:6px; }
+          .yam-share-picker-progress-head strong { color:#f5f3ff; font-weight:900; }
+          .yam-share-picker-progress-track { height:8px; border-radius:999px; background:rgba(255,255,255,.08); overflow:hidden; }
+          .yam-share-picker-progress-bar { height:100%; background:linear-gradient(90deg, #8b5cf6, #ec4899); border-radius:999px; transition: width .3s ease; }
+          .yam-share-picker-error { margin-bottom:10px; padding:10px 12px; border-radius:12px; background:rgba(239,68,68,.14); border:1px solid rgba(248,113,113,.35); color:#fecaca; font-size:13px; }
+
+          .yam-share-picker-list { display:flex; flex-direction:column; gap:6px; margin-top:4px; }
+          .yam-share-picker-empty { padding:20px; text-align:center; color:#94a3b8; font-size:14px; }
+          .yam-share-picker-thread { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid rgba(148,163,184,.12); border-radius:14px; background:rgba(255,255,255,.03); color:#fff; cursor:pointer; font-family:inherit; text-align:right; transition: background .15s ease, border-color .15s ease, transform .12s ease; }
+          .yam-share-picker-thread:hover:not(:disabled) { background:rgba(139,92,246,.14); border-color:rgba(167,139,250,.55); transform: translateY(-1px); }
+          .yam-share-picker-thread:disabled { opacity:.55; cursor:wait; }
+          .yam-share-picker-thread-body { flex:1; min-width:0; }
+          .yam-share-picker-thread-body strong { display:block; font-size:14px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+          .yam-share-picker-thread-body span { display:block; font-size:12px; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+          .yam-share-picker-send { color:#a78bfa; font-size:18px; font-weight:900; }
+
           /* ✅ v88.72: فقاعة خيارات الدردشة */
           .yam-thread-sheet-layer { position:fixed; inset:0; z-index:150; display:flex; align-items:flex-end; justify-content:center; }
           .yam-thread-sheet-backdrop { position:absolute; inset:0; border:0; background:rgba(0,0,0,.55); }

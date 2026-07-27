@@ -148,6 +148,14 @@ function buildFeedPosts(posts = []) {
         views: Number(post.views_count || post.view_count || 0),
         isLiked: Boolean(post.is_liked ?? post.liked_by_me),
         isSaved: Boolean(post.is_saved ?? post.saved_by_me),
+        // ✅ v88.79: عدّاد إعادة النشر (repost) — منفصل عن المشاركة العادية.
+        //    ملاحظة: زر إعادة النشر معروض في هذه النسخة بدون منطق فعلي؛ سيُربط لاحقاً في جلسة أخرى.
+        reposts: Number(post.reposts_count || post.repost_count || post.reshare_count || 0),
+        // ✅ v88.79: baseline من الخادم (إن وُجد) لمؤشر التفاعل — يُضاف إليه محلياً likes+comments+saves+shares+reposts
+        //    عند وصول قراءة المنشور إلى "معتَبَرة" (سلوك مشابه لوصول الريل ≥50%).
+        saves: Number(post.saves_count || post.save_count || 0),
+        engagement: Number(post.engagement_count || 0),
+        isReposted: Boolean(post.is_reposted ?? false),
         media: normalizedMedia,
         // ✅ FIX v88.7 (2026-07-18): تمرير كامل لبيانات الاستطلاع
         // إصلاح جذري: ندعم كل الأشكال + نمرر poll_question
@@ -337,6 +345,26 @@ function PostCard({ post }) {
   const [likesCount, setLikesCount] = useState(Number(post.likes || 0));
   const [commentsCount, setCommentsCount] = useState(Number(post.comments || 0));
   const [sharesCount, setSharesCount] = useState(Number(post.shares || 0));
+  // ✅ v88.79: حالات مؤشر التفاعل + إعادة النشر (مطابق لآلية v88.78 في الريلز).
+  //    - repostsCount: عدد إعادات النشر (لا API — سيُربط لاحقاً).
+  //    - isReposted:   هل قام المستخدم بإعادة النشر (باعتراض بصري فقط الآن).
+  //    - engagementBase: baseline قادم من الخادم للتفاعل التراكمي (0 إن غير موجود).
+  //    - halfSeen:    هل "شاهد/قرأ" هذا المستخدم المنشور بشكل معتبر (يُخزَّن في localStorage).
+  //      المكافئ لـ ≥50% من الريل هو: ظهور المنشور في الـ viewport لمدة ≥1.5 ثانية،
+  //      وهو الشرط الذي عنده يُحتسب مؤشر التفاعل محلياً.
+  const [repostsCount, setRepostsCount] = useState(Number(post.reposts || 0));
+  const [isReposted, setIsReposted] = useState(Boolean(post.isReposted));
+  const [engagementBase] = useState(Number(post.engagement || 0));
+  const [halfSeen, setHalfSeen] = useState(() => {
+    try {
+      const raw = window.localStorage?.getItem('yamshat.post.half_seen.ids');
+      if (!raw) return false;
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) && arr.map(String).includes(String(post.rawId || post.id));
+    } catch { return false; }
+  });
+  // ✅ v88.79: مرجع لعنصر المنشور — نستخدمه مع IntersectionObserver لتأكيد "القراءة المعتبرة"
+  const postCardRef = useRef(null);
   const [showComments, setShowComments] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
   const [localComments, setLocalComments] = useState([]);
@@ -371,6 +399,78 @@ function PostCard({ post }) {
   const invalidateFeed = useCallback(() => {
     try { queryClient.invalidateQueries({ queryKey: ['feed-data'] }); } catch (_) { /* ignore */ }
   }, [queryClient]);
+
+  // ✅ v88.79: تسجيل "القراءة المعتبرة" للمنشور — نظير markHalfWatched في الريلز.
+  //    يعتمد على IntersectionObserver: عندما يظهر ≥60% من المنشور لمدة 1.5 ثانية،
+  //    نُثبِّت هذا المنشور بأنه "قد قُرِئ"، فيُصبح مؤشر التفاعل يجمع محلياً.
+  //    يُخزَّن المعرّف في localStorage تحت مفتاح yamshat.post.half_seen.ids (حتى 500 معرّف).
+  const markPostHalfSeen = useCallback(() => {
+    const rid = String(post.rawId || post.id || '');
+    if (!rid || halfSeen) return;
+    setHalfSeen(true);
+    try {
+      const key = 'yamshat.post.half_seen.ids';
+      const raw = window.localStorage?.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      const set = new Set(Array.isArray(arr) ? arr.map(String) : []);
+      set.add(rid);
+      const list = Array.from(set).slice(-500);
+      window.localStorage?.setItem(key, JSON.stringify(list));
+    } catch { /* ignore */ }
+  }, [post.rawId, post.id, halfSeen]);
+
+  useEffect(() => {
+    if (halfSeen) return undefined; // ثُبِّت مسبقاً — لا داعي للمراقبة
+    const el = postCardRef.current;
+    if (!el || typeof window === 'undefined' || !('IntersectionObserver' in window)) return undefined;
+    let timer = null;
+    const obs = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          if (!timer) {
+            timer = setTimeout(() => { markPostHalfSeen(); }, 1500);
+          }
+        } else if (timer) {
+          clearTimeout(timer); timer = null;
+        }
+      }
+    }, { threshold: [0, 0.3, 0.6, 0.9] });
+    obs.observe(el);
+    return () => { if (timer) clearTimeout(timer); obs.disconnect(); };
+  }, [halfSeen, markPostHalfSeen]);
+
+  // ✅ v88.79: حساب رقم مؤشر التفاعل المعروض — نفس منطق computeEngagement في Reels.jsx.
+  //    - إن لم يصل المستخدم لـ "القراءة المعتبرة" (halfSeen=false) → baseline الخادم فقط.
+  //    - إن وصل → baseline + (likes + comments + saves + shares + reposts).
+  const computeEngagement = useCallback(() => {
+    const base = Number(engagementBase || 0) || 0;
+    if (!halfSeen) return base;
+    const likesN = Number(likesCount || 0) || 0;
+    const commentsN = Number(commentsCount || 0) || 0;
+    const sharesN = Number(sharesCount || 0) || 0;
+    const repostsN = Number(repostsCount || 0) || 0;
+    const savesN = Number(post.saves || 0) || (saved ? 1 : 0);
+    return base + likesN + commentsN + savesN + sharesN + repostsN;
+  }, [engagementBase, halfSeen, likesCount, commentsCount, sharesCount, repostsCount, saved, post.saves]);
+
+  // ✅ v88.79: زر إعادة النشر (Repost) — بلا ربط API في هذه الجلسة.
+  //    عند الضغط نعرض Toast توضيحي فقط (سيُربط لاحقاً).
+  const handleRepost = () => {
+    pushToast({
+      type: 'info',
+      title: 'إعادة النشر',
+      description: 'سيُفعّل هذا الزر في جلسة لاحقة.',
+    });
+  };
+
+  // ✅ v88.79: زر مؤشر التفاعل — عند الضغط نعرض شرحاً للمستخدم فقط.
+  const handleEngagementInfo = () => {
+    pushToast({
+      type: 'info',
+      title: 'مؤشر التفاعل',
+      description: 'يجمع الإعجابات والتعليقات والحفظ والمشاركة وإعادة النشر، ويُحتسب عند قراءة المنشور فعلياً.',
+    });
+  };
 
   // ===== ربط الإعجاب بـ backend =====
   const handleLike = async () => {
@@ -748,7 +848,10 @@ function PostCard({ post }) {
       ) : null}
 
       {/* ✅ أزرار التفاعل: أيقونة فقط + عداد رقمي (بدون نص ثابت) لمنع إزاحة زر الحفظ */}
-      <div className="yam-post-actions-v2 yam-post-actions-compact">
+      {/* ✅ v88.79: أضفنا زرَّي (مؤشر التفاعل + إعادة النشر) — مطابق لآلية v88.78 في الريلز.
+           - postCardRef يُستخدم مع IntersectionObserver لاعتماد "القراءة المعتبرة".
+           - زر إعادة النشر يظهر فقط (بدون API) وسيُربط في جلسة لاحقة. */}
+      <div className="yam-post-actions-v2 yam-post-actions-compact" ref={postCardRef}>
         <button
           type="button"
           className={`yam-action-btn${liked ? ' active' : ''}`}
@@ -781,6 +884,43 @@ function PostCard({ post }) {
           <YamshatIcon name="repeat" size={18} />
           {sharesCount > 0 ? <span className="yam-action-count">{sharesCount}</span> : null}
         </button>
+
+        {/* ✅ v88.79: مؤشر التفاعل (Engagement Meter) — نفس أيقونة الأعمدة من x.com/twitter
+             يجمع (إعجاب + تعليق + حفظ + مشاركة + إعادة نشر) عند القراءة المعتبرة للمنشور. */}
+        <button
+          type="button"
+          className="yam-action-btn yam-engagement-btn"
+          onClick={handleEngagementInfo}
+          aria-label={`مؤشر التفاعل (${computeEngagement()})`}
+          title="مؤشر التفاعل"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <line x1="5"  y1="20" x2="5"  y2="14" />
+            <line x1="10" y1="20" x2="10" y2="11" />
+            <line x1="15" y1="20" x2="15" y2="7" />
+            <line x1="20" y1="20" x2="20" y2="4" />
+          </svg>
+          {computeEngagement() > 0 ? <span className="yam-action-count">{computeEngagement()}</span> : null}
+        </button>
+
+        {/* ✅ v88.79: زر إعادة النشر (Repost) — سهمان دائريان مطابقان لصورة x.com المرجعية.
+             بدون ربط API في هذه النسخة (يظهر Toast توضيحي فقط عند الضغط). */}
+        <button
+          type="button"
+          className={`yam-action-btn yam-repost-btn${isReposted ? ' is-reposted active' : ''}`}
+          onClick={handleRepost}
+          aria-label={`إعادة نشر (${repostsCount})`}
+          title="إعادة نشر"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke={isReposted ? '#22c55e' : 'currentColor'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <polyline points="17 1 21 5 17 9" />
+            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+            <polyline points="7 23 3 19 7 15" />
+            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+          </svg>
+          {repostsCount > 0 ? <span className="yam-action-count">{repostsCount}</span> : null}
+        </button>
+
         <button
           type="button"
           className={`yam-action-btn${saved ? ' active' : ''}`}
@@ -1965,6 +2105,26 @@ function FeedDesktopInner() {
           .yam-post-actions-v2 button.active {
             background: rgba(124,58,237,0.14);
             color: #fff;
+          }
+
+          /* ✅ v88.79: تمييز بصري لزر مؤشر التفاعل (بنفسجي فاتح مطابق للريلز v88.78) */
+          .yam-post-actions-v2 .yam-engagement-btn svg line {
+            stroke: #c4b5fd;
+          }
+          .yam-post-actions-v2 .yam-engagement-btn:active svg { animation: yam-post-pop .25s ease; }
+
+          /* ✅ v88.79: تمييز بصري لزر إعادة النشر عند التفعيل (أخضر مثل x.com/twitter) */
+          .yam-post-actions-v2 .yam-repost-btn.is-reposted svg {
+            animation: yam-post-pop .25s ease;
+          }
+          .yam-post-actions-v2 .yam-repost-btn:active svg { animation: yam-post-pop .25s ease; }
+          .yam-post-actions-v2 .yam-repost-btn.is-reposted {
+            color: #22c55e;
+          }
+          @keyframes yam-post-pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.25); }
+            100% { transform: scale(1); }
           }
 
           .yam-post-comments-panel {

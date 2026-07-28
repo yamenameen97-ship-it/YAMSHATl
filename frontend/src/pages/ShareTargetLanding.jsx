@@ -122,7 +122,24 @@ export default function ShareTargetLanding() {
   useEffect(() => {
     let mounted = true;
 
-    readSharedPayload()
+    // ✅ v88.92 ROOT FIX: قراءة الحمولة مع محاولة إعادة (retry) لأن SW قد يكون
+    //    كتب الحمولة في IndexedDB بينما الصفحة تُحمَّل — نمنح مهلة قصيرة لضمان الاستقبال.
+    async function loadPayloadWithRetry() {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          const data = await readSharedPayload();
+          if (data && (data.files?.length || data.url || data.title || data.text)) {
+            return data;
+          }
+        } catch { /* ignore and retry */ }
+        // انتظار قصير قبل المحاولة التالية (200ms × 5 = 1s كحد أقصى)
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      // آخر محاولة — نرجع ما وجدناه حتى لو كان فارغاً
+      try { return await readSharedPayload(); } catch { return null; }
+    }
+
+    loadPayloadWithRetry()
       .then((data) => {
         if (!mounted) return;
         setPayload(data);

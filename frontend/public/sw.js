@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v88.84-share-target-link-download-modes-1830800000000';
+const VERSION = 'yamshat-v88.92-share-target-root-fix-1917100000000';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -13,6 +13,25 @@ const CACHE_NAMES = {
 // ✅ v88.76: حدود تقليم كاش الجلسات (لتجنّب التخمة)
 const PAGES_MAX = 40;
 const APIS_VISITED_MAX = 120;
+
+// ✅ v88.92: قائمة مسارات API التي لا نُحفظ استجاباتها إطلاقاً في الكاش
+// (الفيد + المنشورات + الريلز + الستوريز) — لضمان أن كل تحميل يجلب المنشورات الجديدة
+// من الخادم مباشرة. المشكلة السابقة: بعد نشر منشور جديد، الحساب الآخر لا يراه لأن SW
+// كان يُرجع نسخة مخبأة من `/api/feed` أو `/api/posts`.
+const NEVER_CACHE_API_PATTERNS = [
+  /\/api\/feed(\/|$|\?)/i,
+  /\/api\/posts(\/|$|\?)/i,
+  /\/api\/reels\/feed(\/|$|\?)/i,
+  /\/api\/reels(\/|$|\?)(?!\d)/i,
+  /\/api\/stories(\/|$|\?)/i,
+  /\/api\/notifications(\/|$|\?)/i,
+  /\/api\/chat\/conversations(\/|$|\?)/i,
+  /\/api\/groups\/[^/]+\/messages/i,
+];
+
+function isRealtimeApi(url) {
+  return NEVER_CACHE_API_PATTERNS.some((rx) => rx.test(url.pathname + url.search));
+}
 
 async function trimCache(cacheName, maxEntries) {
   try {
@@ -99,6 +118,47 @@ async function saveSharedPayload(payload) {
   });
 }
 
+// ✅ v88.92 ROOT FIX: HTML بديل يعرض شاشة تحميل + يحوّل إلى المسار الصحيح
+//   يضمن أن Yamshat يستقبل الحمولة حتى لو المتصفح لم ينفذ 303 redirect بشكل صحيح
+//   (مثل Chrome على أندرويد الذي فتح صفحة بيضاء في v88.84).
+function buildShareBridgeHtml(sharedOk) {
+  const target = sharedOk ? '/#/share-target?shared=1' : '/#/share-target?shared=0';
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>يام شات — جارٍ استقبال المشاركة</title>
+  <meta http-equiv="refresh" content="0; url=${target}">
+  <style>
+    html,body{margin:0;padding:0;height:100%;background:#0A0D1A;color:#fff;font-family:system-ui,-apple-system,sans-serif}
+    .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:16px;padding:24px;text-align:center}
+    .spinner{width:52px;height:52px;border:4px solid rgba(139,92,246,.2);border-top-color:#8B5CF6;border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    h1{font-size:1.15rem;margin:0;font-weight:800}
+    p{color:#94A3B8;margin:0;font-size:.95rem;line-height:1.6}
+    a{color:#c4b5fd;text-decoration:none;padding:10px 18px;border-radius:12px;background:rgba(139,92,246,.14);border:1px solid rgba(139,92,246,.35);margin-top:8px;font-weight:700}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="spinner"></div>
+    <h1>جارٍ استلام المحتوى في يام شات...</h1>
+    <p>إذا لم تُفتح الصفحة تلقائياً خلال ثانيتين، اضغط الزر أدناه.</p>
+    <a href="${target}">فتح يام شات</a>
+  </div>
+  <script>
+    // ✅ v88.92: تحويل فوري عبر JS مع إبلاغ SW ليعلم أن الصفحة جاهزة لاستهلاك الحمولة
+    try {
+      if (window.location.hash !== '${target.substring(1)}') {
+        window.location.replace('${target}');
+      }
+    } catch(_) { window.location.href = '${target}'; }
+  </script>
+</body>
+</html>`;
+}
+
 async function handleShareTarget(request) {
   try {
     const formData = await request.formData();
@@ -122,12 +182,26 @@ async function handleShareTarget(request) {
       files: normalizedFiles,
     });
 
-    // ✅ v88.75 FIX جذري: التطبيق يستخدم HashRouter (راجع main.jsx)، ولذلك أي توجيه إلى مسار
-    //    بدون "#/" لا يطابق أي مسار في React Router → تظهر شاشة بيضاء ويظل التطبيق يعيد التحميل.
-    //    الحل: نوجّه إلى /#/share-target?shared=1 حتى تتقاطع مع مسار React (في App.jsx).
-    return Response.redirect('/#/share-target?shared=1', 303);
+    // ✅ v88.92 ROOT FIX: في السابق كنا نستخدم Response.redirect('/#/share-target?shared=1')
+    //   لكن Chrome على أندرويد لا يحترم الـ hash عند 303 redirect من SW في سياق PWA،
+    //   فتظهر صفحة بيضاء (index.html بدون المسار الصحيح في hash).
+    //   الحل الجذري: إرجاع HTML صريح يحتوي على meta-refresh + window.location.replace
+    //   يضمن الوصول إلى /#/share-target?shared=1 في كل الأجهزة والمتصفحات.
+    return new Response(buildShareBridgeHtml(true), {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      },
+    });
   } catch (error) {
-    return Response.redirect('/#/share-target?shared=0', 303);
+    return new Response(buildShareBridgeHtml(false), {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      },
+    });
   }
 }
 
@@ -174,12 +248,17 @@ async function broadcastMessage(message) {
 }
 
 self.addEventListener('install', (event) => {
+  // ✅ v88.92: تفعيل SW الجديد فوراً بدون انتظار إغلاق التبويبات القديمة
+  self.skipWaiting();
   event.waitUntil(caches.open(CACHE_NAMES.SHELL).then((cache) => cache.addAll(APP_SHELL)));
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
+      // ✅ v88.92: حذف كل الكاشات القديمة (كل ما ليس ضمن CACHE_NAMES الحالية)
+      //   هذا يشمل كاشات v88.84 و v88.85 و v88.91 التي كانت تحمل استجابات فيد قديمة
+      //   وتمنع ظهور المنشورات الجديدة.
       .then((keys) => Promise.all(keys.filter((key) => !Object.values(CACHE_NAMES).includes(key)).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
       .then(() => broadcastMessage({ type: 'yamshat:sw-activated', version: VERSION }))
@@ -238,8 +317,22 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (/\/(api|notifications)\//i.test(url.pathname)) {
-    // ✅ v88.76 Offline PWA: أي API تم إحضاره مرة يُحفظ في كاش APIS_VISITED
-    //   يستخدم network-first مع ارتداد إلى الكاش عند انقطاع النت
+    // ✅ v88.92 ROOT FIX: بعض مسارات الـ API (الفيد، المنشورات، الريلز، الستوريز، الرسائل)
+    //   يجب أن لا تُخزَّن أبداً في الكاش — وإلا يظل المستخدم يرى نسخة قديمة ولا تظهر
+    //   المنشورات الجديدة التي رفعها حساب آخر. نستخدم network-only لهذه المسارات.
+    if (isRealtimeApi(url)) {
+      event.respondWith((async () => {
+        try {
+          return await fetch(request, { cache: 'no-store' });
+        } catch (_) {
+          // في وضع Offline نُرجع خطأ 503 صريح — لا نُلوث الفيد بنسخة قديمة.
+          return emptyResponse(503, 'Offline (realtime endpoint)');
+        }
+      })());
+      return;
+    }
+
+    // ✅ v88.76 Offline PWA: باقي مسارات API — network-first مع ارتداد إلى الكاش
     event.respondWith((async () => {
       try {
         const response = await fetch(request, { cache: 'no-store' });
@@ -293,9 +386,6 @@ self.addEventListener('fetch', (event) => {
 });
 
 // ✅ v88.24 FIX: استقبال أمر warm-up للوسائط بعد الرفع مباشرة
-// عند الانتهاء من نشر منشور جديد، الفرونت يرسل رسالة WARM_MEDIA
-// فيقوم الـSW بتحميل الرابط مسبقاً وإضافته إلى كاش MEDIA — بحيث
-// أول عرض للمنشور في الـfeed يأتي فوراً من الكاش المحلي بلا شبكة.
 async function warmMediaUrls(urls = []) {
   const cache = await caches.open(CACHE_NAMES.MEDIA);
   await Promise.all(
@@ -320,33 +410,37 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
     return;
   }
-
-  if (event.data?.type === 'yamshat:queue-sync') {
-    event.waitUntil(broadcastMessage({ type: 'yamshat:sync-now' }));
+  // ✅ v88.92: أمر جديد يسمح للفرونت بمسح كاش الفيد يدوياً بعد نشر منشور جديد
+  if (event.data?.type === 'YAMSHAT_INVALIDATE_FEED') {
+    event.waitUntil((async () => {
+      try {
+        const visitedCache = await caches.open(CACHE_NAMES.APIS_VISITED);
+        const keys = await visitedCache.keys();
+        await Promise.all(keys.map((k) => {
+          try {
+            const u = new URL(k.url);
+            if (isRealtimeApi(u)) return visitedCache.delete(k);
+          } catch (_) {}
+          return null;
+        }));
+      } catch (_) {}
+    })());
+    return;
   }
-
-  // ✅ v88.24 FIX: warm-up كاش الوسائط بعد الرفع الناجح
-  if (event.data?.type === 'yamshat:warm-media') {
-    const urls = Array.isArray(event.data.urls) ? event.data.urls : [];
-    event.waitUntil(warmMediaUrls(urls));
-  }
-});
-
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-posts' || event.tag === 'sync-messages' || event.tag === 'sync-notifications' || event.tag === 'offline-sync') {
-    event.waitUntil(broadcastMessage({ type: 'yamshat:sync-now' }));
+  if (event.data?.type === 'WARM_MEDIA' && Array.isArray(event.data.urls)) {
+    event.waitUntil(warmMediaUrls(event.data.urls));
   }
 });
 
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : { title: 'Yamshat', body: 'لديك تحديث جديد', path: '/' };
+  let data = {};
+  try { data = event.data?.json() || {}; } catch { data = { title: event.data?.text?.() || 'Yamshat' }; }
   const targetPath = data.path || data.url || '/';
   const options = {
-    body: data.body,
-    icon: data.icon || '/icons/icon-512.png',
-    badge: data.badge || '/icons/badge-96.png',
-    image: data.image,
-    tag: data.tag || 'yamshat-push',
+    body: data.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/badge-96.png',
+    tag: data.tag || 'yamshat',
     renotify: Boolean(data.renotify),
     vibrate: [120, 60, 120],
     data: {

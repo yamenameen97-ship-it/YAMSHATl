@@ -39,3 +39,29 @@ export const updateReel = (reelId, payload) =>
 
 export const deleteReel = (reelId) =>
   API.delete(`/reels/${encodeURIComponent(reelId)}`);
+
+// ✅ v88.82: إعادة نشر ريل (Repost) — endpoint مخصّص مع سقوط أنيق إلى /share.
+// السلوك:
+//   1) نحاول أولاً POST /reels/{reel_id}/repost (المسار المخصّص).
+//   2) إن رجع 404/405 نسقط إلى POST /reels/{reel_id}/share بحمولة { platform: 'repost' }
+//      (نفس النهج المستخدم في posts.js عبر sharePost).
+// ملاحظة: الاستدعاء لا يرمي — نُعيد كائناً بحقلي { ok, data } حتى يتعامل معه الاستهلاك بأمان.
+export const shareReelRepost = async (reelId) => {
+  const rid = encodeURIComponent(reelId);
+  try {
+    const res = await API.post(`/reels/${rid}/repost`);
+    return { ok: true, data: res?.data ?? null, path: 'repost' };
+  } catch (err) {
+    const status = err?.response?.status;
+    // 404 = المسار غير موجود على الخادم / 405 = طريقة غير مسموحة → نسقط لـ /share
+    if (status === 404 || status === 405) {
+      try {
+        const res = await API.post(`/reels/${rid}/share`, { platform: 'repost' });
+        return { ok: true, data: res?.data ?? null, path: 'share-fallback' };
+      } catch (err2) {
+        return { ok: false, error: err2, path: 'share-fallback' };
+      }
+    }
+    return { ok: false, error: err, path: 'repost' };
+  }
+};

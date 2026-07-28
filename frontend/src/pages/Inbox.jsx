@@ -14,7 +14,7 @@ import ChatSettingsPopover from '../components/chat/ChatSettingsPopover.jsx';
 // ✅ v88.76 — كاش الجلسات للتصفح بلا نت (Offline PWA)
 import offlineCache from '../offline/offlineSessionCache.js';
 // ✅ v88.82 — استهلاك مشاركة خارجية موجّهة للشات (Chat) + رفع الملف
-import { consumePendingShare } from '../services/share/sharedIntake.js';
+import { consumePendingShare, dataUrlToBlob } from '../services/share/sharedIntake.js';
 import mediaUploadService from '../services/media/mediaUploadService.js';
 
 /**
@@ -660,24 +660,31 @@ export default function Inbox() {
     return () => { inboxMountedRef.current = false; };
   }, []);
 
-  // ✅ v88.82 — استهلاك المشاركة الخارجية عند تركيب صفحة الشات
-  //   الوجهة المُتوقّعة هنا 'chat'. إذا وُجدت حمولة نفتح فقاعة اختيار المحادثة.
-  //   الحمولة تُستهلك مرّة واحدة فقط بحماية shareConsumedRef.
+  // ✅ v88.84 — استهلاك المشاركة الخارجية عند تركيب صفحة الشات
+  //   يدعم وضعين:
+  //     - mode='link': يلتقط لقطة من الفيديو (thumbnailDataUrl) أو الصورة + الوصف + الرابط
+  //     - mode='download': الملف المنزّل + وصف بدون رابط
+  //   إذا وُجدت حمولة نفتح فقاعة اختيار المحادثة.
   useEffect(() => {
     if (shareConsumedRef.current) return;
     const pending = consumePendingShare('chat');
     if (!pending) return;
     shareConsumedRef.current = true;
+    const mode = pending.mode || 'link';
+    // ✅ v88.84: في وضع الرابط مع لقطة فيديو، نحوّل dataURL إلى Blob للمعاينة
     let previewUrl = '';
+    let fileForPreview = pending.file;
+    if (!fileForPreview && mode === 'link' && pending.thumbnailDataUrl) {
+      fileForPreview = dataUrlToBlob(pending.thumbnailDataUrl);
+    }
     try {
-      if (pending.file) previewUrl = URL.createObjectURL(pending.file);
+      if (fileForPreview) previewUrl = URL.createObjectURL(fileForPreview);
     } catch { /* ignore */ }
-    setSharePicker({ pending, previewUrl });
+    setSharePicker({ pending: { ...pending, file: fileForPreview }, previewUrl });
     setShareUploadPercent(0);
     setShareUploadStage('idle');
     setShareError('');
     return () => {
-      // تنظيف عند إعادة التحميل
       if (previewUrl) {
         try { URL.revokeObjectURL(previewUrl); } catch { /* ignore */ }
       }
@@ -759,6 +766,10 @@ export default function Inbox() {
         type: mediaUrl ? type : 'text',
         attachments,
         client_id: clientId,
+        // ✅ v88.86 FIX: تمرير بيانات كارت الرابط والمصدر وعلامة التوثيق
+        link_card: pending.linkCard || undefined,
+        admin_source: pending.adminSource || undefined,
+        verified_by_yamshat: pending.verifiedByYamshat || undefined,
       };
       await sendMessageApi(requestPayload).catch((err) => {
         // في حال فشل الإرسال، ننتقل للمحادثة على أي حال ليعيد المستخدم المحاولة يدوياً

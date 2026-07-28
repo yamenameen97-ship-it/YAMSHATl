@@ -455,6 +455,12 @@ import './styles/yamshat-fixes-v88.38-EDIT-PROFILE-ROOT.css';
 //  - يضمن استجابة أزرار 'تعديل الغلاف' و '📷' على الموبايل و iOS.
 import './styles/yamshat-fixes-v88.42-PROFILE-MEDIA.css';
 
+// v88.91 FEED REELS PAIR (Grid):
+//  - بطاقة زوج ريلز بنمط YouTube Shorts داخل الفيد.
+//  - تُدرج بعد كل 5 منشورات في FeedMobile و FeedEnhanced.
+//  - تدعم الجوال واللابتوب (عمودان دائماً).
+import './styles/yamshat-fixes-v88.91-FEED-REELS-PAIR.css';
+
 import { initializeViewportTracker } from './hooks/useViewportHeight.js';
 import { applyFontSize, getStoredFontSize } from './components/settings/FontSizeSettings.jsx';
 import { pwaInitializer } from './services/pwaInitializer.js';

@@ -79,8 +79,8 @@ export default function TrendingDashboardCard({ onOpen }) {
                 <span className="tdc-title" title={item.title}>
                   {item.kind === 'hashtag' ? '#' : '📝'} {item.title}
                 </span>
-                <span className={`tdc-score ${item.is_new ? 'new' : ''}`}>
-                  {item.is_new ? '🚨' : ''} {Math.round(item.score).toLocaleString()}
+                <span className={`tdc-score ${item.is_new ? 'new' : ''} ${item.is_external_source ? 'ext' : ''}`}>
+                  {item.is_external_source ? '📎' : (item.is_new ? '🚨' : '')} {Math.round(item.score).toLocaleString()}
                 </span>
               </li>
             ))}
@@ -139,6 +139,7 @@ export default function TrendingDashboardCard({ onOpen }) {
         .tdc-title { flex:1; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .tdc-score { font-weight:700; color:#7c2d12; font-size:11px; }
         .tdc-score.new { color:#dc2626; animation: newBlink 1s infinite; }
+        .tdc-score.ext { color:#92400e; }
         @keyframes newBlink { 50%{opacity:.4;} }
         .tdc-country-chips { display:flex; flex-wrap:wrap; gap:4px; }
         .tdc-country-chip { background:#fff; border:1px solid #fed7aa; color:#9a3412; font-size:10px; padding:3px 8px; border-radius:20px; }

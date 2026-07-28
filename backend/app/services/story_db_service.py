@@ -23,6 +23,11 @@ from sqlalchemy.orm import Session
 
 from app.models.stories_reels import Story, StoryReply, StoryView, Reel
 from app.models.user import User
+# ✅ v88.87 — حقول المشاركة الموثقة لدى Yamshat
+from app.core.share_fields import (
+    build_share_extra_fields,
+    serialize_share_fields,
+)
 
 # v88.3.2 MEDIA RENDER ROOT FIX: دالّة موحّدة لتطبيع روابط الوسائط.
 try:
@@ -488,6 +493,8 @@ def serialize_story(
         'replies_count': int(story.replies_count or 0),
         'reactions_count': int(story.reactions_count or 0),
         'is_muted_by_viewer': is_muted_by_viewer,    # v87.12
+        # ✅ v88.87 — حقول نظام المشاركة الموثقة لدى Yamshat
+        **serialize_share_fields(story),
     }
 
 
@@ -543,6 +550,12 @@ def add_story(
     metadata: Optional[dict] = None,
 ) -> Story:
     metadata = metadata or {}
+    # ✅ v88.87 — حقول المشاركة الموثقة لدى Yamshat
+    _share_fields = build_share_extra_fields(
+        link_card=metadata.get('link_card'),
+        verified_by_yamshat=metadata.get('verified_by_yamshat'),
+        admin_source=metadata.get('admin_source'),
+    )
     auto_delete = max(1, min(int(metadata.get('auto_delete_hours') or 24), 72))
     privacy = str(metadata.get('privacy') or 'friends').strip() or 'friends'
     if privacy == 'public':
@@ -602,6 +615,8 @@ def add_story(
         views_count=0,
         replies_count=0,
         reactions_count=0,
+        # ✅ v88.87 — حقول المشاركة الموثقة لدى Yamshat
+        **_share_fields,
         created_at=now,
         expires_at=now + timedelta(hours=auto_delete),
     )
@@ -1202,6 +1217,13 @@ def create_reel_from_story(db: Session, story: Story) -> dict | None:
     if story is None or str(getattr(story, 'media_type', '') or '') != 'video':
         return None
     try:
+        # ✅ v88.87 — تمرير حقول المشاركة من القصة إلى الريل عند cross-post
+        _story_share = serialize_share_fields(story)
+        _reel_share = build_share_extra_fields(
+            link_card=_story_share.get('link_card'),
+            verified_by_yamshat=_story_share.get('verified_by_yamshat'),
+            admin_source=_story_share.get('admin_source'),
+        )
         reel = Reel(
             user_id=int(story.user_id),
             video_url=story.media_url,
@@ -1214,6 +1236,8 @@ def create_reel_from_story(db: Session, story: Story) -> dict | None:
             shares_count=0,
             views_count=0,
             is_deleted=False,
+            # ✅ v88.87 — حقول المشاركة الموثقة لدى Yamshat
+            **_reel_share,
             created_at=_now(),
             updated_at=_now(),
         )

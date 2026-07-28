@@ -104,6 +104,16 @@ class GroupMessage:
     seen_by: List[str] = field(default_factory=list)
     forwarded_count: int = 0
     reports: List[Dict] = field(default_factory=list)
+    # ==========================================================
+    # ✅ v88.88 — دعم نظام المشاركة (Share) الموثق لدى Yamshat
+    # ==========================================================
+    # link_card: بيانات كارت الرابط الغني (dict) — يُعرض داخل بلاطة الرسالة.
+    # verified_by_yamshat: الطابع الرسمي "موثق لدى Yamshat".
+    # admin_source: بيانات المصدر الأصلية — لا تُعرض للمستخدمين،
+    #   يقرأها لوحة الأدمن فقط (audit/tracing للمحتوى المُشارك).
+    link_card: Optional[Dict] = None
+    verified_by_yamshat: bool = False
+    admin_source: Optional[Dict] = None
 
 
 @dataclass
@@ -630,7 +640,11 @@ class GroupStore:
         sender_avatar: str = "",
         sender_display_name: str = "",
         attachments: Optional[list] = None,
-        reply_to: Optional[str] = None
+        reply_to: Optional[str] = None,
+        # ✅ v88.88 — حقول نظام المشاركة الموثقة لدى Yamshat
+        link_card: Optional[Dict] = None,
+        verified_by_yamshat: bool = False,
+        admin_source: Optional[Dict] = None,
     ) -> Optional[dict]:
         group = self._groups.get(str(group_id))
         if not group:
@@ -640,6 +654,22 @@ class GroupStore:
             return None
         if member.is_muted:
             return None
+        # ✅ v88.88 — تطبيع حقول المشاركة (dict/JSON string → dict) عبر الوحدة المشتركة
+        try:
+            from app.core.share_fields import (
+                normalize_link_card as _norm_link_card,
+                normalize_admin_source as _norm_admin_source,
+            )
+            _clean_link_card = _norm_link_card(link_card)
+            _clean_admin_source = _norm_admin_source(admin_source)
+        except Exception:
+            _clean_link_card = link_card if isinstance(link_card, dict) else None
+            _clean_admin_source = admin_source if isinstance(admin_source, dict) else None
+        # verified_by_yamshat يُشتق أيضاً من admin_source إن كان مضبوطاً هناك
+        _final_verified = bool(verified_by_yamshat)
+        if not _final_verified and isinstance(_clean_admin_source, dict) \
+                and _clean_admin_source.get('verified_by_yamshat'):
+            _final_verified = True
         message_id = str(uuid.uuid4())
         message = GroupMessage(
             id=message_id,
@@ -651,6 +681,10 @@ class GroupStore:
             message_type=message_type,
             attachments=attachments or [],
             reply_to=reply_to,
+            # ✅ v88.88 — حقول المشاركة الموثقة لدى Yamshat
+            link_card=_clean_link_card,
+            verified_by_yamshat=_final_verified,
+            admin_source=_clean_admin_source,
         )
         if str(group_id) not in self._messages:
             self._messages[str(group_id)] = []
@@ -1312,6 +1346,12 @@ class GroupStore:
         }
 
     def serialize_message(self, message: GroupMessage) -> dict:
+        # ✅ v88.88 — تسلسل حقول المشاركة الموثقة لدى Yamshat
+        _link_card = getattr(message, 'link_card', None)
+        _admin_source = getattr(message, 'admin_source', None)
+        _has_admin = bool(_admin_source) and isinstance(_admin_source, dict) and (
+            _admin_source.get('source_platform') or _admin_source.get('source_url')
+        )
         return {
             'id': message.id,
             'group_id': message.group_id,
@@ -1331,6 +1371,10 @@ class GroupStore:
             'seen_by': message.seen_by,
             'seen_count': len(message.seen_by),
             'forwarded_count': int(getattr(message, 'forwarded_count', 0) or 0),
+            # ✅ v88.88 — حقول نظام المشاركة الموثقة لدى Yamshat
+            'link_card': _link_card if isinstance(_link_card, dict) else None,
+            'verified_by_yamshat': bool(getattr(message, 'verified_by_yamshat', False)),
+            'admin_source': _admin_source if _has_admin else None,
         }
 
     # ============ Persistence ============
@@ -1596,6 +1640,9 @@ class GroupStore:
                 for d in messages_data:
                     if not isinstance(d, dict):
                         continue
+                    # ✅ v88.88 — قراءة حقول المشاركة الموثقة عند تحميل الرسائل
+                    _lc = d.get('link_card')
+                    _as = d.get('admin_source')
                     messages.append(GroupMessage(
                         id=str(d.get('id') or ''),
                         group_id=str(d.get('group_id') or ''),
@@ -1617,6 +1664,10 @@ class GroupStore:
                         seen_by=d.get('seen_by') or [],
                         forwarded_count=int(d.get('forwarded_count') or 0),
                         reports=list(d.get('reports') or []),
+                        # ✅ v88.88 — حقول المشاركة الموثقة لدى Yamshat
+                        link_card=_lc if isinstance(_lc, dict) else None,
+                        verified_by_yamshat=bool(d.get('verified_by_yamshat', False)),
+                        admin_source=_as if isinstance(_as, dict) else None,
                     ))
                 self._messages[group_id] = messages
 

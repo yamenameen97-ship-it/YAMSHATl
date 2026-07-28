@@ -362,6 +362,10 @@ export default function StoryEditor({ file, onClose, onSuccess, initialCaption =
           stickers: structuredStickers,
           mentions,
           cross_post_to_reels: crossPostToReels,
+          // ✅ v88.86 FIX: تمرير بيانات كارت الرابط والمصدر وعلامة التوثيق
+          link_card: sharedIntake?.linkCard ? JSON.stringify(sharedIntake.linkCard) : undefined,
+          admin_source: sharedIntake?.adminSource ? JSON.stringify(sharedIntake.adminSource) : undefined,
+          verified_by_yamshat: sharedIntake?.verifiedByYamshat || undefined,
         },
         (evt) => {
           if (!isMountedRef.current) return;
@@ -378,7 +382,7 @@ export default function StoryEditor({ file, onClose, onSuccess, initialCaption =
     } finally {
       if (isMountedRef.current) setUploading(false);
     }
-  }, [caption, countdownAt, crossPostToReels, file, filterName, locationText, mentions, music, onSuccess, pollOptions, pollQuestion, privacy, questionSticker, showCountdown, showPoll, stickers, texts]);
+  }, [caption, countdownAt, crossPostToReels, file, filterName, locationText, mentions, music, onSuccess, pollOptions, pollQuestion, privacy, questionSticker, sharedIntake, showCountdown, showPoll, stickers, texts]);
 
   const handleClose = useCallback(() => {
     if (uploading) return;

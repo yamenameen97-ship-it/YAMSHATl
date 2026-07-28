@@ -20,8 +20,13 @@ import { followUser, muteUser, unmuteUser } from '../api/users.js';
 import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import PostCardComponent from '../components/feed/PostCard.jsx';
+import ExternalSourceCard from '../components/feed/ExternalSourceCard.jsx';
+// ✅ v88.91: زوج ريلز Grid بعد كل 5 منشورات (نمط YouTube Shorts داخل الفيد)
+import FeedReelsPair from '../components/feed/FeedReelsPair.jsx';
 import ScrollToTopFab from '../components/feed/ScrollToTopFab.jsx';
 import { timeAgoAr as fmtTimeAgoAr, formatLocalDateTimeAr } from '../utils/timeFormat.js';
+// ✅ v88.89: حفظ آخر 10 منشورات في IndexedDB للتصفح بدون إنترنت
+import offlineCache from '../offline/offlineSessionCache.js';
 import {
   likePost as apiLikePost,
   savePost as apiSavePost,
@@ -163,6 +168,9 @@ function buildFeedPosts(posts = []) {
             : (Array.isArray(post.poll_options) ? post.poll_options
             : (Array.isArray(post.options) ? post.options : [])),
         poll_question: post.poll_question || '',
+        // ✅ v88.85 FIX: تمرير بيانات كارت المصدر الخارجي + شارة "موثق لدى Yamshat"
+        link_card: post.link_card || post.linkCard || null,
+        verified_by_yamshat: Boolean(post.verified_by_yamshat || post.verifiedByYamshat),
       };
     });
   }
@@ -453,14 +461,53 @@ function PostCard({ post }) {
     return base + likesN + commentsN + savesN + sharesN + repostsN;
   }, [engagementBase, halfSeen, likesCount, commentsCount, sharesCount, repostsCount, saved, post.saves]);
 
-  // ✅ v88.79: زر إعادة النشر (Repost) — بلا ربط API في هذه الجلسة.
-  //    عند الضغط نعرض Toast توضيحي فقط (سيُربط لاحقاً).
-  const handleRepost = () => {
-    pushToast({
-      type: 'info',
-      title: 'إعادة النشر',
-      description: 'سيُفعّل هذا الزر في جلسة لاحقة.',
-    });
+  // ✅ v88.82: زر إعادة النشر (Repost) — ربط فعلي مع الخادم.
+  //   • تحديث متفائل فوري لـ isReposted و repostsCount.
+  //   • استدعاء apiSharePost(post.rawId, 'repost') — نفس endpoint المشاركة مع تمييز النوع 'repost'
+  //     (مطابق للمنطق المُطبّق فعلياً في FeedMobile.jsx).
+  //   • عند الفشل: rollback + toast خطأ.
+  //   • منع الضغط المتكرر أثناء الطلب عبر busyAction === 'repost'.
+  //   • للمنشورات الترحيبية (بلا rawId): تحديث بصري فقط بدون API.
+  const handleRepost = async () => {
+    if (busyAction === 'repost') return;
+
+    const prevReposted = isReposted;
+    const prevCount = repostsCount;
+    const nextReposted = !prevReposted;
+    const delta = nextReposted ? 1 : -1;
+
+    // تحديث متفائل فوري
+    setIsReposted(nextReposted);
+    setRepostsCount((c) => Math.max(0, Number(c || 0) + delta));
+
+    // منشورات ترحيبية: لا نستدعي الخادم
+    if (!canCallBackend) {
+      pushToast({
+        type: 'success',
+        title: nextReposted ? 'تمّت إعادة النشر' : 'تم إلغاء إعادة النشر',
+      });
+      return;
+    }
+
+    setBusyAction('repost');
+    try {
+      await apiSharePost(post.rawId, 'repost');
+      pushToast({
+        type: 'success',
+        title: nextReposted ? 'تمّت إعادة النشر' : 'تم إلغاء إعادة النشر',
+      });
+    } catch (err) {
+      // Rollback عند الفشل
+      setIsReposted(prevReposted);
+      setRepostsCount(prevCount);
+      pushToast({
+        type: 'error',
+        title: 'تعذّرت إعادة النشر',
+        description: err?.response?.data?.detail || err?.message || 'حاول مرة أخرى لاحقاً.',
+      });
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   // ✅ v88.79: زر مؤشر التفاعل — عند الضغط نعرض شرحاً للمستخدم فقط.
@@ -751,6 +798,7 @@ function PostCard({ post }) {
             <div className="yam-post-author-line">
               <strong>{post.authorName}</strong>
               <span className="yam-verified-badge">✓</span>
+              {post.verified_by_yamshat ? <span className="badge-yamshat-verified" title="موثق لدى Yamshat">✅ موثق لدى Yamshat</span> : null}
             </div>
             <div className="yam-post-handle">
               <span className="yam-post-handle-text">{post.handle}</span>
@@ -839,6 +887,11 @@ function PostCard({ post }) {
         </div>
       ) : null}
 
+      {/* ✅ v88.85 FIX: كارت المصدر الخارجي (Rich Preview) */}
+      {(post.link_card || post.linkCard) ? (
+        <ExternalSourceCard linkCard={post.link_card || post.linkCard} />
+      ) : null}
+
       {mediaItems.length ? (
         <div className={`yam-post-media-grid-v2 media-count-${mediaItems.length}`}>
           {mediaItems.map((item, index) => (
@@ -903,14 +956,16 @@ function PostCard({ post }) {
           {computeEngagement() > 0 ? <span className="yam-action-count">{computeEngagement()}</span> : null}
         </button>
 
-        {/* ✅ v88.79: زر إعادة النشر (Repost) — سهمان دائريان مطابقان لصورة x.com المرجعية.
-             بدون ربط API في هذه النسخة (يظهر Toast توضيحي فقط عند الضغط). */}
+        {/* ✅ v88.82: زر إعادة النشر (Repost) — مربوط بالخادم عبر apiSharePost(id, 'repost').
+             تحديث متفائل + rollback عند الفشل (مطابق لـ FeedMobile.jsx). */}
         <button
           type="button"
           className={`yam-action-btn yam-repost-btn${isReposted ? ' is-reposted active' : ''}`}
           onClick={handleRepost}
+          disabled={busyAction === 'repost'}
           aria-label={`إعادة نشر (${repostsCount})`}
-          title="إعادة نشر"
+          aria-pressed={isReposted}
+          title={isReposted ? 'إلغاء إعادة النشر' : 'إعادة نشر'}
         >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke={isReposted ? '#22c55e' : 'currentColor'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <polyline points="17 1 21 5 17 9" />
@@ -1035,8 +1090,33 @@ function FeedDesktopInner() {
     pollingInterval: 25_000,
   });
 
-  // تغذية المنشورات (بدون بث مباشر)
-  const feedPosts = useMemo(() => buildFeedPosts(posts), [posts]);
+  // ✅ v88.89: تحميل آخر 10 منشورات من الكاش للوضع بدون إنترنت
+  const [offlineFeedPosts, setOfflineFeedPosts] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cached = await offlineCache.getCachedFeedPosts?.();
+        if (!cancelled && Array.isArray(cached) && cached.length) {
+          setOfflineFeedPosts(cached);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ✅ v88.89: حفظ آخر 10 منشورات فور وصولها من الشبكة
+  useEffect(() => {
+    if (Array.isArray(posts) && posts.length) {
+      offlineCache.cacheFeedPosts?.(posts.slice(0, 10)).catch(() => {});
+    }
+  }, [posts]);
+
+  // تغذية المنشورات (بدون بث مباشر) + fallback للكاش عند offline
+  const feedPosts = useMemo(() => {
+    const src = (Array.isArray(posts) && posts.length) ? posts : offlineFeedPosts;
+    return buildFeedPosts(src);
+  }, [posts, offlineFeedPosts]);
 
   const totalPosts = feedPosts.length;
   const profilePostsCount = Number(profile?.posts_count || profileDetails.posts_count || profileDetails.posts || profile?.posts || totalPosts || 0);
@@ -1210,9 +1290,22 @@ function FeedDesktopInner() {
             </section>
 
             <div className="yam-post-stack-v2" ref={postStackRef}>
-              {feedPosts.map((post) => (
-                <PostCard key={post.id} post={post} />
-              ))}
+              {feedPosts.map((post, idx) => {
+                const card = <PostCard key={post.id} post={post} />;
+                // ✅ v88.91: بعد كل 5 منشورات ندرج زوج ريلز Grid
+                const shouldInjectReels = (idx + 1) % 5 === 0;
+                if (!shouldInjectReels) return card;
+                const reelsGroupIndex = Math.floor((idx + 1) / 5) - 1;
+                return (
+                  <div key={`post-and-reels-${post.id}`}>
+                    {card}
+                    <FeedReelsPair
+                      key={`ym-reels-pair-${reelsGroupIndex}`}
+                      startIndex={reelsGroupIndex}
+                    />
+                  </div>
+                );
+              })}
               <div className="yam-feed-status-row">
                 {isFetchingNextPage
                   ? 'جارٍ تحميل المنشورات الأقدم...'
@@ -1897,6 +1990,21 @@ function FeedDesktopInner() {
             font-size: 11px;
             font-weight: 900;
             flex-shrink: 0;
+          }
+
+          .badge-yamshat-verified {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 0.68rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, rgba(139,92,246,0.22), rgba(99,102,241,0.18));
+            color: #c4b5fd;
+            border: 1px solid rgba(139,92,246,0.38);
+            white-space: nowrap;
+            line-height: 1.4;
           }
 
           .yam-ghost-icon-btn,

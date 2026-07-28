@@ -38,6 +38,7 @@ import { resolveMediaUrl } from '../../config/mediaConfig.js';
 import UniversalPlayer from '../video/UniversalPlayer.jsx';
 import FeedVideoPlayer from '../mobile/FeedVideoPlayer.jsx';
 import ImageViewerModal from './ImageViewerModal.jsx';
+import ExternalSourceCard from './ExternalSourceCard.jsx';
 
 const ADVANCED_REACTIONS = [
   { emoji: '❤️', label: 'حب' },
@@ -618,6 +619,7 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
             >
               <span className="ym-pc-uname-text">{post.username}</span>
               {post.is_verified ? <span title="حساب موثق" aria-hidden="true">✅</span> : null}
+              {post.verified_by_yamshat ? <span className="badge-yamshat-verified" title="موثق لدى Yamshat">✅ موثق لدى Yamshat</span> : null}
             </div>
             <div className="ym-pc-time">
               {post.created_at ? new Date(post.created_at).toLocaleString('ar-EG') : 'الآن'}
@@ -722,6 +724,11 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
               />
             )}
           </div>
+        ) : null}
+
+        {/* ✅ v88.85 FIX: كارت المصدر الخارجي (Rich Preview) */}
+        {(post.link_card || post.linkCard) ? (
+          <ExternalSourceCard linkCard={post.link_card || post.linkCard} />
         ) : null}
       </div>
 
@@ -1204,6 +1211,22 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
           .ym-pc-action { min-height: 42px; padding: 7px 4px; }
           .ym-pc-emoji { font-size: 0.95rem; }
           .ym-pc-menu { min-width: 160px; }
+        }
+
+        /* ============ شارة "موثق لدى Yamshat" ============ */
+        .badge-yamshat-verified {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 0.68rem;
+          font-weight: 800;
+          background: linear-gradient(135deg, rgba(139,92,246,0.22), rgba(99,102,241,0.18));
+          color: #c4b5fd;
+          border: 1px solid rgba(139,92,246,0.38);
+          white-space: nowrap;
+          line-height: 1.4;
         }
 
         /* ============ التوافق الخلفي ============ */

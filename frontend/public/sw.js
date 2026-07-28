@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v88.82-share-target-chat-groups-consumer-1830700000000';
+const VERSION = 'yamshat-v88.84-share-target-link-download-modes-1830800000000';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,

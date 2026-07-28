@@ -1,4 +1,4 @@
-const VERSION = 'yamshat-v20260531-030537-1780196737386';
+const VERSION = 'yamshat-v88.84-share-target-link-download-modes-1830800000000';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,

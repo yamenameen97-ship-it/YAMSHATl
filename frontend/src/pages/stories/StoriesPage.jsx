@@ -12,7 +12,7 @@ import { getMe } from '../../api/users.js';
 import { motion, AnimatePresence } from 'framer-motion';
 import offlineCache from '../../offline/offlineSessionCache.js';
 // ✅ v88.81 — النقطة (3): استهلاك حمولة المشاركة الواردة إلى صفحة Stories
-import { consumePendingShare } from '../../services/share/sharedIntake.js';
+import { consumePendingShare, dataUrlToBlob } from '../../services/share/sharedIntake.js';
 
 export default function StoriesPage() {
   const [activeTab, setActiveTab] = useState('feed');
@@ -72,31 +72,46 @@ export default function StoriesPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ✅ v88.81 — النقطة (3): عند فتح الصفحة تفحّص إن كان هناك محتوى مُشارَك موجّه لـ story
-  // وتفتح فقاعة الرفع تلقائياً + عدّاد تحضير تقدّمي للملف.
+  // ✅ v88.84: عند فتح الصفحة تفحّص إن كان هناك محتوى مُشارَك موجّه لـ story
+  //   يدعم وضعين:
+  //     - mode='link': يلتقط لقطة من الفيديو (thumbnailDataUrl) أو الصورة + الوصف + الرابط
+  //     - mode='download': الملف المنزّل + وصف بدون رابط
+  //   ويفتح فقاعة الرفع تلقائياً + عدّاد تحضير تقدّمي للملف.
   useEffect(() => {
     if (shareConsumedRef.current) return;
     const pending = consumePendingShare('story');
     if (!pending) return;
     shareConsumedRef.current = true;
+    const mode = pending.mode || 'link';
 
-    // الوصف/الرابط المشارك يدخل إلى الكابشن الافتراضي
-    setSharedCaption(pending.description || pending.sourceUrl || '');
+    // الوصف المشارك يدخل إلى الكابشن الافتراضي
+    // - mode='link': يشمل الرابط
+    // - mode='download': بدون رابط
+    setSharedCaption(pending.description || (mode === 'link' ? pending.sourceUrl : '') || '');
     setSharedIntake({
       fileMeta: pending.fileMeta || null,
       sourceUrl: pending.sourceUrl || '',
       sourceTitle: pending.sourceTitle || '',
       sourceText: pending.sourceText || '',
       receivedAt: pending.receivedAt || null,
+      mode,
+      thumbnailDataUrl: pending.thumbnailDataUrl || null,
+      // ✅ v88.86 FIX: تمرير بيانات كارت الرابط والمصدر وعلامة التوثيق
+      linkCard: pending.linkCard || null,
+      adminSource: pending.adminSource || null,
+      verifiedByYamshat: Boolean(pending.verifiedByYamshat),
     });
 
-    if (pending.file && pending.fileMeta) {
+    // ✅ v88.84: تحديد الملف المستخدم حسب الوضع
+    const usedFile = pending.file || (mode === 'link' && pending.thumbnailDataUrl ? dataUrlToBlob(pending.thumbnailDataUrl) : null);
+    const usedMeta = pending.fileMeta || (mode === 'link' && pending.thumbnailDataUrl ? { name: 'video-thumbnail.jpg', type: 'image/jpeg', size: 0 } : null);
+
+    if (usedFile && usedMeta) {
       // محاكاة تحضير تدريجي للملف (لإظهار شريط تقدّم) ثم تمريره للمحرّر
       setSharedPrepareProgress(5);
-      const total = Math.max(1, Number(pending.fileMeta.size || 0));
+      const total = Math.max(1, Number(usedMeta.size || 0));
       const start = Date.now();
-      // تقدّم تدريجي حتى يجهز الملف داخل المحرّر (مُقدّر حسب الحجم)
-      const estimatedMs = Math.min(1600, 400 + Math.round(total / (1024 * 512))); // ~0.5MB/tick
+      const estimatedMs = Math.min(1600, 400 + Math.round(total / (1024 * 512)));
       const timer = setInterval(() => {
         const elapsed = Date.now() - start;
         const pct = Math.min(95, Math.round((elapsed / estimatedMs) * 95));
@@ -104,15 +119,13 @@ export default function StoriesPage() {
         if (pct >= 95) clearInterval(timer);
       }, 80);
 
-      // تجهيز الملف للمحرّر (Blob جاهز فعلياً)
       try {
-        const blob = pending.file;
+        const blob = usedFile;
         const nativeFile = (blob instanceof File)
           ? blob
-          : new File([blob], pending.fileMeta.name || 'shared', { type: pending.fileMeta.type || blob.type || 'application/octet-stream' });
+          : new File([blob], usedMeta.name || 'shared', { type: usedMeta.type || blob.type || 'application/octet-stream' });
         setSelectedFile(nativeFile);
         setActiveTab('create');
-        // إتمام العدّاد
         setTimeout(() => {
           clearInterval(timer);
           setSharedPrepareProgress(100);
@@ -125,6 +138,10 @@ export default function StoriesPage() {
       }
 
       return () => clearInterval(timer);
+    } else if (mode === 'link' && pending.sourceUrl) {
+      // رابط فقط بلا ملف — افتح المحرّر بالكابشن الذي يشمل الرابط
+      setSharedPrepareProgress(100);
+      setActiveTab('create');
     }
 
     // لا يوجد ملف — رابط/نص فقط → فتح قصة نصية

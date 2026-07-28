@@ -14,7 +14,9 @@ import { MEDIA_SECURITY, SIGNED_URL_TTL_SECONDS, currentMediaProviderLabel } fro
 import { CooldownUI, RateLimitUI, createAntiSpamReport } from '../security/spam.js';
 import deviceTrustService from '../services/deviceTrustService.js';
 import notificationService from '../services/notificationService.js';
-import { clearStoredUser } from '../utils/auth.js';
+import { clearStoredUser, getCurrentUsername, getStoredUserSnapshot } from '../utils/auth.js';
+// ✅ v88.89: حفظ إعدادات الحساب وملف حسابي للتصفح بدون إنترنت
+import offlineCache from '../offline/offlineSessionCache.js';
 import { getCDNConfig, getMediaDeliveryProfile } from '../utils/performance.js';
 
 /**
@@ -309,23 +311,77 @@ export default function Settings() {
   useEffect(() => {
     let unsubscribe = () => {};
     const load = async () => {
+      // ✅ v88.89: تحميل مبدئي من الكاش للوضع بدون إنترنت
+      try {
+        const cachedAcc = await offlineCache.getCachedAccountSettings?.();
+        if (cachedAcc && typeof cachedAcc === 'object') {
+          if (Array.isArray(cachedAcc.trustedDevices)) setTrustedDevices(cachedAcc.trustedDevices);
+          if (Array.isArray(cachedAcc.sessions)) setSessions(cachedAcc.sessions);
+          if (Array.isArray(cachedAcc.alerts)) setAlerts(cachedAcc.alerts);
+          if (cachedAcc.prefs && typeof cachedAcc.prefs === 'object') {
+            setPrefs((prev) => ({ ...prev, ...cachedAcc.prefs }));
+          }
+        }
+      } catch { /* ignore */ }
+
       try {
         const [devicesResult, sessionsResult, alertsResult] = await Promise.all([
           deviceTrustService.getTrustedDevices(),
           deviceTrustService.getSessions(),
           deviceTrustService.getLoginAlerts(),
         ]);
-        setTrustedDevices(Array.isArray(devicesResult) ? devicesResult : devicesResult?.items || []);
-        setSessions(Array.isArray(sessionsResult) ? sessionsResult : sessionsResult?.items || []);
-        setAlerts(Array.isArray(alertsResult) ? alertsResult : alertsResult?.items || []);
+        const devicesList = Array.isArray(devicesResult) ? devicesResult : devicesResult?.items || [];
+        const sessionsList = Array.isArray(sessionsResult) ? sessionsResult : sessionsResult?.items || [];
+        const alertsList = Array.isArray(alertsResult) ? alertsResult : alertsResult?.items || [];
+        setTrustedDevices(devicesList);
+        setSessions(sessionsList);
+        setAlerts(alertsList);
         setPushState(notificationService.getPushReadiness());
         setSyncState(deviceTrustService.getSyncState());
         unsubscribe = deviceTrustService.subscribe((payload) => setSyncState((prev) => ({ ...prev, ...(payload || {}) })));
+
+        // ✅ v88.89: خزّن ملف حسابي + الإعدادات للتصفح بدون إنترنت
+        try {
+          const username = getCurrentUsername?.();
+          const userSnap = getStoredUserSnapshot?.() || null;
+          offlineCache.cacheAccountSettings?.({
+            username,
+            user: userSnap,
+            trustedDevices: devicesList,
+            sessions: sessionsList,
+            alerts: alertsList,
+            prefs,
+          }).catch(() => {});
+          if (username && userSnap) {
+            offlineCache.cacheProfile?.(username, userSnap).catch(() => {});
+          }
+        } catch { /* ignore */ }
       } catch {}
     };
     load();
+    // ✅ v88.89: تسجيل زيارة صفحة الإعدادات
+    offlineCache.markPageVisited?.('/settings', { title: 'الإعدادات' }).catch(() => {});
     return () => unsubscribe();
   }, []);
+
+  // ✅ v88.89: إعادة حفظ الإعدادات عند تغيّر prefs
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const username = getCurrentUsername?.();
+        const userSnap = getStoredUserSnapshot?.() || null;
+        offlineCache.cacheAccountSettings?.({
+          username,
+          user: userSnap,
+          trustedDevices,
+          sessions,
+          alerts,
+          prefs,
+        }).catch(() => {});
+      } catch { /* ignore */ }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [prefs, trustedDevices, sessions, alerts]);
 
   const setSuccess = (text) => {
     setMessage(text);

@@ -29,6 +29,7 @@ from app.services.trending_service import (
     GLOBAL_TREND_THRESHOLD,
     COUNTRY_TREND_THRESHOLD,
     TREND_WINDOW_HOURS,
+    EXTERNAL_SOURCE_TREND_MULTIPLIER,
 )
 
 # v88.52 — حارس السلامة (منع التحريض/الكراهية/الطائفية/الإرهاب من التريند)
@@ -75,6 +76,7 @@ def get_global_trending(
         "scope": "global",
         "threshold": GLOBAL_TREND_THRESHOLD,
         "window_hours": TREND_WINDOW_HOURS,
+        "external_source_multiplier": EXTERNAL_SOURCE_TREND_MULTIPLIER,
         "count": len(filtered),
         "items": filtered,
         "safety_stats": dict(SAFETY_STATE['stats']),
@@ -105,6 +107,7 @@ def get_country_trending(
         "country": code.upper(),
         "threshold": COUNTRY_TREND_THRESHOLD,
         "window_hours": TREND_WINDOW_HOURS,
+        "external_source_multiplier": EXTERNAL_SOURCE_TREND_MULTIPLIER,
         "count": len(filtered),
         "items": filtered,
     }

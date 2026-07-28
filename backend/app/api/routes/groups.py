@@ -403,9 +403,25 @@ async def send_message(
     reply_to = payload.get('reply_to')
     if not content and not attachments:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Message content or attachments required')
+    # ✅ v88.88 — استخراج حقول المشاركة الموثقة لدى Yamshat من payload
+    try:
+        from app.core.share_fields import extract_share_payload as _extract_share_payload
+        _share = _extract_share_payload(payload)
+    except Exception:
+        _share = {
+            'link_card': payload.get('link_card') or payload.get('linkCard'),
+            'verified_by_yamshat': bool(
+                payload.get('verified_by_yamshat') or payload.get('verifiedByYamshat')
+            ),
+            'admin_source': payload.get('admin_source') or payload.get('adminSource'),
+        }
     result = group_store.send_message(
         group_id, current_user.username, content, message_type,
         sender_avatar, sender_display_name, attachments, reply_to,
+        # ✅ v88.88 — تمرير حقول المشاركة الموثقة للمتجر
+        link_card=_share.get('link_card'),
+        verified_by_yamshat=bool(_share.get('verified_by_yamshat')),
+        admin_source=_share.get('admin_source'),
     )
     if result is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Cannot send message to group')

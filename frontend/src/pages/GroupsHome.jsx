@@ -4,8 +4,10 @@ import MainLayout from '../components/layout/MainLayout.jsx';
 import { getGroups, searchGroups, createGroupPost, sendGroupMessage } from '../api/groups.js';
 import '../styles/groups-list.css';
 // ✅ v88.82 — استهلاك المشاركة الخارجية الموجّهة للمجموعات + رفع الملف
-import { consumePendingShare } from '../services/share/sharedIntake.js';
+import { consumePendingShare, dataUrlToBlob } from '../services/share/sharedIntake.js';
 import mediaUploadService from '../services/media/mediaUploadService.js';
+// ✅ v88.89: حفظ المجموعات المفتوحة سابقاً للتصفح بدون إنترنت
+import offlineCache from '../offline/offlineSessionCache.js';
 
 /**
  * GroupsHome — v2 مُصلحة
@@ -50,14 +52,37 @@ const GroupsHome = () => {
     const fetchGroups = async () => {
       try {
         setLoading(true);
+        // ✅ v88.89: محاولة تحميل القائمة المخزّنة فوراً (لعرض فوري حتى لو كان offline)
+        try {
+          const cachedList = await offlineCache.getCachedGroupsList?.();
+          if (!cancelled && Array.isArray(cachedList) && cachedList.length) {
+            baseGroupsRef.current = cachedList;
+            setGroups(cachedList);
+          }
+        } catch { /* ignore */ }
+
         const response = await getGroups();
         if (cancelled) return;
         const groupsData = Array.isArray(response.data) ? response.data : (response.data?.items || []);
         baseGroupsRef.current = groupsData;
         setGroups(groupsData);
+        // ✅ v88.89: خزّن القائمة المحدّثة للتصفح بدون إنترنت
+        if (Array.isArray(groupsData) && groupsData.length) {
+          offlineCache.cacheGroupsList?.(groupsData).catch(() => {});
+        }
       } catch (err) {
         if (cancelled) return;
         console.error('Error fetching groups:', err);
+        // ✅ v88.89: fallback للكاش عند فشل الشبكة
+        try {
+          const cachedList = await offlineCache.getCachedGroupsList?.();
+          if (Array.isArray(cachedList) && cachedList.length) {
+            baseGroupsRef.current = cachedList;
+            setGroups(cachedList);
+            setError(null);
+            return;
+          }
+        } catch { /* ignore */ }
         setError('تعذر تحميل المجموعات. يرجى المحاولة مرة أخرى.');
       } finally {
         if (!cancelled) setLoading(false);
@@ -65,21 +90,32 @@ const GroupsHome = () => {
     };
 
     fetchGroups();
+    // ✅ v88.89: تسجيل زيارة صفحة المجموعات
+    offlineCache.markPageVisited?.('/groups', { title: 'المجموعات' }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
-  // ✅ v88.82 — استهلاك المشاركة الخارجية عند تركيب صفحة المجموعات
-  //   الوجهة المُتوقّعة هنا 'groups'. إذا وُجدت حمولة نفتح فقاعة اختيار المجموعة.
+  // ✅ v88.84 — استهلاك المشاركة الخارجية عند تركيب صفحة المجموعات
+  //   يدعم وضعين:
+  //     - mode='link': يلتقط لقطة من الفيديو (thumbnailDataUrl) أو الصورة + الوصف + الرابط
+  //     - mode='download': الملف المنزّل + وصف بدون رابط
+  //   إذا وُجدت حمولة نفتح فقاعة اختيار المجموعة.
   useEffect(() => {
     if (shareConsumedRef.current) return;
     const pending = consumePendingShare('groups');
     if (!pending) return;
     shareConsumedRef.current = true;
+    const mode = pending.mode || 'link';
+    // ✅ v88.84: في وضع الرابط مع لقطة فيديو، نحوّل dataURL إلى Blob للمعاينة
     let previewUrl = '';
+    let fileForPreview = pending.file;
+    if (!fileForPreview && mode === 'link' && pending.thumbnailDataUrl) {
+      fileForPreview = dataUrlToBlob(pending.thumbnailDataUrl);
+    }
     try {
-      if (pending.file) previewUrl = URL.createObjectURL(pending.file);
+      if (fileForPreview) previewUrl = URL.createObjectURL(fileForPreview);
     } catch { /* ignore */ }
-    setSharePicker({ pending, previewUrl });
+    setSharePicker({ pending: { ...pending, file: fileForPreview }, previewUrl });
     setShareUploadPercent(0);
     setShareUploadStage('idle');
     setShareError('');
@@ -153,6 +189,10 @@ const GroupsHome = () => {
           content: description || (mediaUrl ? 'محتوى مُشارَك' : ''),
           media_url: mediaUrl || undefined,
           media_type: mediaType || undefined,
+          // ✅ v88.86 FIX: تمرير بيانات كارت الرابط والمصدر وعلامة التوثيق
+          link_card: pending.linkCard || undefined,
+          admin_source: pending.adminSource || undefined,
+          verified_by_yamshat: pending.verifiedByYamshat || undefined,
         });
         posted = true;
       } catch (postErr) {
@@ -167,6 +207,10 @@ const GroupsHome = () => {
             message: description,
             media_url: mediaUrl || undefined,
             type: mediaUrl ? mediaType : 'text',
+            // ✅ v88.86 FIX: تمرير بيانات كارت الرابط والمصدر وعلامة التوثيق
+            link_card: pending.linkCard || undefined,
+            admin_source: pending.adminSource || undefined,
+            verified_by_yamshat: pending.verifiedByYamshat || undefined,
           });
         } catch (msgErr) {
           console.warn('[share→groups] sendGroupMessage failed:', msgErr?.message || msgErr);

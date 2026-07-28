@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { addComment, getComments } from '../api/posts.js';
-import { addReelComment, getReelComments, updateReel, deleteReel } from '../api/reels.js';
+import { addReelComment, getReelComments, updateReel, deleteReel, shareReelRepost } from '../api/reels.js';
 import API from '../api/axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getReelsCache, saveReelsCache } from '../services/reelsEngine.js';
@@ -785,6 +785,52 @@ export default function Reels() {
     } catch {}
   }, [pushToast]);
 
+  // ✅ v88.82: إعادة نشر الريل (Repost) — ربط فعلي مع الخادم.
+  //   • تحديث متفائل فوري لـ is_reposted و reposts_count.
+  //   • استدعاء shareReelRepost (يحاول /reels/{id}/repost ثم يسقط لـ /share بـ platform:'repost').
+  //   • عند الفشل: rollback + toast خطأ.
+  //   • منع الضغط المتكرر أثناء الطلب عبر repostBusyRef.
+  const repostBusyRef = useRef(new Set());
+  const handleRepost = useCallback(async (reel) => {
+    if (!reel) return;
+    if (repostBusyRef.current.has(reel.id)) return;
+    repostBusyRef.current.add(reel.id);
+
+    const prevReposted = Boolean(reel.is_reposted);
+    const nextReposted = !prevReposted;
+    const delta = nextReposted ? 1 : -1;
+
+    // تحديث متفائل فوري
+    setReels((prev) => prev.map((r) => (r.id === reel.id
+      ? { ...r, is_reposted: nextReposted, reposts_count: Math.max(0, Number(r.reposts_count || 0) + delta) }
+      : r)));
+
+    try {
+      const res = await shareReelRepost(reel.id);
+      if (!isMountedRef.current) return;
+      if (!res?.ok) {
+        // Rollback
+        setReels((prev) => prev.map((r) => (r.id === reel.id
+          ? { ...r, is_reposted: prevReposted, reposts_count: Math.max(0, Number(r.reposts_count || 0) - delta) }
+          : r)));
+        pushToast?.({ type: 'error', title: 'تعذّرت إعادة النشر', description: 'حاول مرة أخرى لاحقاً.' });
+      } else {
+        pushToast?.({
+          type: 'success',
+          title: nextReposted ? 'تمّت إعادة النشر' : 'تم إلغاء إعادة النشر',
+        });
+      }
+    } catch {
+      if (!isMountedRef.current) return;
+      setReels((prev) => prev.map((r) => (r.id === reel.id
+        ? { ...r, is_reposted: prevReposted, reposts_count: Math.max(0, Number(r.reposts_count || 0) - delta) }
+        : r)));
+      pushToast?.({ type: 'error', title: 'تعذّرت إعادة النشر' });
+    } finally {
+      repostBusyRef.current.delete(reel.id);
+    }
+  }, [pushToast]);
+
   /*
     v85.5 FIX (تعليقات الريلز تختفي بعد الإرسال):
     - المشكلة السابقة: كانت addComment/getComments تستخدم endpoints خاصة
@@ -1295,8 +1341,9 @@ export default function Reels() {
                     type="button"
                     className={`ym-action-btn ym-repost-btn ${reel.is_reposted ? 'is-reposted' : ''}`}
                     aria-label="إعادة نشر"
-                    title="إعادة نشر"
-                    onClick={() => pushToast?.({ type: 'info', title: 'إعادة النشر', description: 'سيُفعّل هذا الزر في جلسة لاحقة.' })}
+                    aria-pressed={Boolean(reel.is_reposted)}
+                    title={reel.is_reposted ? 'إلغاء إعادة النشر' : 'إعادة نشر'}
+                    onClick={() => handleRepost(reel)}
                   >
                     <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke={reel.is_reposted ? '#22c55e' : '#fff'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       {/* أيقونة إعادة النشر: سهمان دائريان (مثل تويتر/x.com) */}
@@ -1968,14 +2015,22 @@ export default function Reels() {
             .ym-search-grid { grid-template-columns: repeat(4, 1fr); }
           }
 
+          /* ✅ v88.83 (2026-07-27): خفّضنا gap من 22px إلى 14px لأن الأرقام
+             أصبحت بجانب الأزرار (ليس تحتها)، فصار كل صف أقصر عموديّا —
+             يمكن تقليص المسافة بين المجموعات. ولأن العمود الإجمالي
+             قُصّر، رفعنا bottom من 200px إلى 210px ليبقى فوق منطقة النافيجاشن
+             وأسفل المعلومات، دون أن يمتد إلى نهاية الشاشة. */
           .ym-reels-actions {
             position: absolute;
             inset-inline-end: 14px;
-            bottom: 200px;
+            bottom: 210px;
             display: flex;
             flex-direction: column;
-            gap: 22px;
+            gap: 14px;
             z-index: 5;
+            /* حد أقصى للارتفاع: لا يتجاوز المساحة المتاحة فوق منطقة النافيجاشن */
+            max-height: calc(100vh - 300px);
+            overflow: visible;
           }
 
           /* ✅ v88.43: طبقة التقاط النقر المزدوج شفافة تغطي الريل بالكامل (تحت الأزرار) */
@@ -2084,10 +2139,25 @@ export default function Reels() {
               animation-duration: 17s !important;
             }
           }
+          /* ✅ v88.83 (2026-07-27): الأرقام بجانب الزر بدل تحته.
+             المشكلة: لمّا أضيف مؤشر التفاعل + زر إعادة النشر في v88.78
+             أصبح عمود الأزرار طويلاً جدّاً لأن كل زر له flex-direction:column
+             (أيقونة فوق رقم)، فوصل إلى نهاية الشاشة وغطّى أزرار النافيجاشن.
+             الحل الجذري: نحوّل كل مجموعة إلى flex-direction:row بحيث يظهر الرقم
+             بجانب الزر (تحت إن رغب RTL) ونلغي المساحة العمودية ما بين الأزرار
+             فيرجع عمود الأزرار لارتفاع معقول ولا يدخل في منطقة النافيجاشن. */
           .ym-action-group {
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
+            justify-content: center;
+            gap: 6px;
+            /* يضمن أن الرقم (RTL) يظهر على يمين الأيقونة من منظور المستخدم */
+            direction: rtl;
+          }
+          /* مجموعة الأفاتار في الأعلى تبقى عمودية (الأفاتار + زر +) */
+          .ym-action-group.ym-action-author {
+            flex-direction: column;
             gap: 4px;
           }
           .ym-action-btn {
@@ -2211,9 +2281,14 @@ export default function Reels() {
           }
           .ym-action-label {
             color: #fff;
-            font-size: 12px;
-            font-weight: 600;
+            font-size: 13px;
+            font-weight: 700;
             text-shadow: 0 1px 3px rgba(0,0,0,.7);
+            /* ✅ v88.83: الرقم بجانب الزر — أرقام جدولية ثابتة العرض */
+            font-variant-numeric: tabular-nums;
+            min-width: 22px;
+            text-align: start;
+            line-height: 1;
           }
 
           .ym-reels-orb {

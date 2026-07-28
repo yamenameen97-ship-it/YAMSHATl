@@ -12,6 +12,8 @@ from app.core.dependencies import get_current_user, get_db
 from app.core.rate_limit import allow_socket_message
 from app.core.security import ACCESS_TOKEN_TYPE, TokenError, decode_token
 from app.core.socket_server import is_user_online, sio
+# ✅ v88.87 — حقول المشاركة الموثقة لدى Yamshat
+from app.core.share_fields import build_share_extra_fields, extract_share_payload
 from app.db.session import SessionLocal
 from app.models.message import Message
 from app.models.message_attachment import MessageAttachment
@@ -221,6 +223,8 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
     except (TypeError, ValueError):
         disappearing_seconds = 0
     attachments = _parse_attachments(payload)
+    # ✅ v88.87 — استخراج حقول المشاركة الموثقة لدى Yamshat
+    _share_fields = build_share_extra_fields(**extract_share_payload(payload))
 
     if not receiver_username or (not raw_message and not media_url and not attachments):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='receiver and message or media_url/attachments are required')
@@ -318,6 +322,8 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
         reply_to_id=reply_to_id,
         forwarded_from_id=forwarded_from_id,
         expires_at=expires_at,
+        # ✅ v88.87 — حقول المشاركة الموثقة لدى Yamshat
+        **_share_fields,
     )
     db.add(message)
     db.commit()
@@ -777,6 +783,20 @@ async def forward_message(payload: dict = Body(...), db: Session = Depends(get_d
             delivered_at=datetime.utcnow() if delivered_now else None,
             is_seen=False,
             forwarded_from_id=source.id,
+            # ✅ v88.87 — نقل حقول المشاركة الموثقة لدى Yamshat
+            link_card=getattr(source, 'link_card', None),
+            verified_by_yamshat=bool(getattr(source, 'verified_by_yamshat', False)),
+            admin_source_platform=getattr(source, 'admin_source_platform', None),
+            admin_source_platform_name=getattr(source, 'admin_source_platform_name', None),
+            admin_source_url=getattr(source, 'admin_source_url', None),
+            admin_source_title=getattr(source, 'admin_source_title', None),
+            admin_source_text=getattr(source, 'admin_source_text', None),
+            admin_source_author=getattr(source, 'admin_source_author', None),
+            admin_source_channel=getattr(source, 'admin_source_channel', None),
+            admin_source_captured_at=getattr(source, 'admin_source_captured_at', None),
+            admin_source_share_mode=getattr(source, 'admin_source_share_mode', None),
+            admin_source_download_size=getattr(source, 'admin_source_download_size', None),
+            admin_source_download_mime=getattr(source, 'admin_source_download_mime', None),
         )
         db.add(new_msg)
         db.commit()

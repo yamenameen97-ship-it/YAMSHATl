@@ -30,6 +30,8 @@ from sqlalchemy.orm import Session
 from app.api.routes.upload import save_upload
 from app.core.dependencies import get_current_user, get_db
 from app.core.media_urls import normalize_media_url
+# ✅ v88.87 — حقول المشاركة الموثقة لدى Yamshat
+from app.core.share_fields import extract_share_form
 from app.models.user import User
 from app.services import story_db_service as story_svc
 
@@ -274,6 +276,10 @@ def add_story(
     is_close_friends: bool = Form(default=False),
     auto_delete_hours: int = Form(default=24),
     cross_post_to_reels: bool = Form(default=False),
+    # ✅ v88.87 — حقول نظام المشاركة الموثقة لدى Yamshat
+    link_card: str = Form(default=''),
+    verified_by_yamshat: str = Form(default=''),
+    admin_source: str = Form(default=''),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -307,6 +313,12 @@ def add_story(
 
     # v88.3.2: نمرّر media_url النهائي (مطلق) إلى طبقة الخدمة ليُحفظ
     # في DB كرابط دائم قابل للمشاركة مع أي مشترك.
+    # ✅ v88.87 — استخراج حقول المشاركة الموثقة من بيانات النموذج
+    _share = extract_share_form({
+        'link_card': link_card,
+        'verified_by_yamshat': verified_by_yamshat,
+        'admin_source': admin_source,
+    })
     story = story_svc.add_story(
         db,
         user_id=current_user.id,
@@ -326,6 +338,10 @@ def add_story(
             'auto_delete_hours': auto_delete_hours,
             'is_close_friends': bool(is_close_friends),
             'cross_post_to_reels': bool(cross_post_to_reels),
+            # ✅ v88.87 — حقول المشاركة الموثقة لدى Yamshat
+            'link_card': _share['link_card'],
+            'verified_by_yamshat': _share['verified_by_yamshat'],
+            'admin_source': _share['admin_source'],
         },
     )
     result = story_svc.serialize_story(db, story, viewer_user_id=current_user.id)

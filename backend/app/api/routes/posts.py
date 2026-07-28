@@ -140,6 +140,17 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
         if poll_question not in content.split('\n', 1)[0]:
             content = (poll_question + ('\n' + content if content else '')).strip()
 
+    # ✅ v88.86 — التقاط حقول نظام المشاركة الموثقة من الواجهة الأمامية
+    link_card_payload = payload.get('link_card') or payload.get('linkCard')
+    verified_by_yamshat_flag = bool(
+        payload.get('verified_by_yamshat')
+        or payload.get('verifiedByYamshat')
+    )
+    admin_source_payload = (
+        payload.get('admin_source')
+        or payload.get('adminSource')
+    )
+
     post = create_post(
         db,
         user_id=current_user.id,
@@ -152,6 +163,10 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), current_use
         is_draft=bool(payload.get('is_draft', False)),
         is_pinned=bool(payload.get('is_pinned', False)),
         allow_comments=bool(payload.get('allow_comments', True)),
+        # ✅ v88.86 — دعم "موثق لدى Yamshat"
+        link_card=link_card_payload,
+        verified_by_yamshat=verified_by_yamshat_flag,
+        admin_source=admin_source_payload,
     )
     # ✅ FIX v88.7: إرجاع poll_question مع الاستجابة حتى تعرف الواجهة الأمامية أين تعرضه
     if isinstance(post, dict):
@@ -281,6 +296,16 @@ def vote(post_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
 
 @router.patch('/{post_id}')
 def patch_post(post_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # ✅ v88.86 — دعم تحديث حقول نظام المشاركة الموثقة أثناء التعديل
+    has_link_card = ('link_card' in payload) or ('linkCard' in payload)
+    link_card_value = payload.get('link_card', payload.get('linkCard'))
+
+    has_verified = ('verified_by_yamshat' in payload) or ('verifiedByYamshat' in payload)
+    verified_value = payload.get('verified_by_yamshat', payload.get('verifiedByYamshat'))
+
+    has_admin_source = ('admin_source' in payload) or ('adminSource' in payload)
+    admin_source_value = payload.get('admin_source', payload.get('adminSource'))
+
     return update_post(
         db,
         post_id=post_id,
@@ -294,6 +319,10 @@ def patch_post(post_id: int, payload: dict = Body(...), db: Session = Depends(ge
         is_draft=payload.get('is_draft') if 'is_draft' in payload else None,
         is_pinned=payload.get('is_pinned') if 'is_pinned' in payload else None,
         allow_comments=payload.get('allow_comments') if 'allow_comments' in payload else None,
+        # ✅ v88.86 — حقول المشاركة الموثقة
+        link_card=link_card_value if has_link_card else None,
+        verified_by_yamshat=bool(verified_value) if has_verified else None,
+        admin_source=admin_source_value if has_admin_source else None,
     )
 
 

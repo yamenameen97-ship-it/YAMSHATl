@@ -106,6 +106,115 @@ def _normalize_media(payload) -> list[str]:
     return clean[:8]
 
 
+def _normalize_link_card(value) -> dict | None:
+    """v88.86: تنقيح كارت الرابط الغني قبل الحفظ."""
+    if not value:
+        return None
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except Exception:
+            return None
+    if not isinstance(value, dict):
+        return None
+
+    def _s(k, limit=500):
+        v = value.get(k)
+        if v is None:
+            return None
+        try:
+            v = str(v).strip()
+        except Exception:
+            return None
+        return v[:limit] if v else None
+
+    def _int(k):
+        v = value.get(k)
+        try:
+            return int(v) if v is not None and v != '' else None
+        except Exception:
+            return None
+
+    def _num(k):
+        v = value.get(k)
+        try:
+            return float(v) if v is not None and v != '' else None
+        except Exception:
+            return None
+
+    card = {
+        'title': _s('title', 300),
+        'description': _s('description', 2000),
+        'thumbnail': _s('thumbnail', 2000),
+        'sourceName': _s('sourceName', 200) or _s('source_name', 200),
+        'sourceLogo': _s('sourceLogo', 200) or _s('source_logo', 200),
+        'sourceUrl': _s('sourceUrl', 2000) or _s('source_url', 2000),
+        'platform': _s('platform', 60),
+        'supportsBrowser': bool(value.get('supportsBrowser'))
+            if 'supportsBrowser' in value else None,
+        'publishedAt': _s('publishedAt', 60) or _s('published_at', 60),
+        'viewsCount': _int('viewsCount') if 'viewsCount' in value else _int('views_count'),
+        'subscribersCount': _int('subscribersCount') if 'subscribersCount' in value else _int('subscribers_count'),
+        'duration': _num('duration'),
+    }
+    # تنظيف None حتى لا نُخزّن حقولاً فارغة بلا داعٍ
+    card = {k: v for k, v in card.items() if v not in (None, '')}
+    return card or None
+
+
+def _normalize_admin_source(value) -> dict | None:
+    """v88.86: تنقيح سجل المصدر للأدمن قبل الحفظ."""
+    if not value:
+        return None
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except Exception:
+            return None
+    if not isinstance(value, dict):
+        return None
+
+    def _s(k, limit=500):
+        v = value.get(k)
+        if v is None:
+            return None
+        try:
+            v = str(v).strip()
+        except Exception:
+            return None
+        return v[:limit] if v else None
+
+    def _int(k):
+        v = value.get(k)
+        try:
+            return int(v) if v is not None and v != '' else None
+        except Exception:
+            return None
+
+    captured_raw = _s('captured_at', 60)
+    captured_dt = None
+    if captured_raw:
+        try:
+            captured_dt = datetime.fromisoformat(captured_raw.replace('Z', '+00:00')).replace(tzinfo=None)
+        except Exception:
+            captured_dt = None
+
+    return {
+        'source_platform': _s('source_platform', 60),
+        'source_platform_name': _s('source_platform_name', 120),
+        'source_url': _s('source_url', 2000),
+        'source_title': _s('source_title', 2000),
+        'source_text': _s('source_text', 5000),
+        'source_author': _s('source_author', 200),
+        'source_channel': _s('source_channel', 200),
+        'captured_at': captured_dt,
+        'share_mode': _s('share_mode', 20),
+        'download_size': _int('download_size'),
+        'download_mime': _s('download_mime', 120),
+        'verified_by_yamshat': bool(value.get('verified_by_yamshat')) if 'verified_by_yamshat' in value else None,
+    }
+
+
 def _normalize_poll(poll) -> list[dict]:
     options = []
     if isinstance(poll, dict):
@@ -265,7 +374,39 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'saved_by_me': saved_by_me,
         'share_url': _share_url(post.id),
         'type': 'video' if media_kind == 'video' else 'post',
+        # ✅ v88.86 — حقول نظام المشاركة الموثقة
+        'link_card': _loads_link_card(getattr(post, 'link_card', None)),
+        'verified_by_yamshat': bool(getattr(post, 'verified_by_yamshat', False)),
+        # بيانات المصدر — لا تُرسل للفيد العادي؛ تُقرأ فقط عبر لوحة الأدمن.
+        # نُبقيها متاحة في نفس الاستجابة تحت مفتاح 'admin_source' حتى يستهلكها الأدمن،
+        # وستُخفى في واجهة المستخدم العادية (الفرونت يقرأ verified_by_yamshat + link_card فقط).
+        'admin_source': {
+            'source_platform': getattr(post, 'admin_source_platform', None),
+            'source_platform_name': getattr(post, 'admin_source_platform_name', None),
+            'source_url': getattr(post, 'admin_source_url', None),
+            'source_title': getattr(post, 'admin_source_title', None),
+            'source_text': getattr(post, 'admin_source_text', None),
+            'source_author': getattr(post, 'admin_source_author', None),
+            'source_channel': getattr(post, 'admin_source_channel', None),
+            'captured_at': getattr(post, 'admin_source_captured_at', None),
+            'share_mode': getattr(post, 'admin_source_share_mode', None),
+            'download_size': getattr(post, 'admin_source_download_size', None),
+            'download_mime': getattr(post, 'admin_source_download_mime', None),
+        } if getattr(post, 'admin_source_platform', None) or getattr(post, 'admin_source_url', None) else None,
     }
+
+
+def _loads_link_card(raw) -> dict | None:
+    """v88.86: قراءة link_card من قاعدة البيانات (Text JSON)."""
+    if not raw:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
 
 
 def _prepare_post_fields(content: str, content_html: str | None, media_urls, poll, hashtags=None, mentions=None, image_url: str | None = None) -> dict:
@@ -312,6 +453,10 @@ def create_post(
     is_draft: bool = False,
     is_pinned: bool = False,
     allow_comments: bool = True,
+    # ✅ v88.86 — دعم نظام المشاركة الموثقة
+    link_card: dict | None = None,
+    verified_by_yamshat: bool = False,
+    admin_source: dict | None = None,
 ) -> dict:
     prepared = _prepare_post_fields(content, content_html, media_urls or ([image_url] if image_url else []), poll, image_url=image_url)
     if not prepared['content'] and not prepared['image_url'] and not prepared['media'] and prepared['poll_options_json'] is None:
@@ -319,6 +464,34 @@ def create_post(
     now = utcnow_naive()
     publish_at = None if is_draft else (scheduled_at if scheduled_at and scheduled_at > now else now)
     current_user = db.query(User).filter(User.id == user_id).first()
+
+    # ✅ v88.86 — تجهيز حقول المشاركة الموثقة
+    clean_link_card = _normalize_link_card(link_card)
+    clean_admin_source = _normalize_admin_source(admin_source)
+    # verified_by_yamshat: يُشتق من الوسيط الصريح أو من admin_source.verified_by_yamshat
+    final_verified = bool(verified_by_yamshat)
+    if not final_verified and clean_admin_source and clean_admin_source.get('verified_by_yamshat'):
+        final_verified = True
+
+    extra_fields: dict = {
+        'link_card': _dumps(clean_link_card),
+        'verified_by_yamshat': final_verified,
+    }
+    if clean_admin_source:
+        extra_fields.update({
+            'admin_source_platform': clean_admin_source.get('source_platform'),
+            'admin_source_platform_name': clean_admin_source.get('source_platform_name'),
+            'admin_source_url': clean_admin_source.get('source_url'),
+            'admin_source_title': clean_admin_source.get('source_title'),
+            'admin_source_text': clean_admin_source.get('source_text'),
+            'admin_source_author': clean_admin_source.get('source_author'),
+            'admin_source_channel': clean_admin_source.get('source_channel'),
+            'admin_source_captured_at': clean_admin_source.get('captured_at'),
+            'admin_source_share_mode': clean_admin_source.get('share_mode'),
+            'admin_source_download_size': clean_admin_source.get('download_size'),
+            'admin_source_download_mime': clean_admin_source.get('download_mime'),
+        })
+
     post = Post(
         user_id=user_id,
         username=current_user.username if current_user else None,
@@ -330,6 +503,7 @@ def create_post(
         allow_comments=bool(allow_comments),
         updated_at=now,
         **prepared,
+        **extra_fields,
     )
     db.add(post)
     db.commit()
@@ -457,6 +631,10 @@ def update_post(
     is_draft: bool | None = None,
     is_pinned: bool | None = None,
     allow_comments: bool | None = None,
+    # ✅ v88.86 — تحديث حقول المشاركة الموثقة
+    link_card=None,
+    verified_by_yamshat: bool | None = None,
+    admin_source=None,
 ) -> dict:
     post = db.query(Post).filter(Post.id == post_id).first()
     if post is None:
@@ -493,6 +671,30 @@ def update_post(
             post.pinned_at = utcnow_naive()
     if allow_comments is not None:
         post.allow_comments = bool(allow_comments)
+
+    # ✅ v88.86 — تحديث حقول المشاركة الموثقة عند الحاجة
+    if link_card is not None:
+        clean_lc = _normalize_link_card(link_card)
+        post.link_card = _dumps(clean_lc)
+    if verified_by_yamshat is not None:
+        post.verified_by_yamshat = bool(verified_by_yamshat)
+    if admin_source is not None:
+        clean_as = _normalize_admin_source(admin_source)
+        if clean_as:
+            post.admin_source_platform = clean_as.get('source_platform')
+            post.admin_source_platform_name = clean_as.get('source_platform_name')
+            post.admin_source_url = clean_as.get('source_url')
+            post.admin_source_title = clean_as.get('source_title')
+            post.admin_source_text = clean_as.get('source_text')
+            post.admin_source_author = clean_as.get('source_author')
+            post.admin_source_channel = clean_as.get('source_channel')
+            post.admin_source_captured_at = clean_as.get('captured_at')
+            post.admin_source_share_mode = clean_as.get('share_mode')
+            post.admin_source_download_size = clean_as.get('download_size')
+            post.admin_source_download_mime = clean_as.get('download_mime')
+            if clean_as.get('verified_by_yamshat') and not post.verified_by_yamshat:
+                post.verified_by_yamshat = True
+
     post.updated_at = utcnow_naive()
     post.last_edited_at = post.updated_at
     post.edit_count = (post.edit_count or 0) + 1

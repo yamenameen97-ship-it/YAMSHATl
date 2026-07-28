@@ -6,6 +6,7 @@ import Card from '../ui/Card.jsx';
 import OptimizedImage from '../media/OptimizedImage.jsx';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { savePost, sharePost } from '../../api/posts.js';
+import ExternalSourceCard from './ExternalSourceCard.jsx';
 
 const ADVANCED_REACTIONS = [
   { emoji: '❤️', label: 'حب' },
@@ -212,6 +213,7 @@ const PostCardOptimized = memo(function PostCard({ post, onShowAnalytics, onLike
             >
               {post.username}
               {post.is_verified && <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)"><path d="M12,2L4.5,20.29L5.21,21L12,18L18.79,21L19.5,20.29L12,2Z" /></svg>}
+              {post.verified_by_yamshat && <span className="badge-yamshat-verified" title="موثق لدى Yamshat">✅ موثق لدى Yamshat</span>}
             </div>
             <div className="muted" style={{ fontSize: 11 }}>{formattedDate}</div>
           </div>
@@ -252,6 +254,11 @@ const PostCardOptimized = memo(function PostCard({ post, onShowAnalytics, onLike
             )}
           </div>
         )}
+
+        {/* ✅ v88.85 FIX: كارت المصدر الخارجي (Rich Preview) */}
+        {(post.link_card || post.linkCard) ? (
+          <ExternalSourceCard linkCard={post.link_card || post.linkCard} />
+        ) : null}
 
         <button 
           onClick={handleTranslate}
@@ -335,6 +342,20 @@ const PostCardOptimized = memo(function PostCard({ post, onShowAnalytics, onLike
       </Modal>
 
       <style>{`
+        .badge-yamshat-verified {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 0.68rem;
+          font-weight: 800;
+          background: linear-gradient(135deg, rgba(139,92,246,0.22), rgba(99,102,241,0.18));
+          color: #c4b5fd;
+          border: 1px solid rgba(139,92,246,0.38);
+          white-space: nowrap;
+          line-height: 1.4;
+        }
         .post-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
         .post-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
         .reactions-popup { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }

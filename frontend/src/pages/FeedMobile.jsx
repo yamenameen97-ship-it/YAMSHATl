@@ -5,6 +5,8 @@ import { useQueryClient } from '@tanstack/react-query';
 // import MobileComposer from '../components/mobile/MobileComposer.jsx';
 // import MobileFilterPills from '../components/mobile/MobileFilterPills.jsx';
 import MobilePostCard from '../components/mobile/MobilePostCard.jsx';
+// ✅ v88.91: زوج ريلز Grid بعد كل 5 منشورات (نمط YouTube Shorts داخل الفيد)
+import FeedReelsPair from '../components/feed/FeedReelsPair.jsx';
 // v50 — ألغي MobileComposeModal: استبدل بصفحة ReelComposer (/compose).
 // إبقاء المستورد للتوافق الخلفي (لن يتم استخدامه).
 // import MobileComposeModal from '../components/mobile/MobileComposeModal.jsx';
@@ -19,6 +21,8 @@ import { blockUserApi, unblockUserApi } from '../api/chat.js';
 import { useToast } from '../components/admin/ToastProvider.jsx';
 import { useAppStore } from '../store/appStore.js';
 import { timeAgoAr as fmtTimeAgoAr, formatLocalDateTimeAr } from '../utils/timeFormat.js';
+// ✅ v88.89: حفظ آخر 10 منشورات في IndexedDB للتصفح بدون إنترنت
+import offlineCache from '../offline/offlineSessionCache.js';
 
 /**
  * FeedMobile — صفحة الخلاصة للموبايل (مطابقة للتصميم المرجعي)
@@ -101,7 +105,16 @@ function normalizePost(p, i) {
     banner: buildBanner(p),
     likes: Number(p.likes_count ?? p.like_count ?? p.likes ?? 0),
     comments: Number(p.comments_count ?? p.comment_count ?? p.comments ?? 0),
-    reposts: Number(p.share_count ?? p.shares ?? p.reposts ?? 0),
+    /* ✅ v88.83: فصل عدّاد المشاركة (shares) عن عدّاد إعادة النشر (reposts).
+       سابقاً كنا نعرض share_count تحت زر «مشاركة» ونسمّيه reposts — هذا خلط.
+       الآن:
+         • shares  = عدد المشاركات (share_count)
+         • reposts = عدد إعادات النشر (reposts_count / repost_count / reshare_count)
+         • saves   = عدد الحفظ (saves_count) لدعم مؤشر التفاعل. */
+    shares: Number(p.share_count ?? p.shares_count ?? p.shares ?? 0),
+    reposts: Number(p.reposts_count ?? p.repost_count ?? p.reshare_count ?? 0),
+    saves: Number(p.saves_count ?? p.save_count ?? 0),
+    engagement: Number(p.engagement_count ?? 0),
     liked: Boolean(p.is_liked ?? p.liked_by_me ?? p.liked),
     reposted: Boolean(p.reposted ?? p.is_reposted),
     saved: Boolean(p.is_saved ?? p.saved_by_me ?? p.saved),
@@ -114,6 +127,9 @@ function normalizePost(p, i) {
         : (Array.isArray(p.poll_options) ? p.poll_options
         : (Array.isArray(p.options) ? p.options : [])),
     poll_question: p.poll_question || '',
+    // ✅ v88.85 FIX: تمرير بيانات كارت المصدر الخارجي + شارة "موثق لدى Yamshat"
+    link_card: p.link_card || p.linkCard || null,
+    verified_by_yamshat: Boolean(p.verified_by_yamshat || p.verifiedByYamshat),
   };
 }
 
@@ -130,6 +146,9 @@ const WELCOME_POST = {
   likes: 0,
   comments: 0,
   reposts: 0,
+  shares: 0,
+  saves: 0,
+  engagement: 0,
   liked: false,
   reposted: false,
   saved: false,
@@ -146,7 +165,8 @@ function FeedMobile() {
   const [moreMenuState, setMoreMenuState] = useState({ following: false, muted: false, blocked: false });
 
   // overlay فوري للحالة التفاعلية (optimistic UI) قبل وصول استجابة API
-  const [overlay, setOverlay] = useState({}); // { [postId]: { liked, likes, saved, reposted, reposts } }
+  // ✅ v88.83: overlay يشمل الآن shares/reposts/reposted منفصلَين
+  const [overlay, setOverlay] = useState({}); // { [postId]: { liked, likes, saved, reposted, reposts, shares } }
 
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
@@ -181,9 +201,41 @@ function FeedMobile() {
     return () => window.removeEventListener('yamshat:open-composer', handler);
   }, [navigate]);
 
+  // ✅ v88.89: تحميل آخر 10 منشورات من الكاش عند عدم توفّر شبكة
+  const [offlinePosts, setOfflinePosts] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cached = await offlineCache.getCachedFeedPosts?.();
+        if (!cancelled && Array.isArray(cached) && cached.length) {
+          setOfflinePosts(cached);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ✅ v88.89: عند وصول منشورات جديدة من الشبكة، احفظ أحدث 10 في IndexedDB
+  useEffect(() => {
+    if (Array.isArray(rawPosts) && rawPosts.length) {
+      const latest10 = rawPosts.slice(0, 10);
+      offlineCache.cacheFeedPosts?.(latest10).catch(() => {});
+    }
+  }, [rawPosts]);
+
+  // ✅ v88.89: تسجيل زيارة الصفحة الرئيسية للجوال
+  useEffect(() => {
+    offlineCache.markPageVisited?.('/', { title: 'الصفحة الرئيسية' }).catch(() => {});
+  }, []);
+
   const posts = useMemo(() => {
-    const normalizedPosts = (Array.isArray(rawPosts) && rawPosts.length)
-      ? rawPosts.map((p, i) => normalizePost(p, i))
+    // ✅ v88.89: إذا لم تصل أي منشورات من الشبكة (offline) استخدم الكاش
+    const sourcePosts = (Array.isArray(rawPosts) && rawPosts.length)
+      ? rawPosts
+      : offlinePosts;
+    const normalizedPosts = (Array.isArray(sourcePosts) && sourcePosts.length)
+      ? sourcePosts.map((p, i) => normalizePost(p, i))
       : [];
 
     // ✅ v31: عدم عرض المنشور الترحيبي مطلقاً في الصفحة الرئيسية للويب جوال
@@ -203,7 +255,7 @@ function FeedMobile() {
       const o = overlay[p.id];
       return o ? { ...p, ...o } : p;
     });
-  }, [rawPosts, overlay]);
+  }, [rawPosts, overlay, offlinePosts]);
 
   // فلترة محلية بسيطة (الفلترة الحقيقية تتم في backend عبر filterType)
   // ✅ FIX: دعم أزرار الفلتر الجديدة الكل / التحديثات / الستوري / البث
@@ -292,11 +344,12 @@ function FeedMobile() {
     }
 
     // تسجيل المشاركة في backend (إن كان منشورًا حقيقيًا)
+    // ✅ v88.83: نُحدّث عدّاد shares (وليس reposts) لأنها مشاركة عادية.
     if (succeeded && post.rawId) {
       try {
         await sharePost(post.rawId, navigator.share ? 'native' : 'copy');
-        const newReposts = Number(post.reposts || 0) + 1;
-        setOverlayFor(post.id, { reposts: newReposts });
+        const newShares = Number(post.shares || 0) + 1;
+        setOverlayFor(post.id, { shares: newShares });
         queryClient.invalidateQueries({ queryKey: ['feed-data'] });
       } catch (err) {
         console.warn('share tracking failed', err);
@@ -558,9 +611,9 @@ function FeedMobile() {
 
         {/* Posts Feed */}
         <div className="ym-feed">
-          {filtered.map((post) => {
+          {filtered.map((post, idx) => {
             // عرض المنشورات العادية فقط (تمت إزالة بطاقة البث المباشر)
-            return (
+            const card = (
               <MobilePostCard
                 key={post.id}
                 post={post}
@@ -573,6 +626,19 @@ function FeedMobile() {
                 onDelete={handleDelete}
                 canDelete={isOwnPost(post)}
               />
+            );
+            // ✅ v88.91: بعد كل 5 منشورات (idx = 4, 9, 14, …) ندرج زوج ريلز Grid
+            const shouldInjectReels = (idx + 1) % 5 === 0;
+            if (!shouldInjectReels) return card;
+            const reelsGroupIndex = Math.floor((idx + 1) / 5) - 1;
+            return (
+              <div key={`post-and-reels-${post.id}`}>
+                {card}
+                <FeedReelsPair
+                  key={`ym-reels-pair-${reelsGroupIndex}`}
+                  startIndex={reelsGroupIndex}
+                />
+              </div>
             );
           })}
         </div>

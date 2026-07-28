@@ -118,6 +118,9 @@ function normalizePost(p, i, profileFallback = {}) {
         : (Array.isArray(p.poll_options) ? p.poll_options
         : (Array.isArray(p.options) ? p.options : [])),
     poll_question: p.poll_question || '',
+    // ✅ v88.85 FIX: تمرير بيانات كارت المصدر الخارجي + شارة "موثق لدى Yamshat"
+    link_card: p.link_card || p.linkCard || null,
+    verified_by_yamshat: Boolean(p.verified_by_yamshat || p.verifiedByYamshat),
   };
 }
 

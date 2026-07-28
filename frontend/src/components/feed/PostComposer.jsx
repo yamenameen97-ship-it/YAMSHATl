@@ -9,7 +9,7 @@ import { clearLocalFeedCaches, injectPostIntoFeedCache } from '../../utils/feedC
 // ✅ v88.24 FIX: تدفئة كاش الوسائط في Service Worker بعد الرفع
 import { warmMediaCache } from '../../service-worker-manager.js';
 // ✅ v88.71 FIX: استقبال المحتوى المُشارك من تطبيقات أخرى (يوتيوب…) عبر PWA Share Target
-import { consumePendingShare } from '../../services/share/sharedIntake.js';
+import { consumePendingShare, dataUrlToBlob } from '../../services/share/sharedIntake.js';
 
 const DRAFT_KEY = 'yamshat_post_draft';
 const QUOTE_KEY = 'yamshat_quote_draft';
@@ -45,6 +45,9 @@ export default function PostComposer() {
   //    خلال handleSubmit الـ async الطويلة (رفع فيديو حتّى 200MB).
   const isMountedRef = useRef(true);
   useEffect(() => () => { isMountedRef.current = false; }, []);
+  // ✅ v88.86 FIX: حفظ بيانات المصدر (linkCard/adminSource/verifiedByYamshat)
+  //    لتمريرها للسيرفر عند إنشاء المنشور — كانت تُلتقط ثم تُهمَل قبل الوصول للسيرفر
+  const pendingShareMetaRef = useRef(null);
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
 
@@ -142,6 +145,10 @@ export default function PostComposer() {
     setPollOptions(['', '']);
     setIsPinned(false);
     setQuoteDraft(null);
+    // ✅ v88.86 FIX: مسح بيانات المصدر بعد النشر
+    pendingShareMetaRef.current = null;
+    setSharedIntake(null);
+    setPrepareProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
     localStorage.removeItem(DRAFT_KEY);
     localStorage.removeItem(QUOTE_KEY);
@@ -162,42 +169,66 @@ export default function PostComposer() {
     setMediaPreview(URL.createObjectURL(file));
   };
 
-  // ✅ v88.71: استهلاك المحتوى الوارد من ميزة "مشاركة إلى يام شات".
-  //    عند اختيار "منشور" من صفحة /share-target، نحصل هنا على:
-  //      - file (Blob) → يوضع مباشرة في مربع المعاينة كأنه اختير من المعرض.
-  //      - description  → يوضع في نص المنشور (يشمل رابط يوتيوب الأصلي
-  //        على سطر مستقل، حتى يظهر قابلاً للنقر في المنشور النهائي
-  //        ويفتح خارج التطبيق).
-  //    نُظهر شريط تحضير 0→100% ثم نُفعّل مربع الرفع الأساسي وشريط
-  //    التقدم الحقيقي (setUploadProgress) يعمل تلقائياً كما هو.
+  // ✅ v88.84: استهلاك المحتوى الوارد من ميزة "مشاركة إلى يام شات".
+  //    يدعم وضعين:
+  //      - mode='link': يلتقط لقطة من الفيديو (thumbnailDataUrl) + الوصف + الرابط → ينشر
+  //        إذا كان المحتوى فيديو ولم يكن هناك ملف محلي، نستخدم thumbnailDataUrl كصورة.
+  //        إذا كان المحتوى صورة، نستخدم الصورة الأصلية + الوصف.
+  //        إذا كان رابطاً فقط، نضع الرابط في الوصف.
+  //      - mode='download': الملف منزّل محلياً + وصف بدون رابط → ينشر بالملف الفعلي.
+  //    في كلا الوضعين نُظهر شريط تحضير 0→100% ثم نُفعّل الرفع الأساسي.
   useEffect(() => {
     let cancelled = false;
     let progressTimer = null;
     try {
       const pending = consumePendingShare('post');
       if (!pending) return;
+      const mode = pending.mode || 'link';
+      // ✅ v88.86 FIX: احفظ بيانات المصدر لتمريرها عند الإنشاء
+      pendingShareMetaRef.current = {
+        linkCard: pending.linkCard || null,
+        adminSource: pending.adminSource || null,
+        verifiedByYamshat: Boolean(pending.verifiedByYamshat),
+      };
       setSharedIntake({
         sourceUrl: pending.sourceUrl || '',
         sourceTitle: pending.sourceTitle || '',
         fileMeta: pending.fileMeta || null,
+        mode,
       });
-      // ضع الوصف (يتضمن الرابط) في نص المنشور فوراً
+      // ضع الوصف في نص المنشور فوراً
+      // - mode='link': الوصف يشمل الرابط
+      // - mode='download': الوصف بدون رابط (المحتوى محلي)
       if (pending.description) {
         setContent((prev) => (prev && prev.trim() ? `${prev}\n${pending.description}` : pending.description));
       }
-      // إن كان هناك ملف مُرفق (فيديو/صورة) — طبّقه كمعاينة وابدأ عدّاد التحضير
-      if (pending.file) {
+      // ✅ v88.84: تحديد الملف المستخدم حسب الوضع
+      if (mode === 'link' && pending.thumbnailDataUrl && !pending.file) {
+        // وضع الرابط مع لقطة فيديو — حوّل dataURL إلى Blob واستخدمه كصورة
+        const thumbBlob = dataUrlToBlob(pending.thumbnailDataUrl);
+        if (thumbBlob) {
+          const thumbFile = new File([thumbBlob], 'video-thumbnail.jpg', { type: 'image/jpeg' });
+          setPrepareProgress(5);
+          progressTimer = setInterval(() => {
+            if (cancelled) return;
+            setPrepareProgress((prev) => {
+              const next = prev + Math.max(2, Math.round((100 - prev) / 8));
+              if (next >= 100) { clearInterval(progressTimer); return 100; }
+              return next;
+            });
+          }, 120);
+          applySelectedFile(thumbFile);
+        } else {
+          setPrepareProgress(100);
+        }
+      } else if (pending.file) {
+        // ملف فعلي (فيديو/صورة) — طبّقه كمعاينة وابدأ عدّاد التحضير
         setPrepareProgress(5);
-        // عدّاد ناعم يمثّل "تحضير الملف" حتى ينقر المستخدم زر النشر
-        // (الرفع الحقيقي إلى الخادم يبدأ عند handleSubmit مع setUploadProgress).
         progressTimer = setInterval(() => {
           if (cancelled) return;
           setPrepareProgress((prev) => {
             const next = prev + Math.max(2, Math.round((100 - prev) / 8));
-            if (next >= 100) {
-              clearInterval(progressTimer);
-              return 100;
-            }
+            if (next >= 100) { clearInterval(progressTimer); return 100; }
             return next;
           });
         }, 120);
@@ -209,7 +240,7 @@ export default function PostComposer() {
       pushToast?.({
         type: 'success',
         title: 'تم استلام المحتوى المُشارك',
-        description: pending.file
+        description: pending.file || (mode === 'link' && pending.thumbnailDataUrl)
           ? 'اضغط "النشر" بعد اكتمال التحضير لرفعه إلى الفيد.'
           : 'الرابط تم إدراجه في وصف المنشور.',
       });
@@ -307,6 +338,10 @@ export default function PostComposer() {
         poll,
         poll_question: showPollBuilder && pollQuestion.trim() ? pollQuestion.trim() : undefined,
         quote_source_id: quoteDraft?.id || null,
+        // ✅ v88.86 FIX: تمرير بيانات كارت الرابط والمصدر وعلامة التوثيق للسيرفر
+        link_card: pendingShareMetaRef.current?.linkCard || undefined,
+        admin_source: pendingShareMetaRef.current?.adminSource || undefined,
+        verified_by_yamshat: pendingShareMetaRef.current?.verifiedByYamshat || undefined,
       });
 
       const createdPost = createdPostResponse?.data || null;
@@ -377,6 +412,10 @@ export default function PostComposer() {
               poll: fallbackPoll,
               poll_question: showPollBuilder && pollQuestion.trim() ? pollQuestion.trim() : undefined,
               quote_source_id: quoteDraft?.id || null,
+              // ✅ v88.86 FIX: تمرير بيانات كارت الرابط والمصدر وعلامة التوثيق (مسار احتياطي)
+              link_card: pendingShareMetaRef.current?.linkCard || undefined,
+              admin_source: pendingShareMetaRef.current?.adminSource || undefined,
+              verified_by_yamshat: pendingShareMetaRef.current?.verifiedByYamshat || undefined,
             });
             const createdPost = createdPostResponse?.data || null;
             if (status === 'published' && createdPost) {

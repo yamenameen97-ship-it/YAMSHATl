@@ -14,6 +14,8 @@ import {
 } from '../../api/stories.js';
 import ReportModal from '../reports/ReportModal.jsx';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
+// ✅ v88.89: حفظ الستوريات المفتوحة فردياً للتصفح بدون إنترنت
+import offlineCache from '../../offline/offlineSessionCache.js';
 
 function getCountdownData(value, now = Date.now()) {
   if (!value) return null;
@@ -206,6 +208,12 @@ export default function StoryViewerEnhanced({
 
   useEffect(() => {
     if (current?.id) viewStory(current.id).catch(() => {});
+    // ✅ v88.89: خزّن الستوري الفردي المفتوح للتصفح بدون إنترنت
+    if (current?.id) {
+      try {
+        offlineCache.cacheStoryItem?.(current.id, current).catch(() => {});
+      } catch { /* ignore */ }
+    }
   }, [current?.id]);
 
   const handleNextStory = useCallback(() => {

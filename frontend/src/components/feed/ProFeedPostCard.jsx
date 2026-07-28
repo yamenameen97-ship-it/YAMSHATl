@@ -18,6 +18,7 @@ import { submitReport } from '../../api/reports.js';
 import { useToast } from '../admin/ToastProvider.jsx';
 import { getCurrentUsername } from '../../utils/auth.js';
 import { avatarGradient, formatCompactNumber, formatTimeAgo, initialsFromName } from '../yamshat/YamshatDesign.js';
+import ExternalSourceCard from './ExternalSourceCard.jsx';
 
 const REACTIONS = [
   { emoji: '❤️', label: 'حب' },
@@ -420,6 +421,7 @@ export default function ProFeedPostCard({ post, onRefresh }) {
                   style={{ fontSize: 16, cursor: 'pointer' }}
                 >{post.username || 'Yamshat'}</strong>
                 {post.is_verified ? <span title="موثق">✅</span> : null}
+                {post.verified_by_yamshat ? <span className="badge-yamshat-verified" title="موثق لدى Yamshat">✅ موثق لدى Yamshat</span> : null}
                 {isPinned ? <span className="feed-pill">📌 مثبت</span> : null}
                 {post.edit_count ? <span className="feed-pill soft">{post.edit_count} تعديل</span> : null}
                 {pollItems.length ? <span className="feed-pill soft">استطلاع</span> : null}
@@ -472,6 +474,11 @@ export default function ProFeedPostCard({ post, onRefresh }) {
               })}
             </div>
           </div>
+        ) : null}
+
+        {/* ✅ v88.85 FIX: كارت المصدر الخارجي (Rich Preview) */}
+        {(post.link_card || post.linkCard) ? (
+          <ExternalSourceCard linkCard={post.link_card || post.linkCard} />
         ) : null}
 
         {media.length ? (
@@ -712,6 +719,21 @@ export default function ProFeedPostCard({ post, onRefresh }) {
         .feed-stat-card strong {
           font-size: 20px;
           word-break: break-word;
+        }
+        /* ✅ v88.85: شارة "موثق لدى Yamshat" */
+        .badge-yamshat-verified {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 0.68rem;
+          font-weight: 800;
+          background: linear-gradient(135deg, rgba(139,92,246,0.22), rgba(99,102,241,0.18));
+          color: #c4b5fd;
+          border: 1px solid rgba(139,92,246,0.38);
+          white-space: nowrap;
+          line-height: 1.4;
         }
       `}</style>
     </>

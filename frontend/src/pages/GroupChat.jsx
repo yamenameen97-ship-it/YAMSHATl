@@ -28,6 +28,8 @@ import GroupPinnedBar from '../components/groups/GroupPinnedBar.jsx';
 import GroupQuickLinks from '../components/groups/GroupQuickLinks.jsx';
 // ✅ v88.16: استيراد نفس مكوّن الميكروفون المستخدم في الدردشة الفرديّة (Press-to-Record بأسلوب واتساب)
 import PressToRecordMic from '../components/chat/PressToRecordMic.jsx';
+// ✅ v88.89: حفظ رسائل المجموعة للتصفح بدون إنترنت
+import offlineCache from '../offline/offlineSessionCache.js';
 import '../styles/group-chat.css';
 /* v61: حذف chat-mobile-fixes.css (دمج في chat-redesign-v61.css) */
 import '../styles/groups-features.css';
@@ -180,6 +182,14 @@ const GroupChat = () => {
     const fetchChatData = async () => {
       try {
         setLoading(true);
+        // ✅ v88.89: محاولة عرض الرسائل المخزّنة فوراً قبل الشبكة
+        try {
+          const cachedMsgs = await offlineCache.getCachedGroupMessages?.(groupId);
+          if (!cancelled && Array.isArray(cachedMsgs) && cachedMsgs.length) {
+            setMessages(cachedMsgs);
+          }
+        } catch { /* ignore */ }
+
         const response = await getGroupMessages(groupId, { limit: 50, offset: 0 });
         if (cancelled) return;
 
@@ -210,9 +220,28 @@ const GroupChat = () => {
 
         formattedMessages.sort((a, b) => String(a.id).localeCompare(String(b.id)));
         setMessages(formattedMessages);
+        // ✅ v88.89: خزّن آخر 60 رسالة للمجموعة + سجّل الزيارة
+        if (formattedMessages.length) {
+          offlineCache.cacheGroupMessages?.(groupId, formattedMessages).catch(() => {});
+        }
+        offlineCache.markPageVisited?.(`/groups/${groupId}`, {
+          title: `مجموعة ${groupId}`,
+        }).catch(() => {});
       } catch (err) {
         console.error('Error fetching group messages:', err);
-        if (!cancelled) setMessages([]);
+        if (!cancelled) {
+          // ✅ v88.89: fallback للكاش عند فشل الشبكة
+          try {
+            const cachedMsgs = await offlineCache.getCachedGroupMessages?.(groupId);
+            if (Array.isArray(cachedMsgs) && cachedMsgs.length) {
+              setMessages(cachedMsgs);
+            } else {
+              setMessages([]);
+            }
+          } catch {
+            setMessages([]);
+          }
+        }
       } finally {
         if (!cancelled) {
           setLoading(false);

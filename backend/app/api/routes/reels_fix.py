@@ -16,6 +16,13 @@ from sqlalchemy.orm import Session
 from app.api.routes.upload import save_upload
 from app.core.dependencies import get_current_user, get_db
 from app.core.media_urls import normalize_media_url
+# ✅ v88.87 — حقول المشاركة الموثقة لدى Yamshat
+from app.core.share_fields import (
+    build_share_extra_fields,
+    extract_share_form,
+    extract_share_payload,
+    serialize_share_fields,
+)
 from app.db.bootstrap import initialize_database
 from app.models.stories_reels import Reel, ReelLike, ReelView, SavedReel
 from app.models.user import User
@@ -117,6 +124,8 @@ def _serialize_reel(db: Session, reel: Reel, current_user: User | None = None) -
             'full_name': owner.full_name if owner else 'unknown',
             'avatar_url': owner.avatar_url if owner else '',
         },
+        # ✅ v88.87 — حقول نظام المشاركة الموثقة لدى Yamshat
+        **serialize_share_fields(reel),
     }
     return payload
 
@@ -178,6 +187,9 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
     storage_type = 'local'
     detected_duration = 0
 
+    # ✅ v88.87 — متغيرات حقول المشاركة الموثقة لدى Yamshat
+    _share_fields: dict = {}
+
     # معالجة البيانات متعددة الأجزاء
     if 'multipart/form-data' in content_type:
         form = await request.form()
@@ -185,6 +197,8 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
         category = str(form.get('category') or 'general').strip() or 'general'
         file = form.get('file') or form.get('video') or form.get('media')
         thumbnail = form.get('thumbnail') or form.get('poster') or form.get('preview')
+        # ✅ v88.87 — استخراج حقول المشاركة من بيانات النموذج
+        _share_fields = build_share_extra_fields(**extract_share_form(form))
 
         # v88.28 — المسار المفضّل: رفع إلزامي إلى Cloudinary
         if file is not None and hasattr(file, 'filename') and file.filename and persist_reel_media is not None:
@@ -217,6 +231,8 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
         upload_payload = payload.get('upload') if isinstance(payload.get('upload'), dict) else {}
         caption = str(payload.get('caption') or payload.get('content') or '').strip()
         category = str(payload.get('category') or 'general').strip() or 'general'
+        # ✅ v88.87 — استخراج حقول المشاركة من JSON payload
+        _share_fields = build_share_extra_fields(**extract_share_payload(payload))
         video_url = str(
             payload.get('video_url')
             or payload.get('media_url')
@@ -256,6 +272,8 @@ async def create_reel(request: Request, db: Session = Depends(get_db), current_u
             cloudinary_thumb_public_id=cloudinary_thumb_public_id,
             cloudinary_public_id=cloudinary_video_public_id,
             storage_type=storage_type,
+            # ✅ v88.87 — حقول المشاركة الموثقة لدى Yamshat
+            **_share_fields,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )

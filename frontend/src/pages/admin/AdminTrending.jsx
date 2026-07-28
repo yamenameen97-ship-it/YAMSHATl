@@ -86,6 +86,18 @@ function TrendCard({ item, onPin, onHide, onOpen, onSafetyBlock }) {
         <span>🔁 {(item.shares || 0).toLocaleString()}</span>
       </div>
 
+      {/* v88.89 — مؤشر مصدر المحتوى (خارجي مقابل أصلي) */}
+      <div className={`trend-source-badge ${item.is_external_source ? 'ext' : 'native'}`}>
+        {item.is_external_source ? (
+          <>
+            📎 مشاركة خارجية — تقييم ×{item.trend_multiplier}
+            <span className="trend-source-original">الأصلي: {(item.original_score || 0).toLocaleString()}</span>
+          </>
+        ) : (
+          <>📱 رفع أصلي — تقييم ×1.0</>
+        )}
+      </div>
+
       <div className="trend-score-row">
         <div className="score-bar">
           <div
@@ -163,6 +175,8 @@ export default function AdminTrending() {
           : `🚨 تريند جديد في ${payload.country}`,
         body: payload.title,
         score: payload.score,
+        isExternal: payload.is_external_source,
+        originalScore: payload.original_score,
       });
       // إخفاء تلقائي بعد 6 ثواني
       setTimeout(() => setToast(null), 6000);
@@ -222,6 +236,8 @@ export default function AdminTrending() {
               النافذة الزمنية: <b>{meta.window_hours || 6}</b> ساعات • العتبة:
               <b> {meta.threshold?.toLocaleString?.() || '—'} </b>
               نقطة.
+              <br />
+              <span style={{ color: '#7c3aed', fontWeight: 700 }}>📎 المحتوى المُشارك من خارج المنصة يُحسب بنصف القيمة (×0.5) — تشجيعاً لصنّاع المحتوى الأصليين.</span>
             </p>
           </div>
           <div className="tr-header-actions">
@@ -246,6 +262,7 @@ export default function AdminTrending() {
               <li>عتبة التريند العالمي: <b>500 نقطة</b></li>
               <li>عتبة تريند الدولة: <b>120 نقطة</b></li>
               <li>عند اجتياز العتبة أول مرة ← إشارة فورية عبر الاتصال المباشر + إشعار للمدير + إشعار لصاحب المنشور 🔥.</li>
+              <li><b>معامل المحتوى الخارجي (v88.89):</b> المشاركات من خارج المنصة (YouTube/Twitter/Facebook/Instagram/…) تُحسب بنصف القيمة (×0.5)، والمحتوى الأصلي المرفوع من صنّاع المحتوى يُحسب بكامل القيمة (×1.0).</li>
             </ul>
           </div>
         </details>
@@ -308,7 +325,12 @@ export default function AdminTrending() {
           <div className="tr-toast" role="alert">
             <div className="tr-toast-title">{toast.title}</div>
             <div className="tr-toast-body">{toast.body}</div>
-            <div className="tr-toast-score">{toast.score?.toLocaleString?.()} نقطة</div>
+            <div className="tr-toast-score">
+              {toast.isExternal ? '📎 ' : ''}{toast.score?.toLocaleString?.()} نقطة
+              {toast.isExternal && toast.originalScore && (
+                <span style={{ opacity: 0.7, fontSize: '0.85em' }}> (الأصلي: {toast.originalScore.toLocaleString()})</span>
+              )}
+            </div>
           </div>
         )}
 
@@ -360,6 +382,12 @@ export default function AdminTrending() {
           @keyframes newPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
 
           .trend-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: #64748b; }
+
+          /* v88.89 — شارة مصدر المحتوى */
+          .trend-source-badge { display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 5px 10px; border-radius: 8px; font-weight: 700; }
+          .trend-source-badge.ext { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+          .trend-source-badge.native { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+          .trend-source-original { margin-inline-start: auto; font-size: 10px; opacity: 0.7; font-weight: 600; }
           .trend-score-row { display: flex; align-items: center; gap: 10px; }
           .score-bar { flex: 1; height: 6px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
           .score-fill { height: 100%; background: linear-gradient(90deg,#8b5cf6,#ec4899,#ef4444); transition: width .5s; }

@@ -12,6 +12,8 @@ from app.models.message_reaction import MessageReaction
 from app.models.user import User
 from app.core.media_urls import normalize_media_url
 from app.services.encryption_service import decrypt_message
+# ✅ v88.87 — حقول المشاركة الموثقة لدى Yamshat
+from app.core.share_fields import serialize_share_fields
 
 
 def _serialize_attachment(att: MessageAttachment) -> dict:
@@ -122,6 +124,8 @@ def serialize_message(message: Message, db: Session) -> dict:
         'reactions_count': int(getattr(message, 'reactions_count', 0) or 0),
         'reactions': _serialize_reactions(db, message.id),
         'cursor': message.id,
+        # ✅ v88.87 — حقول نظام المشاركة الموثقة لدى Yamshat
+        **serialize_share_fields(message),
     }
 
 

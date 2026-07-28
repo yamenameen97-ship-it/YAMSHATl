@@ -15,7 +15,8 @@
  */
 
 const DB_NAME = 'yamshat-offline-session';
-const DB_VERSION = 1;
+// ✅ v88.89: رفع الإصدار لإضافة stores جديدة (feed, groups, group_msgs, settings, story_items)
+const DB_VERSION = 2;
 
 const STORES = {
   STORIES: 'stories',       // key: groupId, value: { group, viewedAt }
@@ -24,6 +25,12 @@ const STORES = {
   REELS: 'reels',           // key: reelId, value: { reel, viewedAt }
   PROFILE: 'profile',       // key: username, value: { data, updatedAt }
   PAGES: 'pages',           // key: pathname, value: { title, visitedAt, hash }
+  // ✅ v88.89: تخزين متخصص للنواقص الأربعة
+  FEED: 'feed',             // key: 'latest', value: { posts, updatedAt } — آخر 10 منشورات
+  GROUPS: 'groups',         // key: 'list' | groupId, value: قائمة المجموعات أو تفاصيل مجموعة
+  GROUP_MSGS: 'group_msgs', // key: groupId, value: { items, updatedAt } — رسائل المجموعة
+  SETTINGS: 'settings',     // key: 'account', value: { data, updatedAt } — إعدادات + ملف حسابي
+  STORY_ITEMS: 'story_items', // key: storyId, value: { story, viewedAt } — ستوري فردي
 };
 
 const LIMITS = {
@@ -33,6 +40,12 @@ const LIMITS = {
   REELS: 5,
   PROFILES: 20,
   PAGES: 40,
+  // ✅ v88.89
+  FEED_POSTS: 10,           // آخر 10 منشورات في الرئيسية
+  GROUPS_LIST: 30,          // حتى 30 مجموعة
+  GROUP_MSGS_PER_GROUP: 60, // آخر 60 رسالة لكل مجموعة
+  GROUPS_ACTIVE: 15,        // حتى 15 مجموعة نشطة لها رسائل محفوظة
+  STORY_ITEMS: 20,          // حتى 20 ستوري فردي مفتوح
 };
 
 let _dbPromise = null;
@@ -232,6 +245,126 @@ export async function clearAllOfflineCache() {
   });
 }
 
+/* ----------------------------- Feed (آخر 10 منشورات) ----------------------------- */
+// ✅ v88.89
+
+export async function cacheFeedPosts(posts) {
+  if (!Array.isArray(posts)) return;
+  const trimmed = posts.slice(0, LIMITS.FEED_POSTS);
+  await tx(STORES.FEED, 'readwrite', (store) => {
+    store.put({ posts: trimmed, updatedAt: Date.now() }, 'latest');
+  });
+}
+
+export async function getCachedFeedPosts() {
+  const row = await tx(STORES.FEED, 'readonly', (store) => reqToPromise(store.get('latest')));
+  return row?.posts || [];
+}
+
+/* ----------------------------- Groups (القائمة + تفاصيل كل مجموعة) ----------------------------- */
+// ✅ v88.89
+
+export async function cacheGroupsList(list) {
+  if (!Array.isArray(list)) return;
+  const trimmed = list.slice(0, LIMITS.GROUPS_LIST);
+  await tx(STORES.GROUPS, 'readwrite', (store) => {
+    store.put({ list: trimmed, updatedAt: Date.now() }, 'list');
+  });
+}
+
+export async function getCachedGroupsList() {
+  const row = await tx(STORES.GROUPS, 'readonly', (store) => reqToPromise(store.get('list')));
+  return row?.list || [];
+}
+
+export async function cacheGroupDetails(groupId, details) {
+  if (!groupId || !details) return;
+  await tx(STORES.GROUPS, 'readwrite', (store) => {
+    store.put({ details, updatedAt: Date.now() }, `g:${groupId}`);
+  });
+}
+
+export async function getCachedGroupDetails(groupId) {
+  if (!groupId) return null;
+  const row = await tx(STORES.GROUPS, 'readonly',
+    (store) => reqToPromise(store.get(`g:${groupId}`)));
+  return row?.details || null;
+}
+
+/* ----------------------------- Group Messages ----------------------------- */
+// ✅ v88.89
+
+export async function cacheGroupMessages(groupId, items) {
+  if (!groupId || !Array.isArray(items)) return;
+  const trimmed = items.slice(-LIMITS.GROUP_MSGS_PER_GROUP);
+  await tx(STORES.GROUP_MSGS, 'readwrite', async (store) => {
+    store.put({ items: trimmed, updatedAt: Date.now() }, String(groupId));
+    const keys = await reqToPromise(store.getAllKeys());
+    const entries = await reqToPromise(store.getAll());
+    if (Array.isArray(keys) && keys.length > LIMITS.GROUPS_ACTIVE && Array.isArray(entries)) {
+      const paired = keys.map((k, i) => ({ k, at: entries[i]?.updatedAt || 0 }));
+      paired.sort((a, b) => a.at - b.at);
+      paired.slice(0, keys.length - LIMITS.GROUPS_ACTIVE).forEach((p) => store.delete(p.k));
+    }
+  });
+}
+
+export async function getCachedGroupMessages(groupId) {
+  if (!groupId) return null;
+  const row = await tx(STORES.GROUP_MSGS, 'readonly',
+    (store) => reqToPromise(store.get(String(groupId))));
+  return row?.items || null;
+}
+
+/* ----------------------------- Settings & Account (ملف حسابي) ----------------------------- */
+// ✅ v88.89
+
+export async function cacheAccountSettings(data) {
+  if (!data) return;
+  await tx(STORES.SETTINGS, 'readwrite', (store) => {
+    store.put({ data, updatedAt: Date.now() }, 'account');
+  });
+}
+
+export async function getCachedAccountSettings() {
+  const row = await tx(STORES.SETTINGS, 'readonly',
+    (store) => reqToPromise(store.get('account')));
+  return row?.data || null;
+}
+
+/* ----------------------------- Individual Story Items ----------------------------- */
+// ✅ v88.89: ستوريات مفتوحة فردياً
+
+export async function cacheStoryItem(storyId, story) {
+  if (!storyId || !story) return;
+  await tx(STORES.STORY_ITEMS, 'readwrite', async (store) => {
+    store.put({ story, viewedAt: Date.now() }, String(storyId));
+    const keys = await reqToPromise(store.getAllKeys());
+    const entries = await reqToPromise(store.getAll());
+    if (Array.isArray(keys) && keys.length > LIMITS.STORY_ITEMS && Array.isArray(entries)) {
+      const paired = keys.map((k, i) => ({ k, at: entries[i]?.viewedAt || 0 }));
+      paired.sort((a, b) => a.at - b.at);
+      paired.slice(0, keys.length - LIMITS.STORY_ITEMS).forEach((p) => store.delete(p.k));
+    }
+  });
+}
+
+export async function getCachedStoryItem(storyId) {
+  if (!storyId) return null;
+  const row = await tx(STORES.STORY_ITEMS, 'readonly',
+    (store) => reqToPromise(store.get(String(storyId))));
+  return row?.story || null;
+}
+
+export async function getAllCachedStoryItems() {
+  const rows = await tx(STORES.STORY_ITEMS, 'readonly', (store) => reqToPromise(store.getAll()));
+  if (!Array.isArray(rows) || !rows.length) return [];
+  return rows
+    .sort((a, b) => (b?.viewedAt || 0) - (a?.viewedAt || 0))
+    .map((r) => r.story)
+    .filter(Boolean);
+}
+
 export const OFFLINE_LIMITS = LIMITS;
 export const OFFLINE_STORES = STORES;
 
@@ -241,5 +374,12 @@ export default {
   cacheMessagesForPeer, getCachedMessagesForPeer,
   cacheProfile, getCachedProfile,
   markPageVisited, isPageCached, getCachedPages,
+  // ✅ v88.89 — النواقص الأربعة
+  cacheFeedPosts, getCachedFeedPosts,
+  cacheGroupsList, getCachedGroupsList,
+  cacheGroupDetails, getCachedGroupDetails,
+  cacheGroupMessages, getCachedGroupMessages,
+  cacheAccountSettings, getCachedAccountSettings,
+  cacheStoryItem, getCachedStoryItem, getAllCachedStoryItems,
   isStandalonePWA, isOnline, clearAllOfflineCache,
 };

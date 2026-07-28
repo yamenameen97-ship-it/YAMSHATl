@@ -4,6 +4,7 @@ import { timeAgoAr as fmtTimeAgoAr } from '../../utils/timeFormat.js';
 import { votePoll as apiVotePoll } from '../../api/posts.js';
 import ImageViewerModal from '../feed/ImageViewerModal.jsx';
 import FeedVideoPlayer from './FeedVideoPlayer.jsx';
+import ExternalSourceCard from '../feed/ExternalSourceCard.jsx';
 
 /**
  * MobilePostCard (v86.7 — إصلاح احترافي شامل للبستة على الجوال)
@@ -42,6 +43,7 @@ function MobilePostCard({
   onSave,
   onMore,
   onRepost,
+  onEngagementInfo,
   onDelete,
   canDelete = false,
 }) {
@@ -61,10 +63,30 @@ function MobilePostCard({
     likes = 0,
     comments = 0,
     reposts = 0,
+    shares = 0,
+    saves = 0,
+    engagement = 0,
+    reposted = false,
     liked = false,
     saved = false,
     isLive = false,
   } = post;
+
+  /* ✅ v88.83 (2026-07-27): مطابقة صفحة ويب سطح المكتب (FeedEnhanced.jsx)
+     أضفنا لبطاقة الويب-جوال زرَّين إضافيَّين:
+       (1) مؤشر التفاعل (Engagement Meter) — يجمع likes+comments+saves+shares+reposts
+           فوق baseline من الخادم (engagement) مثل x.com.
+       (2) زر إعادة النشر (Repost) — منفصل عن زر المشاركة، يعرض حالة is-reposted
+           ويستدعي onRepost(post) الممرَّر من FeedMobile.jsx (مربوط فعلياً بـ sharePost(id,'repost')).
+     كانا موجودَين على ويب سطح المكتب فقط، وهذا يوحّد التجربة على ويب-جوال. */
+  const engagementValue = (
+    Number(engagement || 0)
+    + Number(likes || 0)
+    + Number(comments || 0)
+    + Number(saves || 0) + (saved ? 1 : 0)
+    + Number(shares || 0)
+    + Number(reposts || 0)
+  );
 
   /* ✅ FIX v88.7 (2026-07): إصلاح جذري لعرض الاستطلاعات في منشورات الجوال.
      المشكلة الأصلية: عند نشر استطلاع من مؤلف المنشورات كان يظهر السؤال فقط كنص،
@@ -194,6 +216,7 @@ function MobilePostCard({
             <div className="ym-author-row">
               <span className="ym-author-name">{authorName}</span>
               {verified && <VerifiedBadge />}
+              {post.verified_by_yamshat ? <span className="badge-yamshat-verified" title="موثق لدى Yamshat">✅ موثق لدى Yamshat</span> : null}
             </div>
             <div className="ym-post-subtext">
               <span className="ym-time" title={timeTitle || ''}>{liveTime}</span>
@@ -289,6 +312,11 @@ function MobilePostCard({
       )}
 
       {/* === وسائط المنشور (صورة / فيديو / شعار) === */}
+      {/* ✅ v88.85 FIX: كارت المصدر الخارجي (Rich Preview) — يُعرض قبل الوسائط */}
+      {(post.link_card || post.linkCard) ? (
+        <ExternalSourceCard linkCard={post.link_card || post.linkCard} />
+      ) : null}
+
       {/* ✅ v87.19 FIX: دعم الفيديو + معالجة خطأ ذكية.
            كان الفيديو لا يظهر إطلاقاً (buildBanner كان يرجع null)
            والصورة المكسورة كانت تعرض alt (فيظهر حرف “أ” من النص)
@@ -409,14 +437,17 @@ function MobilePostCard({
             </svg>
           </button>
 
-          {/* مجموعة الأزرار الرئيسية (يمين): مشاركة | تعليق | إعجاب */}
+          {/* مجموعة الأزرار الرئيسية (يمين):
+             ✅ v88.83 (2026-07-27): إضافة مؤشر التفاعل + زر إعادة النشر (Repost)
+             حتى تُطابق ويب جوال الصفحة الرئيسية بيد ويب سطح المكتب (FeedEnhanced.jsx).
+             الترتيب: [مشاركة] [تعليق] [مؤشر تفاعل] [إعادة نشر] [إعجاب] */}
           <div className="ym-footer-actions-right">
             <button className="ym-footer-btn" aria-label="مشاركة" onClick={() => onShare?.(post)}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <line x1="22" y1="2" x2="11" y2="13" />
                 <polygon points="22 2 15 22 11 13 2 9 22 2" />
               </svg>
-              <span className="ym-count">{formatCount(Number(reposts) || 0)}</span>
+              <span className="ym-count">{formatCount(Number(shares) || 0)}</span>
             </button>
 
             <button className="ym-footer-btn" aria-label="تعليق" onClick={() => onComment?.(post)}>
@@ -424,6 +455,49 @@ function MobilePostCard({
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
               <span className="ym-count">{formatCount(Number(comments) || 0)}</span>
+            </button>
+
+            {/* ✅ v88.83: مؤشر التفاعل — أعمدة متدرجة مثل x.com */}
+            <button
+              className="ym-footer-btn ym-footer-btn-engagement"
+              aria-label={`مؤشر التفاعل (${engagementValue})`}
+              title="مؤشر التفاعل"
+              onClick={() => (onEngagementInfo ? onEngagementInfo(post) : null)}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="5"  y1="20" x2="5"  y2="14" />
+                <line x1="10" y1="20" x2="10" y2="11" />
+                <line x1="15" y1="20" x2="15" y2="7" />
+                <line x1="20" y1="20" x2="20" y2="4" />
+              </svg>
+              {engagementValue > 0 ? (
+                <span className="ym-count">{formatCount(engagementValue)}</span>
+              ) : null}
+            </button>
+
+            {/* ✅ v88.83: زر إعادة النشر (Repost) — سهمان دائريان، أخضر عند التفعيل */}
+            <button
+              className={`ym-footer-btn ym-footer-btn-repost ${reposted ? 'is-reposted' : ''}`}
+              aria-label={reposted ? 'إلغاء إعادة النشر' : 'إعادة نشر'}
+              aria-pressed={reposted ? 'true' : 'false'}
+              title={reposted ? 'إلغاء إعادة النشر' : 'إعادة نشر'}
+              onClick={() => onRepost?.(post)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={reposted ? '#22c55e' : 'currentColor'}
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="17 1 21 5 17 9" />
+                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                <polyline points="7 23 3 19 7 15" />
+                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+              </svg>
+              <span className={`ym-count ${reposted ? 'text-green' : ''}`}>{formatCount(Number(reposts) || 0)}</span>
             </button>
 
             <button
@@ -843,7 +917,15 @@ function MobilePostCard({
         .ym-footer-btn-like.liked { color: #8B5CF6; }
         .ym-footer-btn-save { color: #9CA3AF; }
         .ym-footer-btn-save.is-saved { color: #8B5CF6; }
+        /* ✅ v88.83: تنسيق زر مؤشر التفاعل (أعمدة إحصائية) وزر إعادة النشر (سهمان) */
+        .ym-footer-btn-engagement { color: #9CA3AF; }
+        .ym-footer-btn-engagement svg line { stroke: #C4B5FD; }
+        .ym-footer-btn-engagement:hover { color: #C4B5FD; }
+        .ym-footer-btn-repost { color: #9CA3AF; }
+        .ym-footer-btn-repost.is-reposted { color: #22c55e; }
+        .ym-footer-btn-repost:hover { color: #22c55e; background: rgba(34,197,94,.10); }
         .text-purple { color: #8B5CF6; font-weight: 700; }
+        .text-green { color: #22c55e; font-weight: 700; }
 
         /* =========================
            شاشات صغيرة جداً (≤340px) — Redmi 5A, Galaxy Fold مغلق
@@ -857,6 +939,18 @@ function MobilePostCard({
           }
           .ym-footer-btn { padding: 5px 5px; gap: 3px; }
           .ym-footer-actions-right { gap: 1px; }
+        }
+
+        /* ✅ v88.83: على الشاشات المتوسطة والصغيرة (≤ 480px) نضغط padding
+           والفواصل لأن الأزرار أصبحت 5 على اليمين بدل 3، حتى لا تفيض. */
+        @media (max-width: 480px) {
+          .ym-footer-btn {
+            padding: 6px 5px;
+            gap: 3px;
+            --ym-icon-size: clamp(18px, 5vw, 22px);
+          }
+          .ym-footer-actions-right { gap: 1px; }
+          .ym-footer-btn .ym-count { font-size: 0.72rem; }
         }
 
         /* =========================
@@ -1014,6 +1108,21 @@ function MobilePostCard({
           color: rgba(255,255,255,0.5);
           text-align: center;
           margin-top: 2px;
+        }
+        /* ✅ v88.85: شارة "موثق لدى Yamshat" */
+        .badge-yamshat-verified {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 0.68rem;
+          font-weight: 800;
+          background: linear-gradient(135deg, rgba(139,92,246,0.22), rgba(99,102,241,0.18));
+          color: #c4b5fd;
+          border: 1px solid rgba(139,92,246,0.38);
+          white-space: nowrap;
+          line-height: 1.4;
         }
       `}</style>
     </article>

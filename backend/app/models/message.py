@@ -70,6 +70,27 @@ class Message(Base):
     # عدّاد سريع للتفاعلات
     reactions_count = Column(Integer, default=0, nullable=False)
 
+    # ==========================================================
+    # ✅ v88.87 — دعم نظام المشاركة (Share) الموثق لدى Yamshat
+    # ==========================================================
+    # link_card: بيانات كارت الرابط الغني (JSON نصي) — يُعرض في الشات والمجموعات.
+    # verified_by_yamshat: الطابع الرسمي "موثق لدى Yamshat".
+    # admin_source_*: بيانات المصدر الأصلية — لا تُعرض للمستخدمين،
+    #   يقرأها لوحة الأدمن فقط (audit/tracing للمحتوى المُشارك).
+    link_card = Column(Text, nullable=True)
+    verified_by_yamshat = Column(Boolean, default=False, nullable=False, index=True)
+    admin_source_platform = Column(String(60), nullable=True, index=True)
+    admin_source_platform_name = Column(String(120), nullable=True)
+    admin_source_url = Column(Text, nullable=True)
+    admin_source_title = Column(Text, nullable=True)
+    admin_source_text = Column(Text, nullable=True)
+    admin_source_author = Column(String(200), nullable=True)
+    admin_source_channel = Column(String(200), nullable=True)
+    admin_source_captured_at = Column(DateTime, nullable=True)
+    admin_source_share_mode = Column(String(20), nullable=True)  # 'link' | 'download'
+    admin_source_download_size = Column(Integer, nullable=True)
+    admin_source_download_mime = Column(String(120), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     # علاقات

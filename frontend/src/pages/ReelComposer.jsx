@@ -13,7 +13,7 @@ import CameraFilterCarousel, {
   getCamFilterCss,
 } from '../components/reels/CameraFilterCarousel.jsx';
 // ✅ v88.71 FIX: استقبال المحتوى المُشارك من تطبيقات أخرى (PWA Share Target)
-import { consumePendingShare } from '../services/share/sharedIntake.js';
+import { consumePendingShare, dataUrlToBlob } from '../services/share/sharedIntake.js';
 
 /**
  * ReelComposer.jsx — v56 (Pixel-perfect rebuild — مطابق 1:1 للصورة المرجعية)
@@ -181,21 +181,68 @@ export default function ReelComposer() {
   //   (ج) setState بعد unmount في onConfirm async.
   const countdownTimerRef = useRef(null);
   const isMountedRef = useRef(true);
+  // ✅ v88.86 FIX: حفظ بيانات المصدر (linkCard/adminSource/verifiedByYamshat)
+  const pendingShareMetaRef = useRef(null);
 
   // ✅ v88.71: محتوى وارد من ميزة "مشاركة إلى يام شات" مع شريط تقدم تحضيري
   const [sharedIntake, setSharedIntake] = useState(null);
   const [prepareProgress, setPrepareProgress] = useState(0);
 
-  // ✅ v88.71: استهلاك المحتوى الوارد من SW عند اختيار "ريلز" في صفحة /share-target.
-  //    يتم وضع الملف في galleryFile وتفعيل معاينة الفيديو بـ URL.createObjectURL
-  //    (مثل ما يحدث في onGalleryPick تماماً) بحيث يرى المستخدم المحتوى جاهزاً
-  //    للنشر مباشرة، ويضغط زر التأكيد ليبدأ الرفع الحقيقي إلى الخادم.
+  // ✅ v88.84: استهلاك المحتوى الوارد من SW عند اختيار "ريلز" في صفحة /share-target.
+  //    يدعم وضعين:
+  //      - mode='link': يلتقط لقطة من الفيديو + الوصف + الرابط → ينشر (الريلز يحتاج فيديو فعلي،
+  //        فإذا لم يكن هناك ملف فيديو نُنبّه المستخدم باختيار وجهة أخرى).
+  //      - mode='download': الملف منزّل محلياً + وصف بدون رابط → يرفع كريلز بالفيديو الفعلي.
+  //    يتم وضع الملف في galleryFile وتفعيل معاينة الفيديو بـ URL.createObjectURL.
   useEffect(() => {
     let cancelled = false;
     let progressTimer = null;
     try {
       const pending = consumePendingShare('reel');
-      if (!pending || !pending.file) return;
+      if (!pending) return;
+      const mode = pending.mode || 'link';
+      // ✅ v88.86 FIX: احفظ بيانات المصدر لتمريرها عند نشر الريل
+      pendingShareMetaRef.current = {
+        linkCard: pending.linkCard || null,
+        adminSource: pending.adminSource || null,
+        verifiedByYamshat: Boolean(pending.verifiedByYamshat),
+      };
+
+      // وضع الرابط بدون ملف فيديو — الريلز يحتاج فيديو فعلي
+      if (mode === 'link' && !pending.file) {
+        // إن كان هناك لقطة فيديو (thumbnailDataUrl) نُنبّه أن الريلز يحتاج فيديو
+        pushToast?.({
+          tone: 'info',
+          message: 'وضع "مشاركة كرابط" ينشر لقطة + رابط. للريلز ننصح باختيار "تنزيل ومشاركة" لرفع الفيديو الفعلي. سيتم نشر اللقطة كريلز مع الرابط.',
+        });
+        // إن كان هناك لقطة، نستخدمها كصورة للريلز (ريلز بصورة + رابط)
+        if (pending.thumbnailDataUrl) {
+          const thumbBlob = dataUrlToBlob(pending.thumbnailDataUrl);
+          if (thumbBlob) {
+            const thumbFile = new File([thumbBlob], 'video-thumbnail.jpg', { type: 'image/jpeg' });
+            setSharedIntake({
+              sourceUrl: pending.sourceUrl || '',
+              sourceTitle: pending.sourceTitle || '',
+              fileMeta: { name: 'video-thumbnail.jpg', type: 'image/jpeg', size: thumbBlob.size },
+              mode,
+            });
+            setCameraOn(false);
+            setGalleryFile(thumbFile);
+            setRecordedBlob(null);
+            try {
+              const url = URL.createObjectURL(thumbFile);
+              setGalleryPreviewUrl(url);
+            } catch { /* ignore */ }
+            setErrorMessage('');
+            setPrepareProgress(100);
+            pushToast?.({ tone: 'info', message: 'تم استلام لقطة الفيديو — اضغط ✓ لرفعها كريلز.' });
+          }
+        }
+        return;
+      }
+
+      // إذا وصلنا هنا، لدينا ملف فعلي
+      if (!pending.file) return;
       // إن لم يكن فيديو — تجاهل (الريلز للفيديو فقط)
       if (!String(pending.fileMeta?.type || '').startsWith('video/')) {
         pushToast?.({
@@ -215,6 +262,7 @@ export default function ReelComposer() {
         sourceUrl: pending.sourceUrl || '',
         sourceTitle: pending.sourceTitle || '',
         fileMeta: pending.fileMeta,
+        mode,
       });
       // أوقف الكاميرا إن كانت مفتوحة وأظهر المعاينة
       setCameraOn(false);
@@ -510,6 +558,10 @@ export default function ReelComposer() {
           audio_track: audioTrack?.id || null,
           captions,
           beautify,
+          // ✅ v88.86 FIX: تمرير بيانات كارت الرابط والمصدر وعلامة التوثيق
+          link_card: pendingShareMetaRef.current?.linkCard || undefined,
+          admin_source: pendingShareMetaRef.current?.adminSource || undefined,
+          verified_by_yamshat: pendingShareMetaRef.current?.verifiedByYamshat || undefined,
         });
       } else {
         // ✅ v59.13.34: fallback multipart — نرفع الملف مباشرة للـ backend
@@ -517,6 +569,16 @@ export default function ReelComposer() {
         fd.append('file', file, file.name || `reel-${Date.now()}.webm`);
         fd.append('caption', captions || '');
         fd.append('category', 'general');
+        // ✅ v88.86 FIX: تمرير بيانات المصدر في مسار multipart الاحتياطي
+        if (pendingShareMetaRef.current?.linkCard) {
+          fd.append('link_card', JSON.stringify(pendingShareMetaRef.current.linkCard));
+        }
+        if (pendingShareMetaRef.current?.adminSource) {
+          fd.append('admin_source', JSON.stringify(pendingShareMetaRef.current.adminSource));
+        }
+        if (pendingShareMetaRef.current?.verifiedByYamshat) {
+          fd.append('verified_by_yamshat', 'true');
+        }
         publishResponse = await API.post('/reels', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
           onUploadProgress: (e) => {
@@ -554,6 +616,10 @@ export default function ReelComposer() {
       } catch {}
 
       if (!isMountedRef.current) return;
+      // ✅ v88.86 FIX: مسح بيانات المصدر بعد النشر
+      pendingShareMetaRef.current = null;
+      setSharedIntake(null);
+      setPrepareProgress(0);
       pushToast?.({ tone: 'success', message: 'تم نشر الريل بنجاح 🎉' });
       navigate('/reels', { replace: true, state: { highlightReelId: optimisticReel.id } });
     } catch (err) {

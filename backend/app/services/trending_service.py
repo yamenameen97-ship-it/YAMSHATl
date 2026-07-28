@@ -21,6 +21,17 @@ Yamshat — Trending Service (v88.51)
 - عتبة التريند العالمي:  trend_score ≥ 500
 - عتبة تريند الدولة:      trend_score_country ≥ 120
 
+## v88.89 — معامل تقييم المحتوى الخارجي
+المحتوى الذي يأتي عبر مشاركة من منصات خارجية (YouTube/Twitter/Facebook/
+Instagram/TikTok/…) يُحسب تقييمه في نظام التريند بنصف القيمة فقط (×0.5).
+المحتوى الأصلي المرفوع من صنّاع المحتوى على المنصة يُحسب بكامل قيمته (×1.0).
+الهدف: تشجيع صنّاع المحتوى على إنتاج محتوى أصلي بدلاً من مشاركة محتوى خارجي.
+
+    if is_external_source(post):
+        trend_score = trend_score × 0.5   # مشاركة خارجية
+    else:
+        trend_score = trend_score × 1.0   # رفع أصلي
+
 عند اجتياز العتبة أول مرة يتم:
   1. تحديد المنشور/الوسم trending=True في الذاكرة (Redis-like state)
   2. إطلاق إشارة `trending:new` عبر Socket.IO للأدمن
@@ -66,6 +77,13 @@ VELOCITY_WINDOW_HOURS = 1      # نافذة قياس السرعة
 GLOBAL_TREND_THRESHOLD = 500   # عتبة التريند العالمي
 COUNTRY_TREND_THRESHOLD = 120  # عتبة تريند الدولة
 
+# v88.89 — معامل تقييم التريند للمحتوى المُشارك من مصادر خارجية
+# المحتوى الذي يأتي عبر مشاركة (YouTube/Twitter/Facebook/Instagram/TikTok/…)
+# يُحسب تقييمه في نظام التريند بنصف القيمة فقط (×0.5)، بينما المحتوى الأصلي
+# المرفوع من صنّاع المحتوى على المنصة يُحسب بكامل قيمته (×1.0).
+# الهدف: تشجيع صنّاع المحتوى على إنتاج محتوى أصلي بدلاً من مشاركة محتوى خارجي.
+EXTERNAL_SOURCE_TREND_MULTIPLIER = 0.5
+
 HASHTAG_REGEX = re.compile(r'#[\w\u0600-\u06FF_-]+', re.UNICODE)
 
 # ذاكرة داخلية لحفظ حالة "منشور/وسم بالفعل تريند" حتى لا نبعث إشارات مكررة.
@@ -107,6 +125,10 @@ class TrendingItem:
     safety_labels: list = field(default_factory=list)
     safety_matched: list = field(default_factory=list)
     blocked_from_trending: bool = False   # منع الصعود آلياً أو يدوياً
+    # v88.89 — حقول معامل تقييم المحتوى الخارجي
+    is_external_source: bool = False        # هل المحتوى من مصدر خارجي (مشاركة)؟
+    trend_multiplier: float = 1.0           # المعامل المُطبَّق (0.5 خارجي / 1.0 أصلي)
+    original_score: float = 0.0             # الدرجة الأصلية قبل تطبيق المعامل
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -130,6 +152,30 @@ def _user_country(user: User | None) -> Optional[str]:
     if not user:
         return None
     return getattr(user, "country_code", None) or getattr(user, "country", None)
+
+
+def _is_external_source_post(post: Any) -> bool:
+    """
+    v88.89 — يحدد هل المنشور/المقطع جاء من مصدر خارجي (مشاركة) أم رفع أصلي.
+
+    المنشور يُعتبر من مصدر خارجي إذا كان يحتوي على أي من مؤشرات المشاركة:
+      - admin_source_platform: منصة المصدر (youtube/twitter/facebook/instagram/…)
+      - link_card: كارت الرابط الغني (JSON)
+      - admin_source_share_mode: وضع المشاركة ('link' | 'download')
+      - verified_by_yamshat: شارة "موثق لدى Yamshat" (تُفعَّل عند التنزيل والمشاركة)
+
+    المنشور الأصلي (المرفوع من هاتف صنّاع المحتوى مباشرةً) لا يحتوي على
+    أي من هذه الحقول، فيُحسب تقييمه بكامل القيمة.
+    """
+    if getattr(post, 'admin_source_platform', None):
+        return True
+    if getattr(post, 'link_card', None):
+        return True
+    if getattr(post, 'admin_source_share_mode', None):
+        return True
+    if getattr(post, 'verified_by_yamshat', False):
+        return True
+    return False
 
 
 def _compute_post_score(
@@ -220,7 +266,14 @@ def compute_trending(
 
         base = _compute_post_score(likes, comments, shares, views, saves)
         velocity = (like_counts_1h.get(post.id, 0) + 1) / (likes + 1)
-        score = base * (1 + velocity)
+
+        # v88.89 — معامل تقييم التريند للمحتوى الخارجي
+        # المحتوى المُشارك من خارج المنصة يُحسب بنصف القيمة فقط (×0.5)
+        # المحتوى الأصلي المرفوع من صنّاع المحتوى يُحسب بكامل القيمة (×1.0)
+        is_external = _is_external_source_post(post)
+        trend_mult = EXTERNAL_SOURCE_TREND_MULTIPLIER if is_external else 1.0
+        original_score = base * (1 + velocity)
+        score = original_score * trend_mult
 
         if score < threshold:
             continue
@@ -249,6 +302,9 @@ def compute_trending(
             post_id=post.id,
             detected_at=now.isoformat(),
             threshold=threshold,
+            is_external_source=is_external,
+            trend_multiplier=trend_mult,
+            original_score=round(original_score, 2),
         )
 
         # v88.52 — تصنيف السلامة قبل قبول المنشور كتريند
@@ -317,6 +373,9 @@ def compute_trending(
             country=meta.get("country") if scope == "country" else None,
             detected_at=now.isoformat(),
             threshold=threshold,
+            is_external_source=False,
+            trend_multiplier=1.0,
+            original_score=float(tag_score),
         )
 
         # v88.52 — فحص الوسم نفسه (كثير من التريندات الخطيرة تكون هاشتاق)
@@ -394,6 +453,9 @@ async def emit_trending_signals(
             "post_id": item.post_id,
             "author": item.author,
             "detected_at": item.detected_at,
+            "is_external_source": item.is_external_source,
+            "trend_multiplier": item.trend_multiplier,
+            "original_score": item.original_score,
         }
 
         # 1) Socket: بث لغرفة الأدمن
@@ -466,5 +528,8 @@ def trending_overview(db: Session, limit: int = 5) -> dict[str, Any]:
             "global_threshold": GLOBAL_TREND_THRESHOLD,
             "country_threshold": COUNTRY_TREND_THRESHOLD,
             "formula": "0.35L + 0.25C + 0.20S + 0.15V + 0.05Sv × (1 + velocity)",
+            "external_source_multiplier": EXTERNAL_SOURCE_TREND_MULTIPLIER,
+            "native_source_multiplier": 1.0,
+            "external_source_rule": "المحتوى المُشارك من خارج المنصة يُحسب بنصف القيمة (×0.5)، والمحتوى الأصلي بكامل القيمة (×1.0)",
         },
     }

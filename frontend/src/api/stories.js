@@ -125,6 +125,11 @@ export const uploadStory = async (file, meta = {}, onProgress) => {
       formData.append(key, value ? 'true' : 'false');
       return;
     }
+    // ✅ v88.86 FIX: تسلسل الكائنات (link_card, admin_source) كـ JSON string للـ FormData
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      formData.append(key, JSON.stringify(value));
+      return;
+    }
     formData.append(key, Array.isArray(value) ? value.join(',') : value);
   });
   const res = await API.post('/add_story', formData, {

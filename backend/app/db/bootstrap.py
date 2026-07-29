@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.security import hash_password, verify_password
 from app.db.base import Base
 
-CURRENT_ALEMBIC_REVISION = '20260610_0006'
+CURRENT_ALEMBIC_REVISION = '20260728_0021'
 LEGACY_USER_TABLE_NAMES = ('suser', 'user')
 DEFAULT_SUBSCRIBER = {
     'username': ((settings.DEMO_ACCOUNT_EMAIL or 'yasryameen21@gmail.com').split('@')[0] or 'yasryameen21').strip().lower(),
@@ -78,7 +78,15 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
     'audit_logs': {'action', 'entity_type', 'description', 'meta', 'created_at'},
     'user_sessions': {'user_id', 'session_key', 'refresh_token_hash', 'expires_at', 'revoked_at', 'last_seen_at'},
     'login_challenges': {'user_id', 'challenge_id', 'code_hash', 'challenge_type', 'expires_at', 'consumed_at'},
-    'posts': {'user_id', 'username', 'media', 'image_url', 'media_json', 'is_draft'},
+    'posts': {
+        'user_id', 'username', 'media', 'image_url', 'media_json', 'is_draft',
+        # v88.97 ROOT FIX — أعمدة المشاركة الموثقة (migration 0020)
+        'link_card', 'verified_by_yamshat',
+        'admin_source_platform', 'admin_source_platform_name', 'admin_source_url',
+        'admin_source_title', 'admin_source_text', 'admin_source_author',
+        'admin_source_channel', 'admin_source_captured_at', 'admin_source_share_mode',
+        'admin_source_download_size', 'admin_source_download_mime',
+    },
     'comments': {'user_id', 'username', 'comment', 'content'},
     'messages': {'sender_id', 'receiver_id', 'sender', 'receiver', 'message', 'content'},
     'notifications': {'user_id', 'type', 'title', 'body', 'data', 'is_read', 'created_at'},
@@ -436,6 +444,34 @@ def _migrate_posts_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'posts', 'save_count', 'save_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'posts', 'created_at', 'created_at TIMESTAMP NULL')
 
+    # ==========================================================
+    # ✅ v88.97 ROOT FIX — أعمدة نظام المشاركة الموثقة (migration 0020)
+    # هذه الأعمدة أضافتها هجرة Alembic 20260728_0020 ولكنها لم تكن
+    # موجودة في تسلسل الترحيل bootstrap — مما يسبب فشل 500 عند إنشاء
+    # أو قراءة المنشورات على قواعد البيانات القديمة.
+    # ==========================================================
+    _add_column_if_missing(engine, 'posts', 'link_card', 'link_card TEXT NULL')
+    _add_column_if_missing(engine, 'posts', 'verified_by_yamshat', 'verified_by_yamshat BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'posts', 'admin_source_platform', 'admin_source_platform VARCHAR(60) NULL')
+    _add_column_if_missing(engine, 'posts', 'admin_source_platform_name', 'admin_source_platform_name VARCHAR(120) NULL')
+    _add_column_if_missing(engine, 'posts', 'admin_source_url', 'admin_source_url TEXT NULL')
+    _add_column_if_missing(engine, 'posts', 'admin_source_title', 'admin_source_title TEXT NULL')
+    _add_column_if_missing(engine, 'posts', 'admin_source_text', 'admin_source_text TEXT NULL')
+    _add_column_if_missing(engine, 'posts', 'admin_source_author', 'admin_source_author VARCHAR(200) NULL')
+    _add_column_if_missing(engine, 'posts', 'admin_source_channel', 'admin_source_channel VARCHAR(200) NULL')
+    _add_column_if_missing(engine, 'posts', 'admin_source_captured_at', 'admin_source_captured_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'posts', 'admin_source_share_mode', 'admin_source_share_mode VARCHAR(20) NULL')
+    _add_column_if_missing(engine, 'posts', 'admin_source_download_size', 'admin_source_download_size INTEGER NULL')
+    _add_column_if_missing(engine, 'posts', 'admin_source_download_mime', 'admin_source_download_mime VARCHAR(120) NULL')
+    # فهارس idempotent على الأعمدة الجديدة
+    try:
+        if engine.dialect.name == 'postgresql':
+            with engine.begin() as connection:
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_posts_verified_by_yamshat ON posts (verified_by_yamshat)'))
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_posts_admin_source_platform ON posts (admin_source_platform)'))
+    except Exception:
+        pass
+
     _drop_not_null_if_possible(engine, 'posts', 'username')
     _drop_not_null_if_possible(engine, 'posts', 'media')
 
@@ -545,6 +581,31 @@ def _migrate_messages_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'messages', 'is_recalled', 'is_recalled BOOLEAN NOT NULL DEFAULT FALSE')
     _add_column_if_missing(engine, 'messages', 'expires_at', 'expires_at TIMESTAMP NULL')
     _add_column_if_missing(engine, 'messages', 'reactions_count', 'reactions_count INTEGER NOT NULL DEFAULT 0')
+
+    # ==========================================================
+    # ✅ v88.97 ROOT FIX — أعمدة نظام المشاركة الموثقة (migration 0021)
+    # نفس أعمدة posts ولكن لجدول messages.
+    # ==========================================================
+    _add_column_if_missing(engine, 'messages', 'link_card', 'link_card TEXT NULL')
+    _add_column_if_missing(engine, 'messages', 'verified_by_yamshat', 'verified_by_yamshat BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'messages', 'admin_source_platform', 'admin_source_platform VARCHAR(60) NULL')
+    _add_column_if_missing(engine, 'messages', 'admin_source_platform_name', 'admin_source_platform_name VARCHAR(120) NULL')
+    _add_column_if_missing(engine, 'messages', 'admin_source_url', 'admin_source_url TEXT NULL')
+    _add_column_if_missing(engine, 'messages', 'admin_source_title', 'admin_source_title TEXT NULL')
+    _add_column_if_missing(engine, 'messages', 'admin_source_text', 'admin_source_text TEXT NULL')
+    _add_column_if_missing(engine, 'messages', 'admin_source_author', 'admin_source_author VARCHAR(200) NULL')
+    _add_column_if_missing(engine, 'messages', 'admin_source_channel', 'admin_source_channel VARCHAR(200) NULL')
+    _add_column_if_missing(engine, 'messages', 'admin_source_captured_at', 'admin_source_captured_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'messages', 'admin_source_share_mode', 'admin_source_share_mode VARCHAR(20) NULL')
+    _add_column_if_missing(engine, 'messages', 'admin_source_download_size', 'admin_source_download_size INTEGER NULL')
+    _add_column_if_missing(engine, 'messages', 'admin_source_download_mime', 'admin_source_download_mime VARCHAR(120) NULL')
+    try:
+        if engine.dialect.name == 'postgresql':
+            with engine.begin() as connection:
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_messages_verified_by_yamshat ON messages (verified_by_yamshat)'))
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_messages_admin_source_platform ON messages (admin_source_platform)'))
+    except Exception:
+        pass
 
     _drop_not_null_if_possible(engine, 'messages', 'sender')
     _drop_not_null_if_possible(engine, 'messages', 'receiver')
@@ -666,6 +727,31 @@ def _migrate_reels_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'reels', 'cloudinary_thumb_public_id', 'cloudinary_thumb_public_id VARCHAR(255) NULL')
     _add_column_if_missing(engine, 'reels', 'storage_type', "storage_type VARCHAR(32) NOT NULL DEFAULT 'local'")
 
+    # ==========================================================
+    # ✅ v88.97 ROOT FIX — أعمدة نظام المشاركة الموثقة (migration 0021)
+    # نفس أعمدة posts ولكن لجدول reels.
+    # ==========================================================
+    _add_column_if_missing(engine, 'reels', 'link_card', 'link_card TEXT NULL')
+    _add_column_if_missing(engine, 'reels', 'verified_by_yamshat', 'verified_by_yamshat BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'reels', 'admin_source_platform', 'admin_source_platform VARCHAR(60) NULL')
+    _add_column_if_missing(engine, 'reels', 'admin_source_platform_name', 'admin_source_platform_name VARCHAR(120) NULL')
+    _add_column_if_missing(engine, 'reels', 'admin_source_url', 'admin_source_url TEXT NULL')
+    _add_column_if_missing(engine, 'reels', 'admin_source_title', 'admin_source_title TEXT NULL')
+    _add_column_if_missing(engine, 'reels', 'admin_source_text', 'admin_source_text TEXT NULL')
+    _add_column_if_missing(engine, 'reels', 'admin_source_author', 'admin_source_author VARCHAR(200) NULL')
+    _add_column_if_missing(engine, 'reels', 'admin_source_channel', 'admin_source_channel VARCHAR(200) NULL')
+    _add_column_if_missing(engine, 'reels', 'admin_source_captured_at', 'admin_source_captured_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'reels', 'admin_source_share_mode', 'admin_source_share_mode VARCHAR(20) NULL')
+    _add_column_if_missing(engine, 'reels', 'admin_source_download_size', 'admin_source_download_size INTEGER NULL')
+    _add_column_if_missing(engine, 'reels', 'admin_source_download_mime', 'admin_source_download_mime VARCHAR(120) NULL')
+    try:
+        if engine.dialect.name == 'postgresql':
+            with engine.begin() as connection:
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_reels_verified_by_yamshat ON reels (verified_by_yamshat)'))
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_reels_admin_source_platform ON reels (admin_source_platform)'))
+    except Exception:
+        pass
+
     with engine.begin() as connection:
         connection.execute(text("UPDATE reels SET category = COALESCE(NULLIF(category, ''), 'general')"))
         connection.execute(text('UPDATE reels SET duration = COALESCE(duration, 0)'))
@@ -676,6 +762,69 @@ def _migrate_reels_table(engine: Engine) -> None:
         connection.execute(text('UPDATE reels SET is_deleted = COALESCE(is_deleted, FALSE)'))
         connection.execute(text('UPDATE reels SET created_at = COALESCE(created_at, NOW())'))
         connection.execute(text('UPDATE reels SET updated_at = COALESCE(updated_at, created_at, NOW())'))
+
+
+def _migrate_stories_table(engine: Engine) -> None:
+    """v88.97 ROOT FIX — ترحيل جدول stories مع أعمدة المشاركة الموثقة.
+
+    جدول stories أُنشئ في هجرة 20260707_0014 لكن أعمدة المشاركة
+    (link_card / verified_by_yamshat / admin_source_*) أُضيفت في
+    هجرة 20260728_0021 ولم تكن موجودة في bootstrap.
+    """
+    if not _table_exists(engine, 'stories'):
+        return
+
+    # أعمدة القصص الأساسية (إن لم تكن موجودة في قاعدة قديمة)
+    _add_column_if_missing(engine, 'stories', 'user_id', 'user_id INTEGER')
+    _add_column_if_missing(engine, 'stories', 'media_url', 'media_url VARCHAR(1000)')
+    _add_column_if_missing(engine, 'stories', 'media_type', "media_type VARCHAR(16) NOT NULL DEFAULT 'image'")
+    _add_column_if_missing(engine, 'stories', 'caption', 'caption TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'duration', 'duration INTEGER NOT NULL DEFAULT 5')
+    _add_column_if_missing(engine, 'stories', 'privacy', "privacy VARCHAR(24) NOT NULL DEFAULT 'friends'")
+    _add_column_if_missing(engine, 'stories', 'music', 'music VARCHAR(200) NULL')
+    _add_column_if_missing(engine, 'stories', 'stickers', 'stickers TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'mentions', 'mentions TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'poll_question', 'poll_question VARCHAR(200) NULL')
+    _add_column_if_missing(engine, 'stories', 'poll_options', 'poll_options TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'poll_votes', 'poll_votes TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'poll_voters', 'poll_voters TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'countdown_at', 'countdown_at VARCHAR(64) NULL')
+    _add_column_if_missing(engine, 'stories', 'filter_name', 'filter_name VARCHAR(80) NULL')
+    _add_column_if_missing(engine, 'stories', 'drawing_data', 'drawing_data TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'is_close_friends', 'is_close_friends BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'stories', 'highlight', 'highlight BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'stories', 'highlight_title', 'highlight_title VARCHAR(80) NULL')
+    _add_column_if_missing(engine, 'stories', 'reactions', 'reactions TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'auto_delete_hours', 'auto_delete_hours INTEGER NOT NULL DEFAULT 24')
+    _add_column_if_missing(engine, 'stories', 'views_count', 'views_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'stories', 'replies_count', 'replies_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'stories', 'reactions_count', 'reactions_count INTEGER NOT NULL DEFAULT 0')
+    _add_column_if_missing(engine, 'stories', 'created_at', 'created_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'stories', 'expires_at', 'expires_at TIMESTAMP NULL')
+
+    # ==========================================================
+    # ✅ v88.97 ROOT FIX — أعمدة نظام المشاركة الموثقة (migration 0021)
+    # ==========================================================
+    _add_column_if_missing(engine, 'stories', 'link_card', 'link_card TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'verified_by_yamshat', 'verified_by_yamshat BOOLEAN NOT NULL DEFAULT FALSE')
+    _add_column_if_missing(engine, 'stories', 'admin_source_platform', 'admin_source_platform VARCHAR(60) NULL')
+    _add_column_if_missing(engine, 'stories', 'admin_source_platform_name', 'admin_source_platform_name VARCHAR(120) NULL')
+    _add_column_if_missing(engine, 'stories', 'admin_source_url', 'admin_source_url TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'admin_source_title', 'admin_source_title TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'admin_source_text', 'admin_source_text TEXT NULL')
+    _add_column_if_missing(engine, 'stories', 'admin_source_author', 'admin_source_author VARCHAR(200) NULL')
+    _add_column_if_missing(engine, 'stories', 'admin_source_channel', 'admin_source_channel VARCHAR(200) NULL')
+    _add_column_if_missing(engine, 'stories', 'admin_source_captured_at', 'admin_source_captured_at TIMESTAMP NULL')
+    _add_column_if_missing(engine, 'stories', 'admin_source_share_mode', 'admin_source_share_mode VARCHAR(20) NULL')
+    _add_column_if_missing(engine, 'stories', 'admin_source_download_size', 'admin_source_download_size INTEGER NULL')
+    _add_column_if_missing(engine, 'stories', 'admin_source_download_mime', 'admin_source_download_mime VARCHAR(120) NULL')
+    try:
+        if engine.dialect.name == 'postgresql':
+            with engine.begin() as connection:
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_stories_verified_by_yamshat ON stories (verified_by_yamshat)'))
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_stories_admin_source_platform ON stories (admin_source_platform)'))
+    except Exception:
+        pass
 
 
 def _migrate_notifications_table(engine: Engine) -> None:
@@ -1096,6 +1245,7 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
     _safe(_migrate_messages_table, 'migrate_messages_table')
     _safe(_migrate_live_room_sessions_table, 'migrate_live_room_sessions_table')
     _safe(_migrate_reels_table, 'migrate_reels_table')
+    _safe(_migrate_stories_table, 'migrate_stories_table')  # v88.97 ROOT FIX
     _safe(_migrate_reel_comments_table, 'migrate_reel_comments_table')  # v85.5
     _safe(_migrate_notifications_table, 'migrate_notifications_table')
     _safe(_migrate_audit_logs_table, 'migrate_audit_logs_table')

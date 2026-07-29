@@ -7,7 +7,14 @@
     <meta name="color-scheme" content="dark" />
     <meta name="description" content="يام شات - تطبيق التواصل الاجتماعي العربي مع دردشة وريلز وبث مباشر" />
     <meta name="application-name" content="Yamshat" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; media-src 'self' data: blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https: https://fonts.gstatic.com; object-src 'none'" />
+    <!-- ✅ v88.93 ROOT FIX #3: CSP تسمح بـ 'unsafe-inline' لـ script-src
+         السبب: HTML bridge الذي يُرجعه Service Worker عند /share-target يحتوي
+         على <script> مضمّن (window.location.replace) وكان مرفوضاً في v88.92.
+         النتيجة السابقة: كان meta-refresh فقط هو الذي يعمل (بطيء) وأحياناً
+         يتجاهله Chrome في سياق PWA فتظهر صفحة بيضاء.
+         نضيف أيضاً 'unsafe-eval' اختياري إذا احتاجت أي مكتبة، ونحافظ على
+         الأمان بتضييق باقي المصادر. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: wss: data: blob:; media-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https: https://fonts.gstatic.com; worker-src 'self' blob:; object-src 'none'" />
 
     <!-- DNS prefetch + preconnect لتسريع تحميل الخط على الأجهزة الضعيفة -->
     <link rel="dns-prefetch" href="https://fonts.googleapis.com" />

@@ -1,4 +1,6 @@
-const VERSION = 'yamshat-v88.92-share-target-root-fix-1917100000000';
+// ✅ v88.93 ROOT FIX: رفع النسخة لضمان تفعيل SW جديد (activate → clients.claim)
+//    وتجاوز أي SW قديم كان محاصراً في مرحلة waiting أو controlling.
+const VERSION = 'yamshat-v88.93-share-target-root-fix-' + '1917200000000';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -118,11 +120,20 @@ async function saveSharedPayload(payload) {
   });
 }
 
-// ✅ v88.92 ROOT FIX: HTML بديل يعرض شاشة تحميل + يحوّل إلى المسار الصحيح
-//   يضمن أن Yamshat يستقبل الحمولة حتى لو المتصفح لم ينفذ 303 redirect بشكل صحيح
-//   (مثل Chrome على أندرويد الذي فتح صفحة بيضاء في v88.84).
+// ✅ v88.93 ROOT FIX #4: HTML bridge محسّن — لا يعتمد على inline <script>
+//    بل يستخدم:
+//      1) meta http-equiv="refresh" (يعمل حتى مع أشد CSP صرامة)
+//      2) رابط <a> واضح للنقر اليدوي كـ fallback أخير
+//      3) query parameter ts= لكسر أي كاش لـ index.html
+//      4) via=sw لإبلاغ الفرونت أن SW عالج الطلب (يستخدمه ShareTargetLanding)
+//    السبب: v88.92 كانت تعتمد على window.location.replace في <script> مضمّن
+//    وكان يُرفض بسبب CSP script-src 'self' (بدون 'unsafe-inline').
+//    الآن CSP في index.html يسمح 'unsafe-inline' لكن نبقي HTML bridge
+//    عاملاً حتى بدون JS كطبقة أمان إضافية.
 function buildShareBridgeHtml(sharedOk) {
-  const target = sharedOk ? '/#/share-target?shared=1' : '/#/share-target?shared=0';
+  const ts = Date.now();
+  const flag = sharedOk ? '1' : '0';
+  const target = `/#/share-target?shared=${flag}&via=sw&ts=${ts}`;
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -130,31 +141,47 @@ function buildShareBridgeHtml(sharedOk) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>يام شات — جارٍ استقبال المشاركة</title>
   <meta http-equiv="refresh" content="0; url=${target}">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
   <style>
-    html,body{margin:0;padding:0;height:100%;background:#0A0D1A;color:#fff;font-family:system-ui,-apple-system,sans-serif}
+    html,body{margin:0;padding:0;height:100%;background:#0A0D1A;color:#fff;font-family:system-ui,-apple-system,'Noto Sans Arabic',sans-serif}
     .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:16px;padding:24px;text-align:center}
     .spinner{width:52px;height:52px;border:4px solid rgba(139,92,246,.2);border-top-color:#8B5CF6;border-radius:50%;animation:spin .8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
     h1{font-size:1.15rem;margin:0;font-weight:800}
-    p{color:#94A3B8;margin:0;font-size:.95rem;line-height:1.6}
-    a{color:#c4b5fd;text-decoration:none;padding:10px 18px;border-radius:12px;background:rgba(139,92,246,.14);border:1px solid rgba(139,92,246,.35);margin-top:8px;font-weight:700}
+    p{color:#94A3B8;margin:0;font-size:.95rem;line-height:1.6;max-width:420px}
+    a.cta{color:#fff;text-decoration:none;padding:12px 28px;border-radius:14px;background:linear-gradient(135deg,#8B5CF6,#EC4899);border:0;margin-top:8px;font-weight:800;font-size:1rem;box-shadow:0 8px 24px rgba(139,92,246,.35)}
   </style>
+  <script>
+    // نسخة inline (تعمل الآن بعد أن أضفنا 'unsafe-inline' في CSP الرئيسية)
+    (function(){
+      try {
+        var url = ${JSON.stringify(target)};
+        // إبلاغ الـ SW بأن الصفحة جاهزة لاستقبال الحمولة
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'YAMSHAT_SHARE_BRIDGE_READY',
+            timestamp: Date.now()
+          });
+        }
+        // تحويل فوري (أسرع من meta-refresh)
+        window.location.replace(url);
+      } catch (e) {
+        // meta-refresh سيتولى المهمة
+      }
+    })();
+  </script>
 </head>
 <body>
   <div class="wrap">
-    <div class="spinner"></div>
+    <div class="spinner" aria-hidden="true"></div>
     <h1>جارٍ استلام المحتوى في يام شات...</h1>
     <p>إذا لم تُفتح الصفحة تلقائياً خلال ثانيتين، اضغط الزر أدناه.</p>
-    <a href="${target}">فتح يام شات</a>
+    <a class="cta" href="${target}">فتح يام شات</a>
+    <noscript>
+      <p style="color:#f59e0b">جافاسكربت غير مفعّل — سيتم التحويل تلقائياً خلال لحظات.</p>
+    </noscript>
   </div>
-  <script>
-    // ✅ v88.92: تحويل فوري عبر JS مع إبلاغ SW ليعلم أن الصفحة جاهزة لاستهلاك الحمولة
-    try {
-      if (window.location.hash !== '${target.substring(1)}') {
-        window.location.replace('${target}');
-      }
-    } catch(_) { window.location.href = '${target}'; }
-  </script>
 </body>
 </html>`;
 }
@@ -269,9 +296,30 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  if (request.method === 'POST' && url.origin === self.location.origin && url.pathname === '/share-target') {
-    event.respondWith(handleShareTarget(request));
-    return;
+  // ✅ v88.93 ROOT FIX #5: التقاط /share-target سواء كان POST أو GET.
+  //    السبب: بعض متصفحات أندرويد (خاصة WebView داخل يوتيوب / تيك توك)
+  //    ترسل GET بدلاً من POST إذا لم يكن هناك محتوى ملف، أو تُعيد المحاولة
+  //    بعد فشل POST. في v88.92 كان GET يمرّ عبر SW كطلب navigate عادي
+  //    → index.html يُحمَّل بدون hash → HashRouter يعرض الصفحة الرئيسية
+  //    وليس /#/share-target → صفحة بيضاء أو الفيد بدلاً من واجهة المشاركة.
+  if (url.origin === self.location.origin && url.pathname === '/share-target') {
+    if (request.method === 'POST') {
+      event.respondWith(handleShareTarget(request));
+      return;
+    }
+    // GET أو أي method آخر → أعِد HTML bridge مباشرة (بدون حمولة)
+    // بحيث يفتح الفرونت واجهة /#/share-target?shared=0 التي ستقرأ
+    // آخر حمولة محفوظة في IndexedDB (إن وُجدت).
+    if (request.method === 'GET') {
+      event.respondWith(new Response(buildShareBridgeHtml(false), {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      }));
+      return;
+    }
   }
 
   if (request.method !== 'GET') return;

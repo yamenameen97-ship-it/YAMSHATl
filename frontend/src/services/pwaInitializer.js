@@ -342,13 +342,37 @@ export class PWAInitializer {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         console.log('[PWA] Service Worker controller changed');
         this.emit('controller-changed');
+        // ✅ v88.94 ROOT FIX: عند تغير controller (أول مرة يسيطر SW على الصفحة)
+        //   نُطلق حدث window يُبطل كاش React Query للبيانات الحيّة (فيد/منشورات/ريلز/ستوريز/إشعارات)
+        //   السبب: أي طلب حدث قبل هذه اللحظة لم يمر عبر SW → لم يُطبَّق NEVER_CACHE_API_PATTERNS
+        //   وقد تكون البيانات قديمة/فارغة/من نسخة سابقة.
+        try {
+          window.dispatchEvent(new CustomEvent('yamshat:sw-controlling', {
+            detail: { at: Date.now() },
+          }));
+        } catch (_) { /* ignore */ }
       });
 
       navigator.serviceWorker.addEventListener('message', (event) => {
-        const { type, data } = event.data;
+        const data = event?.data || {};
+        const { type } = data;
         if (type === 'SYNC_DATA') {
           console.log('[PWA] Sync data message received');
-          this.emit('sync-data', data);
+          this.emit('sync-data', data.data);
+          return;
+        }
+        // ✅ v88.94 ROOT FIX #1: التقاط رسالة تفعيل SW الجديدة من public/sw.js:291
+        //   (broadcastMessage({ type: 'yamshat:sw-activated', version: VERSION }))
+        //   قبل هذا الإصلاح: الرسالة كانت تُرسل بلا مستمع (grep يعيد صفر نتائج)
+        //   بعده: نُطلق حدث window ليلتقطه main.jsx ويُبطل استعلامات الفيد الحيّ.
+        if (type === 'yamshat:sw-activated') {
+          console.log('[PWA] Service Worker activated:', data.version);
+          this.emit('sw-activated', data);
+          try {
+            window.dispatchEvent(new CustomEvent('yamshat:sw-activated', {
+              detail: { version: data.version, at: Date.now() },
+            }));
+          } catch (_) { /* ignore */ }
         }
       });
     }

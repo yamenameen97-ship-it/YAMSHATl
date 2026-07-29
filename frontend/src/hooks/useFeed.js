@@ -6,6 +6,17 @@ import { getAuthToken } from '../utils/auth.js';
 
 /**
  * Advanced Feed Hook with backend-aware filtering, sorting, and pagination.
+ *
+ * v88.94 ROOT FIX #3: ربط الخطاف بحلقة حياة Service Worker.
+ * —— الثغرة المؤكّدة ——
+ *   قبل هذا الإصلاح، useFeed يطلق useInfiniteQuery فور توفر
+ *   التوكن (authReady)، حتّى لو لم يكن SW قد سيطر بعد.
+ *   الطلب يمر عبر fetch عادي → يتجاوز NEVER_CACHE_API_PATTERNS →
+ *   قد يرجع من كاش المتصفّح/HTTP أو لا يتحدّث بعد نشر منشور جديد.
+ * —— الحل ——
+ *   نستمع لأحداث yamshat:sw-activated و yamshat:sw-controlling
+ *   التي يطلقها pwaInitializer.js، ونُعيد جلب الفيد فورياً
+ *   لضمان أن أول طلب محكوم من SW يمر عبر منطق NEVER_CACHE.
  */
 export function useFeed(options = {}) {
   const {
@@ -90,6 +101,23 @@ export function useFeed(options = {}) {
       return data?.pages?.length === 1 ? pollingInterval : false;
     },
   });
+
+  // ✅ v88.94 ROOT FIX #3: إعادة الجلب الفورية عند تفعيل/سيطرة SW.
+  //   يضمن أن أي جلب أولي مرّ قبل تحكم SW (ولم يمر عبر NEVER_CACHE_API_PATTERNS)
+  //   يُعاد حالما يصبح SW مسيطراً، فيحصل الفيد الحيّ الصحيح من الخادم.
+  useEffect(() => {
+    if (!authReady) return undefined;
+    const onSWReady = () => {
+      try { query.refetch(); } catch (_) { /* ignore */ }
+    };
+    window.addEventListener('yamshat:sw-activated', onSWReady);
+    window.addEventListener('yamshat:sw-controlling', onSWReady);
+    return () => {
+      window.removeEventListener('yamshat:sw-activated', onSWReady);
+      window.removeEventListener('yamshat:sw-controlling', onSWReady);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady]);
 
   const posts = sortPostsNewestFirst(query.data?.pages.flatMap((page) => page.items || []) || []);
   const meta = query.data?.pages?.[0]?.meta || {};

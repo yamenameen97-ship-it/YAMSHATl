@@ -122,20 +122,27 @@ export default function ShareTargetLanding() {
   useEffect(() => {
     let mounted = true;
 
-    // ✅ v88.92 ROOT FIX: قراءة الحمولة مع محاولة إعادة (retry) لأن SW قد يكون
-    //    كتب الحمولة في IndexedDB بينما الصفحة تُحمَّل — نمنح مهلة قصيرة لضمان الاستقبال.
+    // ✅ v88.93 ROOT FIX #5: قراءة الحمولة مع محاولة إعادة أطول وذكية:
+    //   - إذا وصلنا عبر via=sw → نحاول حتى 15 مرة (SW مؤكد أرسل حمولة)
+    //   - إذا وصلنا عبر via=direct → 3 محاولات فقط (لا نتوقّع حمولة)
+    //   - نستمع لرسائل SW (broadcastMessage) لمعرفة متى وصلت حمولة جديدة
+    //   السبب: v88.92 كانت 5 محاولات (1s) أحياناً تفوت IndexedDB commit
+    //   على أجهزة أندرويد الضعيفة.
+    const viaSw = (searchParams.get('via') || '').toLowerCase() === 'sw'
+      || (searchParams.get('shared') || '') === '1';
+    const maxAttempts = viaSw ? 15 : 3;
+    const attemptDelay = 200;
+
     async function loadPayloadWithRetry() {
-      for (let attempt = 0; attempt < 5; attempt++) {
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
           const data = await readSharedPayload();
           if (data && (data.files?.length || data.url || data.title || data.text)) {
             return data;
           }
         } catch { /* ignore and retry */ }
-        // انتظار قصير قبل المحاولة التالية (200ms × 5 = 1s كحد أقصى)
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, attemptDelay));
       }
-      // آخر محاولة — نرجع ما وجدناه حتى لو كان فارغاً
       try { return await readSharedPayload(); } catch { return null; }
     }
 

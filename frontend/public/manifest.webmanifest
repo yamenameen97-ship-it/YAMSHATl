@@ -1,10 +1,10 @@
 {
-  "id": "/",
+  "id": "/?v=88.93",
   "name": "يام شات - Yamshat",
   "short_name": "Yamshat",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "/",
+  "start_url": "/?pwa=1",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],

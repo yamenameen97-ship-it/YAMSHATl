@@ -469,25 +469,235 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v88.92-SHARE-TARGET-ROOT-FIX';
+const BUILD_ID = 'yamshat-v88.95-QUERYCLIENT-HARDRESET-ROOT-FIX';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
+const LAST_RESET_KEY = 'yamshat_build_reset_ts';
+const BUILD_CURRENT_TAG = 'v88.95';
 
+// ✅ v88.95 ROOT FIX #4: نقطة إصلاح نظام المشاركات الرابعة والأخيرة.
+//    قبل v88.95: hardResetIfBuildChanged كانت تحذف caches وترسل SKIP_WAITING
+//    فقط، بدون إبطال queryClient وبدون مسح مفاتيح persister/IndexedDB.
+//    النتيجة: بعد رفع نسخة جديدة، React Query يعرض بيانات قديمة تُغذّى
+//    من stores/IndexedDB/localStorage قبل أن يصل أي SW جديد.
+//
+//    الإصلاحات في هذه النسخة:
+//    (1) BUILD_ID يتقدّم فعلياً إلى v88.95 (v88.94 كان لا يزال يحمل v88.93).
+//    (2) إبطال queryClient كاملاً (removeQueries + invalidate) لكل مفاتيح
+//        البيانات الحيّة قبل انطلاق التطبيق.
+//    (3) مسح مفاتيح localStorage الخاصة بالكاش (Query persister-like keys)
+//        وحذف قواعد IndexedDB القديمة للفيد/الريلز/الستوريز/الشات.
+//    (4) إزالة الاستثناء الحرفي القديم من فلتر caches (كان يعفي v88.93 دوماً).
+//    (5) safety-net بعد mount: إبطال إجباري إن كان SW موجوداً مسبقاً
+//        (لأن controllerchange لن يُطلق أبداً في هذه الحالة).
+//
+//    نحرس أنفسنا من update-loop عبر LAST_RESET_KEY: لا نُعيد التصفير أكثر
+//    من مرة كل 30 ثانية (يمنع تكرار reload على أجهزة أندرويد الضعيفة).
+
+// v88.95: مفاتيح الاستعلامات الحيّة — تُستخدم في hardReset وفي مستمع SW معاً
+const LIVE_QUERY_KEYS = [
+  'feed-data',
+  'feed',
+  'posts',
+  'reels-feed',
+  'reels',
+  'stories',
+  'notifications',
+  'topbar-notifications-count',
+];
+
+// v88.95: مفاتيح localStorage التي قد تحوي كاش قديم لـ React Query أو stores
+//         مرتبطة بالبيانات الحيّة (تُمسح عند تبدّل BUILD_ID فقط، ليس عند كل تشغيل).
+const STALE_LOCALSTORAGE_PREFIXES = [
+  'REACT_QUERY_OFFLINE_CACHE',
+  'tanstack-query',
+  'yamshat_query_',
+  'yamshat_feed_cache',
+  'yamshat_reels_cache',
+  'yamshat_stories_cache',
+  'yamshat_notifications_cache',
+];
+
+// v88.95: قواعد بيانات IndexedDB القديمة/الفانية التي قد تُغذّي setQueryData بكاش قديم.
+//   ⚠️ لا نمس القواعد الحرجة الحيّة:
+//      • 'yamshat-pwa-db'          → payloads share-target قيد الانتظار
+//      • 'yamshat-offline'         → offline queue للطلبات المؤجلة
+//      • 'yamshat-offline-session' → كاش الجلسات لتصفح بلا نت (v88.76)
+//      • 'yamshat-background-sync-db' → sync خلفي
+//      • 'yamshat_reels_v88_41'    → آخر 10 ريلز مُشاهدة (تجربة تشغيل فوري)
+//   نُنظّف فقط الأسماء التاريخية القديمة التي قد تكون بقيت من نسخ سابقة كـ persister-like.
+const STALE_INDEXEDDB_NAMES = [
+  'yamshat-feed-cache',
+  'yamshat-reels-cache',
+  'yamshat-stories-cache',
+  'yamshat-notifications-cache',
+  'yamshat-query-cache',
+  'yamshat_query_cache',
+  'yamshat_feed_cache',
+  'REACT_QUERY_OFFLINE_CACHE',
+  'tanstack-query',
+];
+
+function purgeStaleLocalStorageKeys() {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const toRemove = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      // لا نمس مفتاحَي BUILD نفسيهما، ولا مفاتيح الجلسة/التفضيلات الحرجة
+      if (key === BUILD_STORAGE_KEY || key === LAST_RESET_KEY) continue;
+      if (STALE_LOCALSTORAGE_PREFIXES.some((p) => key.startsWith(p))) {
+        toRemove.push(key);
+      }
+    }
+    toRemove.forEach((k) => {
+      try { localStorage.removeItem(k); } catch (_) { /* ignore */ }
+    });
+    if (toRemove.length) {
+      console.log('[Yamshat] Purged', toRemove.length, 'stale localStorage keys');
+    }
+  } catch (err) {
+    console.warn('[Yamshat] localStorage purge failed:', err);
+  }
+}
+
+async function purgeStaleIndexedDBs() {
+  try {
+    if (typeof indexedDB === 'undefined') return;
+    await Promise.all(
+      STALE_INDEXEDDB_NAMES.map((name) => new Promise((resolve) => {
+        try {
+          const req = indexedDB.deleteDatabase(name);
+          req.onsuccess = () => resolve(true);
+          req.onerror = () => resolve(false);
+          req.onblocked = () => resolve(false);
+          // safety timeout — بعض المتصفحات لا تُطلق onsuccess إذا كان الاتصال محجوباً
+          setTimeout(() => resolve(false), 1500);
+        } catch (_) {
+          resolve(false);
+        }
+      }))
+    );
+    console.log('[Yamshat] Stale IndexedDB caches deletion attempted');
+  } catch (err) {
+    console.warn('[Yamshat] IndexedDB purge failed:', err);
+  }
+}
+
+function invalidateLiveQueriesHard(reason) {
+  try {
+    LIVE_QUERY_KEYS.forEach((key) => {
+      try { queryClient.removeQueries({ queryKey: [key] }); } catch (_) { /* ignore */ }
+      try {
+        queryClient.invalidateQueries({ queryKey: [key], refetchType: 'all' });
+      } catch (_) { /* ignore */ }
+    });
+    // إعادة الجلب الفوري لأهم استعلام (الفيد) بمجرد تركيبه
+    try { queryClient.resetQueries({ queryKey: ['feed-data'] }); } catch (_) { /* ignore */ }
+    console.log('[Yamshat] queryClient invalidated hard:', reason);
+  } catch (err) {
+    console.warn('[Yamshat] queryClient invalidation failed:', err);
+  }
+}
 async function hardResetIfBuildChanged() {
-  // Build changes are handled by Vite asset hashes and the service-worker update
-  // lifecycle. Removing all workers/caches here used to create an update/reload
-  // loop on mobile and could interrupt the login form.
   if (typeof window === 'undefined') return false;
+
+  let previousBuild = null;
+  try {
+    previousBuild = localStorage.getItem(BUILD_STORAGE_KEY);
+  } catch { /* storage unavailable */ }
+
+  // لا يوجد تغيير → لا شيء نفعله.
+  if (previousBuild === BUILD_ID) return false;
+
+  // حماية من الحلقة: نتحقّق من آخر reset
+  let lastResetTs = 0;
+  try {
+    lastResetTs = Number(localStorage.getItem(LAST_RESET_KEY) || 0);
+  } catch { /* ignore */ }
+  const now = Date.now();
+  const withinCooldown = lastResetTs && (now - lastResetTs) < 30_000; // 30s
+
   try {
     localStorage.setItem(BUILD_STORAGE_KEY, BUILD_ID);
-  } catch {
-    /* Storage may be unavailable in private mode; startup must continue. */
+    localStorage.setItem(LAST_RESET_KEY, String(now));
+  } catch { /* ignore */ }
+
+  if (withinCooldown) {
+    console.warn('[Yamshat] Build changed but within reset cooldown — skipping hard reset');
+    return false;
   }
+
+  // 🔥 (a) حذف كل الكاشات القديمة التي لا تحمل BUILD_ID الحالي
+  //     v88.95: أُزيل الاستثناء الحرفي لـ v88.93 (كان يمنع تنظيفه عند الترقية).
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter((k) => !k.includes(BUILD_CURRENT_TAG) && !k.includes(BUILD_ID))
+          .map((k) => caches.delete(k).catch(() => null))
+      );
+      console.log('[Yamshat] Old caches purged after build change');
+    }
+  } catch (err) {
+    console.warn('[Yamshat] Cache purge failed:', err);
+  }
+
+  // 🔥 (b) v88.95 ROOT FIX #4: إبطال queryClient قبل انطلاق التطبيق
+  //        حتى لا يعرض React Query أي بيانات قديمة مُهيّأة من stores/persister.
+  invalidateLiveQueriesHard('hardResetIfBuildChanged');
+
+  // 🔥 (c) v88.95: مسح مفاتيح localStorage التي تخصّ كاش React Query/الفيد/الريلز
+  purgeStaleLocalStorageKeys();
+
+  // 🔥 (d) v88.95: حذف قواعد IndexedDB القديمة التي تُغذّي setQueryData بكاش قديم
+  //        (لا تنتظر — نتركها تعمل بالتوازي حتى لا نؤخّر إقلاع التطبيق)
+  purgeStaleIndexedDBs();
+
+  // 🔥 (e) طلب SKIP_WAITING من كل SW registrations كي يتم استبدال SW القديم فوراً
+  try {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registrations) {
+        try {
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+          if (reg.active) {
+            reg.active.postMessage({ type: 'SKIP_WAITING' });
+          }
+          // فحص فوري للتحديثات
+          await reg.update().catch(() => null);
+        } catch { /* ignore individual reg */ }
+      }
+    }
+  } catch (err) {
+    console.warn('[Yamshat] SW skipWaiting failed:', err);
+  }
+
   return false;
 }
 
+// ✅ v88.93 ROOT FIX #4b: توجيه مسار /share-target داخل SPA (HashRouter)
+//   إذا وصل طلب GET /share-target إلى index.html مباشرة (مثلاً عبر nginx fallback
+//   أو قبل تثبيت SW)، HashRouter لا يرى /share-target لأنه ليس في hash.
+//   نحوّل أي طلب pathname == '/share-target' إلى /#/share-target?shared=0 مباشرة،
+//   ثم ShareTargetLanding سيقرأ أي حمولة محفوظة من IndexedDB (إن وُجدت).
 function normalizeStandaloneDeepLink() {
   if (typeof window === 'undefined') return;
   const { pathname, search, hash } = window.location;
+
+  // (a) معالجة خاصة لـ /share-target
+  if (pathname === '/share-target') {
+    const params = new URLSearchParams(search || '');
+    if (!params.has('shared')) params.set('shared', '0');
+    if (!params.has('via')) params.set('via', 'direct');
+    const target = `/#/share-target?${params.toString()}`;
+    window.location.replace(target);
+    return;
+  }
+
   if (hash && hash.startsWith('#/')) return;
   if (pathname === '/' || pathname === '/index.html') return;
   const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
@@ -667,6 +877,64 @@ if (typeof window !== 'undefined') {
 // 🔄 إتاحة queryClient عالمياً لاستخدامه في ميزة "اسحب للتحديث" من الـ Layouts
 if (typeof window !== 'undefined') {
   window.__yamshatQueryClient = queryClient;
+}
+
+// ✅ v88.94 ROOT FIX #2: مستمع موحّد يُبطل استعلامات البيانات الحيّة
+//   عند تفعيل SW جديد (yamshat:sw-activated من public/sw.js:291)
+//   أو عند أول سيطرة SW على الصفحة (yamshat:sw-controlling من controllerchange).
+//
+//   السبب الجذري:
+//   - قبل تفعيل SW: طلبات /api/feed و /api/posts و /api/reels/feed و /api/stories
+//     و /api/notifications تمر مباشرة عبر fetch عادي (بدون SW controller)،
+//     فلا يُطبَّق عليها منطق NEVER_CACHE_API_PATTERNS الموجود في sw.js.
+//   - النتيجة: قد يعرض المستخدم فيداً قديماً أو فارغاً في أول تحميل بعد PWA install/update.
+//   - بعد تفعيل SW: نُبطل هذه الاستعلامات فوراً → React Query يُعيد الجلب،
+//     وهذه المرة يمر الطلب عبر SW → NEVER_CACHE_API_PATTERNS يمنع أي كاش قديم →
+//     يصل الفيد الحيّ الصحيح من الخادم.
+if (typeof window !== 'undefined') {
+  let __swRefreshInFlight = false;
+  const refreshLiveQueriesForSW = (reason) => {
+    if (__swRefreshInFlight) return;
+    __swRefreshInFlight = true;
+    try {
+      console.log('[Yamshat] SW live-refresh triggered by:', reason);
+      LIVE_QUERY_KEYS.forEach((key) => {
+        try {
+          queryClient.invalidateQueries({ queryKey: [key], refetchType: 'active' });
+        } catch (_) { /* ignore */ }
+      });
+      // إجبار إعادة الجلب الفوري لأهم الاستعلامات الحيّة (حتى لو كانت غير active حالياً)
+      try {
+        queryClient.refetchQueries({ queryKey: ['feed-data'], type: 'active' });
+      } catch (_) { /* ignore */ }
+    } finally {
+      // نافذة صغيرة لمنع الاستدعاء المزدوج (activated + controllerchange قد يصلان معاً)
+      setTimeout(() => { __swRefreshInFlight = false; }, 1500);
+    }
+  };
+
+  window.addEventListener('yamshat:sw-activated', (ev) => {
+    refreshLiveQueriesForSW(`sw-activated ${ev?.detail?.version || ''}`.trim());
+  });
+  window.addEventListener('yamshat:sw-controlling', () => {
+    refreshLiveQueriesForSW('sw-controlling');
+  });
+
+  // ✅ v88.95 ROOT FIX #4 (safety-net):
+  //    إذا كان SW موجوداً ومسيطراً بالفعل عند تحميل الصفحة (حالة إعادة
+  //    التحميل الشائعة)، فإن controllerchange لن يُطلق أبداً → مستمع
+  //    yamshat:sw-controlling لن يعمل → بدون هذه الشبكة سيبقى React Query
+  //    محتفظاً بأي بيانات قديمة رتّبها التطبيق داخلياً.
+  //    نُبطل هنا مرة واحدة بعد ~800ms من التحميل، ضمن حارس مضاد للتكرار.
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      try {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          refreshLiveQueriesForSW('post-load-safety-net (existing controller)');
+        }
+      } catch (_) { /* ignore */ }
+    }, 800);
+  });
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

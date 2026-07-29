@@ -909,6 +909,7 @@ def apply_retention(payload: dict = Body(...), db: Session = Depends(get_db), cu
 
 
 @router.get('/chat_threads')
+@router.get('/threads')  # v88.96 ROOT FIX: alias — الواجهة تنادي /api/chat/threads
 def get_chat_threads(
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),

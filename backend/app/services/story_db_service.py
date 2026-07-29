@@ -689,14 +689,24 @@ def list_grouped_stories(db: Session, viewer_user_id: int, viewer_username: str)
         seen = bool(vuname) and vuname in seen_list
         if not seen and str(story.get('username') or '').lower() != vuname:
             groups[uid]['has_unseen'] = True
-        if story.get('created_at') and story.get('created_at') > (groups[uid]['last_created_at'] or ''):
-            groups[uid]['last_created_at'] = story.get('created_at')
+        # v88.96 ROOT FIX: كانت المقارنة str > None ترمي TypeError → 500.
+        # نوحّد الحقلين إلى سلاسل قبل المقارنة (ISO قابلة للترتيب لكسيكوغرافياً).
+        story_ca = story.get('created_at') or ''
+        group_ca = groups[uid].get('last_created_at') or ''
+        if story_ca and story_ca > group_ca:
+            groups[uid]['last_created_at'] = story_ca
         groups[uid]['stories'].append(story)
 
     result = list(groups.values())
+    # v88.96: فرز حقيقي بقيمة التاريخ نفسها، لا بطول النص (كان ترتيباً مكسوراً).
     result.sort(key=lambda g: (
         0 if g.get('is_self') else (1 if g.get('has_unseen') else 2),
-        -1 * len(g.get('last_created_at') or ''),
+        g.get('last_created_at') or '',
+    ), reverse=False)
+    # تطبيق reverse فقط على مفتاح التاريخ دون مفتاح الأولوية:
+    result.sort(key=lambda g: g.get('last_created_at') or '', reverse=True)
+    result.sort(key=lambda g: (
+        0 if g.get('is_self') else (1 if g.get('has_unseen') else 2),
     ))
     for g in result:
         g['stories'].sort(key=lambda s: s.get('created_at') or '')

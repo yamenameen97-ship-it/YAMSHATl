@@ -27,32 +27,49 @@ HEARTBEAT_SECONDS = 25
 
 
 def _decode_user_from_token(token: Optional[str]) -> Optional[int]:
-    """فك تشفير JWT لاستخراج user_id بدون كسر التطبيق إن فشل."""
+    """فك تشفير JWT لاستخراج user_id بدون كسر التطبيق إن فشل.
+
+    v88.96 ROOT FIX: كان يستدعي decode_access_token غير الموجود في
+    app.core.security → كل اتصال WS يفشل بـ 403. النسخة الحالية تستخدم
+    decode_token (الاسم الفعلي) وتفرض نوع 'access'.
+    """
     if not token:
         return None
-    try:
-        from app.core.security import decode_access_token  # type: ignore
-        payload = decode_access_token(token)
-        if not payload:
-            return None
-        uid = payload.get("sub") or payload.get("user_id") or payload.get("id")
-        return int(uid) if uid is not None else None
-    except Exception:
-        pass
 
-    # محاولة احتياطية: بعض المشاريع تستخدم jose مباشرة
+    raw = token.strip()
+    if raw.lower().startswith("bearer "):
+        raw = raw[7:].strip()
+
+    # المسار الأساسي: security.decode_token (هو المعتمد في بقية النظام)
     try:
-        from jose import jwt  # type: ignore
+        from app.core.security import decode_token, ACCESS_TOKEN_TYPE  # type: ignore
+        payload = decode_token(raw, expected_type=ACCESS_TOKEN_TYPE)
+        if payload:
+            uid = payload.get("sub") or payload.get("user_id") or payload.get("id")
+            if uid is not None:
+                try:
+                    return int(uid)
+                except (TypeError, ValueError):
+                    return None
+    except Exception as exc:
+        logger.warning("ws_jwt_decode_primary_failed err=%s", exc)
+
+    # مسار احتياطي: PyJWT مباشرة بنفس إعدادات settings
+    try:
+        import jwt as _jwt  # type: ignore
         from app.core.config import settings  # type: ignore
-        payload = jwt.decode(
-            token,
-            getattr(settings, "JWT_SECRET", getattr(settings, "SECRET_KEY", "")),
-            algorithms=[getattr(settings, "JWT_ALGORITHM", "HS256")],
+        payload = _jwt.decode(
+            raw,
+            settings.SECRET_KEY,
+            algorithms=[getattr(settings, "ALGORITHM", "HS256")],
+            audience=getattr(settings, "JWT_AUDIENCE", None),
+            issuer=getattr(settings, "JWT_ISSUER", None),
+            options={"verify_aud": bool(getattr(settings, "JWT_AUDIENCE", None))},
         )
         uid = payload.get("sub") or payload.get("user_id")
         return int(uid) if uid is not None else None
     except Exception as exc:
-        logger.warning("ws_jwt_decode_failed err=%s", exc)
+        logger.warning("ws_jwt_decode_fallback_failed err=%s", exc)
         return None
 
 

@@ -251,7 +251,8 @@ def _infer_media_kind(media_list: list[str]) -> str | None:
 
 def _can_view_post(post: Post, current_user: User | None) -> bool:
     now = utcnow_naive()
-    if post.is_draft:
+    # v88.96 ROOT FIX: إذا كان is_draft=NULL في الذاكرة (لم يُقرأ بعد) نعتبره False.
+    if bool(getattr(post, 'is_draft', False)):
         return current_user is not None and current_user.id == post.user_id
     if post.scheduled_at and post.scheduled_at > now:
         return current_user is not None and current_user.id == post.user_id
@@ -466,19 +467,41 @@ def create_post(
     current_user = db.query(User).filter(User.id == user_id).first()
 
     # ✅ v88.86 — تجهيز حقول المشاركة الموثقة
-    clean_link_card = _normalize_link_card(link_card)
-    clean_admin_source = _normalize_admin_source(admin_source)
+    # v88.96 ROOT FIX: لفّ التطبيع في try/except دفاعيًا (أي خطأ في payload مشوّه
+    # لم يعد يرمي 500 خلال إنشاء المنشور).
+    try:
+        clean_link_card = _normalize_link_card(link_card) if link_card else None
+    except Exception as exc:
+        logger.warning('link_card normalization failed, dropping: %s', exc)
+        clean_link_card = None
+    try:
+        clean_admin_source = _normalize_admin_source(admin_source) if admin_source else None
+    except Exception as exc:
+        logger.warning('admin_source normalization failed, dropping: %s', exc)
+        clean_admin_source = None
+
     # verified_by_yamshat: يُشتق من الوسيط الصريح أو من admin_source.verified_by_yamshat
     final_verified = bool(verified_by_yamshat)
     if not final_verified and clean_admin_source and clean_admin_source.get('verified_by_yamshat'):
         final_verified = True
 
-    extra_fields: dict = {
-        'link_card': _dumps(clean_link_card),
-        'verified_by_yamshat': final_verified,
-    }
+    # v88.96 ROOT FIX: ادفع فقط الحقول غير الفارغة، وتحقّق من وجودها
+    # في Post.__table__ قبل تمريرها عبر **extra_fields (حتّى لو تأخّرت Alembic
+    # لا ينهار create_post).
+    try:
+        _post_columns = set(Post.__table__.columns.keys())
+    except Exception:
+        _post_columns = set()
+
+    extra_fields: dict = {}
+    if 'link_card' in _post_columns or not _post_columns:
+        # خزّن None مباشرة إذا لم يوجد card صالح (العمود Text nullable=True)
+        extra_fields['link_card'] = _dumps(clean_link_card) if clean_link_card else None
+    if 'verified_by_yamshat' in _post_columns or not _post_columns:
+        extra_fields['verified_by_yamshat'] = final_verified
+
     if clean_admin_source:
-        extra_fields.update({
+        _admin_map = {
             'admin_source_platform': clean_admin_source.get('source_platform'),
             'admin_source_platform_name': clean_admin_source.get('source_platform_name'),
             'admin_source_url': clean_admin_source.get('source_url'),
@@ -490,7 +513,13 @@ def create_post(
             'admin_source_share_mode': clean_admin_source.get('share_mode'),
             'admin_source_download_size': clean_admin_source.get('download_size'),
             'admin_source_download_mime': clean_admin_source.get('download_mime'),
-        })
+        }
+        for _k, _v in _admin_map.items():
+            if _v in (None, ''):
+                continue
+            if _post_columns and _k not in _post_columns:
+                continue
+            extra_fields[_k] = _v
 
     post = Post(
         user_id=user_id,
@@ -578,14 +607,26 @@ def _load_hidden_post_ids(db: Session, current_user: User | None) -> set[int]:
 
 
 def get_posts(db: Session, current_user: User | None = None, skip: int = 0, limit: int = 10, include_drafts: bool = False) -> list[dict]:
-    _publish_due_posts(db)
+    # v88.96 ROOT FIX: لفّ _publish_due_posts في try/except حتّى لا يوقف الفيد
+    # إذا فشلت ترقية المنشورات المجدولة.
+    try:
+        _publish_due_posts(db)
+    except Exception as exc:
+        logger.warning('publish_due_posts skipped due to error: %s', exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
     hidden_ids = _load_hidden_post_ids(db, current_user)
+    # v88.96 ROOT FIX: المنشورات القديمة قد تحمل published_at IS NULL مع is_draft=false؛
+    # نعتمد COALESCE(published_at, created_at) للترتيب ولا نفلتر على published_at أبداً.
     posts = db.query(Post).order_by(func.coalesce(Post.published_at, Post.created_at).desc(), Post.id.desc()).offset(skip).limit(limit * 3).all()
     visible = []
     for post in posts:
         if not _can_view_post(post, current_user):
             continue
-        if post.is_draft and not include_drafts:
+        # v88.96: معاملة is_draft=NULL (سجلات قديمة) كـ False
+        if bool(getattr(post, 'is_draft', False)) and not include_drafts:
             continue
         if int(post.id) in hidden_ids:
             continue  # v83.8: respect user's cloud-saved hide/archive/mute preferences

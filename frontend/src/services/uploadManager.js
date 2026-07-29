@@ -169,7 +169,9 @@ export class UploadManager {
    */
   async uploadToServer(file, options = {}) {
     const {
-      endpoint = '/api/upload',
+      // ✅ v88.95 ROOT FIX: apiUrl = VITE_API_BASE يحتوي بالفعل /api.
+      // إلحاق /api/upload لينتج /api/api/upload (404). الصحيح /upload.
+      endpoint = '/upload',
       onProgress = () => {},
     } = options;
 
@@ -253,7 +255,8 @@ export class UploadManager {
         }
 
         return this.uploadToServer(file, {
-          endpoint: options.endpoint || '/api/upload',
+          // ✅ v88.95 ROOT FIX: apiUrl يحتوي /api بالفعل — لا نضاعفها.
+          endpoint: options.endpoint || '/upload',
           onProgress: uploadOptions.onProgress,
         });
       };

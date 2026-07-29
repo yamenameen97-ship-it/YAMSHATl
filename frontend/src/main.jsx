@@ -594,6 +594,22 @@ function invalidateLiveQueriesHard(reason) {
     });
     // إعادة الجلب الفوري لأهم استعلام (الفيد) بمجرد تركيبه
     try { queryClient.resetQueries({ queryKey: ['feed-data'] }); } catch (_) { /* ignore */ }
+
+    // ✅ v88.95 ROOT FIX #3: مسح Map الكاش الداخلي في axios.
+    //   getChatThreads / getPresence / getBlockStatus تستعمل cache: true عبر
+    //   Map في axios.js. عند رفع BUILD_ID (تحديث الواجهة) يبقى الـ Map يحمل
+    //   نتائج فارغة (chat_threads / users) من نافذة الحياة السابقة، فتظل
+    //   قائمة المحادثات وأسماء الأشخاص لا تظهر رغم أن الباكاند يعيد بيانات.
+    //   نُطلق حدثاً مخصّصاً + استدعاءً مباشراً كي يُمسح فوراً.
+    try {
+      if (typeof window !== 'undefined') {
+        if (typeof window.__yamshatClearAxiosCache === 'function') {
+          window.__yamshatClearAxiosCache();
+        }
+        window.dispatchEvent(new CustomEvent('yamshat:hard-reset', { detail: { reason } }));
+      }
+    } catch (_) { /* ignore */ }
+
     console.log('[Yamshat] queryClient invalidated hard:', reason);
   } catch (err) {
     console.warn('[Yamshat] queryClient invalidation failed:', err);

@@ -52,6 +52,38 @@ const IS_MOBILE_UA = typeof navigator !== 'undefined' &&
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// ✅ v88.95 ROOT FIX #3: تصدير دالة مسح الكاش الداخلي لـ axios.
+// كانت getChatThreads({ cache: true, cacheTtlMs: 10_000 }) تُخزّن نتيجة فارغة
+// (مثلاً رد 401/CORS مؤقت أثناء تحديث SW) في Map داخل الذاكرة لمدة 10 ثوانٍ،
+// وقد تطول لأن دورة حياة الموديول تبقى مع SW controllerchange. النتيجة:
+// قائمة المحادثات القديمة/الأسماء لا تظهر رغم أن الباكاند يردّ بمحادثات.
+export function clearRequestCache(pattern) {
+  try {
+    if (!pattern) {
+      cache.clear();
+      return;
+    }
+    const re = pattern instanceof RegExp ? pattern : new RegExp(String(pattern));
+    for (const key of Array.from(cache.keys())) {
+      if (re.test(key)) cache.delete(key);
+    }
+  } catch (_) { /* ignore */ }
+}
+
+// v88.95: مسح الكاش الداخلي عند استبدال Service Worker أو طلب خارجي.
+try {
+  if (typeof window !== 'undefined') {
+    window.__yamshatClearAxiosCache = clearRequestCache;
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        clearRequestCache();
+      });
+    }
+    // حدث مخصّص يُطلقه main.jsx عند تغيّر BUILD_ID
+    window.addEventListener('yamshat:hard-reset', () => clearRequestCache());
+  }
+} catch (_) { /* ignore */ }
+
 // ✅ FIX: أنماط مسارات البث التي ترجع 403/404 بشكل طبيعي
 // (غير مصرح / البث انتهى / لا توجد تعليقات) — لا تسجل أخطائها تلقائياً
 // v59.7: أضفنا stories/grouped و groups/*/pinned لأنها قد ترجع 404 عند

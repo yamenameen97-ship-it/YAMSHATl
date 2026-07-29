@@ -112,16 +112,26 @@ const runtime = typeof window === 'undefined' ? {} : window;
 const readRuntime = (key, fallback = '') => trim(runtime?.[key] || fallback);
 const readEnv = (key, fallback = '') => trim(import.meta.env[key] || fallback);
 
+// ✅ v88.95 ROOT FIX: هذه المسارات تُمرَّر إلى axios API الذي baseURL له = `${BACKEND_ORIGIN}/api`.
+// أي مسار يبدأ بـ /api/… سيتضاعف إلى /api/api/… ويرجّع 404 (سبب اختفاء الشات ورفع صور المنشور).
+// نُطبّع كل شكل مطلق (يحتوي /api/…) أو نسبي إلى شكل نسبي بدون /api لأن axios يُلحقها تلقائياً.
 function normalizeUploadEndpoint(value = '', fallback = '') {
   const cleaned = trim(value || fallback);
   if (!cleaned) return cleaned;
-  return cleaned
+  // مسارات مطلقة (http://…): نتركها كما هي — لن يُطبَّق عليها baseURL في axios
+  if (isAbsoluteUrl(cleaned)) return cleaned;
+  let out = cleaned
+    // توحيد /api/media/* إلى /api/upload/* أولاً (توافق مع بيئات قديمة)
     .replace(/\/api\/media\/upload\/?$/i, '/api/upload')
     .replace(/\/api\/media\/resumable\/start\/?$/i, '/api/upload/resumable/start')
     .replace(/\/api\/media\/resumable\/(?:status|chunk|complete)\/?$/i, '/api/upload/resumable')
     .replace(/\/media\/upload\/?$/i, '/upload')
     .replace(/\/media\/resumable\/start\/?$/i, '/upload/resumable/start')
     .replace(/\/media\/resumable\/(?:status|chunk|complete)\/?$/i, '/upload/resumable');
+  // 🔥 إزالة بادئة /api الوحيدة (axios baseURL يوفّرها).
+  //    يُصلح تضاعف /api/api/upload الذي كان يعطّل chat_threads/PostComposer.
+  out = out.replace(/^\/api\/(?=upload)/i, '/');
+  return out;
 }
 
 export const MEDIA_PROVIDER = (
@@ -152,13 +162,15 @@ export const MEDIA_SECURITY = {
   signatureKeyId: readRuntime('APP_MEDIA_KEY_ID') || readEnv('VITE_MEDIA_KEY_ID') || '',
 };
 
+// ✅ v88.95 ROOT FIX: القيم الافتراضية نسبية إلى baseURL (`${API_BASE}` = `${BACKEND_ORIGIN}/api`).
+// كانت `/api/upload` تُنتج `/api/api/upload` (404). الصحيح `/upload` → `/api/upload`.
 export const MEDIA_ENDPOINTS = {
-  simpleUpload: normalizeUploadEndpoint(readRuntime('APP_MEDIA_UPLOAD_URL'), readEnv('VITE_MEDIA_UPLOAD_URL')) || '/api/upload',
-  resumableStart: normalizeUploadEndpoint(readRuntime('APP_MEDIA_RESUMABLE_START_URL'), readEnv('VITE_MEDIA_RESUMABLE_START_URL')) || '/api/upload/resumable/start',
-  resumableStatus: normalizeUploadEndpoint(readRuntime('APP_MEDIA_RESUMABLE_STATUS_URL'), readEnv('VITE_MEDIA_RESUMABLE_STATUS_URL')) || '/api/upload/resumable',
-  resumableChunk: normalizeUploadEndpoint(readRuntime('APP_MEDIA_RESUMABLE_CHUNK_URL'), readEnv('VITE_MEDIA_RESUMABLE_CHUNK_URL')) || '/api/upload/resumable',
-  resumableComplete: normalizeUploadEndpoint(readRuntime('APP_MEDIA_RESUMABLE_COMPLETE_URL'), readEnv('VITE_MEDIA_RESUMABLE_COMPLETE_URL')) || '/api/upload/resumable',
-  signedUrl: readRuntime('APP_MEDIA_SIGNED_URL_ENDPOINT') || readEnv('VITE_MEDIA_SIGNED_URL_ENDPOINT') || '/api/media/sign-url',
+  simpleUpload: normalizeUploadEndpoint(readRuntime('APP_MEDIA_UPLOAD_URL'), readEnv('VITE_MEDIA_UPLOAD_URL')) || '/upload',
+  resumableStart: normalizeUploadEndpoint(readRuntime('APP_MEDIA_RESUMABLE_START_URL'), readEnv('VITE_MEDIA_RESUMABLE_START_URL')) || '/upload/resumable/start',
+  resumableStatus: normalizeUploadEndpoint(readRuntime('APP_MEDIA_RESUMABLE_STATUS_URL'), readEnv('VITE_MEDIA_RESUMABLE_STATUS_URL')) || '/upload/resumable',
+  resumableChunk: normalizeUploadEndpoint(readRuntime('APP_MEDIA_RESUMABLE_CHUNK_URL'), readEnv('VITE_MEDIA_RESUMABLE_CHUNK_URL')) || '/upload/resumable',
+  resumableComplete: normalizeUploadEndpoint(readRuntime('APP_MEDIA_RESUMABLE_COMPLETE_URL'), readEnv('VITE_MEDIA_RESUMABLE_COMPLETE_URL')) || '/upload/resumable',
+  signedUrl: readRuntime('APP_MEDIA_SIGNED_URL_ENDPOINT') || readEnv('VITE_MEDIA_SIGNED_URL_ENDPOINT') || '/media/sign-url',
 };
 
 export const IMAGE_PRESET = {

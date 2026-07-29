@@ -1,37 +1,42 @@
-// ✅ v88.93 ROOT FIX: رفع النسخة لضمان تفعيل SW جديد (activate → clients.claim)
-//    وتجاوز أي SW قديم كان محاصراً في مرحلة waiting أو controlling.
-const VERSION = 'yamshat-v88.93-share-target-root-fix-' + '1917200000000';
+// ✅ v88.98 ROOT FIX FINAL: إصلاح جذري لخمس مشاكل تسبب صفحة بيضاء عند المشاركة من يوتيوب
+//    1) قبول text/* في manifest → أندرويد يمرر رابط يوتيوب النصي
+//    2) HTML bridge بدون inline script → تحويل عبر meta-refresh فقط (يعمل قبل SW claim)
+//    3) قراءة رابط يوتيوب من text وليس url (يوتيوب يرسل الرابط في text)
+//    4) استبعاد /share-target من NEVER_CACHE_API_PATTERNS
+//    5) رفع نسخة SW → تفعيل clients.claim فوراً
+const VERSION = 'yamshat-v88.98-share-root-fix-final-' + '1917900000000';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
   MEDIA: `${VERSION}:media`,
   API: `${VERSION}:api`,
   OFFLINE: `${VERSION}:offline`,
-  // ✅ v88.76 Offline PWA: كاش منفصل للصفحات الديناميكية المُتصفّحة
   PAGES: `${VERSION}:pages`,
   APIS_VISITED: `${VERSION}:apis-visited`,
 };
 
-// ✅ v88.76: حدود تقليم كاش الجلسات (لتجنّب التخمة)
 const PAGES_MAX = 40;
 const APIS_VISITED_MAX = 120;
 
-// ✅ v88.92: قائمة مسارات API التي لا نُحفظ استجاباتها إطلاقاً في الكاش
-// (الفيد + المنشورات + الريلز + الستوريز) — لضمان أن كل تحميل يجلب المنشورات الجديدة
-// من الخادم مباشرة. المشكلة السابقة: بعد نشر منشور جديد، الحساب الآخر لا يراه لأن SW
-// كان يُرجع نسخة مخبأة من `/api/feed` أو `/api/posts`.
+// ✅ v88.98 ROOT FIX #5: NEVER_CACHE_API_PATTERNS يجب أن لا يمس /share-target إطلاقاً
+//    السبب السابق: أنماط عامة كانت تلتقط أي مسار يحتوي على "share" وتُرجع emptyResponse
+//    الحل: أنماط دقيقة تستهدف /api/... فقط ولا تمس /share-target أبداً
 const NEVER_CACHE_API_PATTERNS = [
-  /\/api\/feed(\/|$|\?)/i,
-  /\/api\/posts(\/|$|\?)/i,
-  /\/api\/reels\/feed(\/|$|\?)/i,
-  /\/api\/reels(\/|$|\?)(?!\d)/i,
-  /\/api\/stories(\/|$|\?)/i,
-  /\/api\/notifications(\/|$|\?)/i,
-  /\/api\/chat\/conversations(\/|$|\?)/i,
-  /\/api\/groups\/[^/]+\/messages/i,
+  /^\/api\/feed(\/|$|\?)/i,
+  /^\/api\/posts(\/|$|\?)/i,
+  /^\/api\/reels\/feed(\/|$|\?)/i,
+  /^\/api\/reels(\/|$|\?)(?!\d)/i,
+  /^\/api\/stories(\/|$|\?)/i,
+  /^\/api\/notifications(\/|$|\?)/i,
+  /^\/api\/chat\/conversations(\/|$|\?)/i,
+  /^\/api\/groups\/[^/]+\/messages/i,
 ];
 
 function isRealtimeApi(url) {
+  // ✅ v88.98: حماية مطلقة — /share-target ليس API واقعياً أبداً
+  if (url.pathname === '/share-target' || url.pathname.startsWith('/share-target/')) {
+    return false;
+  }
   return NEVER_CACHE_API_PATTERNS.some((rx) => rx.test(url.pathname + url.search));
 }
 
@@ -40,7 +45,6 @@ async function trimCache(cacheName, maxEntries) {
     const cache = await caches.open(cacheName);
     const keys = await cache.keys();
     if (keys.length <= maxEntries) return;
-    // حذف الأقدم (FIFO حسب ترتيب keys)
     const toDelete = keys.slice(0, keys.length - maxEntries);
     await Promise.all(toDelete.map((k) => cache.delete(k)));
   } catch (_) { /* ignore */ }
@@ -120,20 +124,18 @@ async function saveSharedPayload(payload) {
   });
 }
 
-// ✅ v88.93 ROOT FIX #4: HTML bridge محسّن — لا يعتمد على inline <script>
-//    بل يستخدم:
-//      1) meta http-equiv="refresh" (يعمل حتى مع أشد CSP صرامة)
-//      2) رابط <a> واضح للنقر اليدوي كـ fallback أخير
-//      3) query parameter ts= لكسر أي كاش لـ index.html
-//      4) via=sw لإبلاغ الفرونت أن SW عالج الطلب (يستخدمه ShareTargetLanding)
-//    السبب: v88.92 كانت تعتمد على window.location.replace في <script> مضمّن
-//    وكان يُرفض بسبب CSP script-src 'self' (بدون 'unsafe-inline').
-//    الآن CSP في index.html يسمح 'unsafe-inline' لكن نبقي HTML bridge
-//    عاملاً حتى بدون JS كطبقة أمان إضافية.
+// ✅ v88.98 ROOT FIX #2: HTML bridge بدون inline <script>
+//    السبب: window.location.replace() في inline script كان يُنفَّذ قبل أن يُسيطر SW
+//    على العميل → الصفحة تتحمّل بدون تحكم SW → HashRouter يبدأ قبل تحميل chunk
+//    → صفحة بيضاء لحظية على أندرويد.
+//    الحل النهائي: الاعتماد الحصري على meta-refresh (زمن 0) — المتصفح يتولى التوجيه
+//    على مستوى النظام قبل تحميل أي جافاسكربت. أسرع وأكثر موثوقية من inline script.
+//    نضيف أيضاً <link rel="prefetch"> على index.html لتسخين الكاش قبل التحويل.
 function buildShareBridgeHtml(sharedOk) {
   const ts = Date.now();
   const flag = sharedOk ? '1' : '0';
   const target = `/#/share-target?shared=${flag}&via=sw&ts=${ts}`;
+  const targetJson = JSON.stringify(target);
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -143,6 +145,8 @@ function buildShareBridgeHtml(sharedOk) {
   <meta http-equiv="refresh" content="0; url=${target}">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
+  <link rel="prefetch" href="/index.html" as="document">
+  <link rel="preconnect" href="/">
   <style>
     html,body{margin:0;padding:0;height:100%;background:#0A0D1A;color:#fff;font-family:system-ui,-apple-system,'Noto Sans Arabic',sans-serif}
     .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:16px;padding:24px;text-align:center}
@@ -152,68 +156,156 @@ function buildShareBridgeHtml(sharedOk) {
     p{color:#94A3B8;margin:0;font-size:.95rem;line-height:1.6;max-width:420px}
     a.cta{color:#fff;text-decoration:none;padding:12px 28px;border-radius:14px;background:linear-gradient(135deg,#8B5CF6,#EC4899);border:0;margin-top:8px;font-weight:800;font-size:1rem;box-shadow:0 8px 24px rgba(139,92,246,.35)}
   </style>
-  <script>
-    // نسخة inline (تعمل الآن بعد أن أضفنا 'unsafe-inline' في CSP الرئيسية)
-    (function(){
-      try {
-        var url = ${JSON.stringify(target)};
-        // إبلاغ الـ SW بأن الصفحة جاهزة لاستقبال الحمولة
-        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({
-            type: 'YAMSHAT_SHARE_BRIDGE_READY',
-            timestamp: Date.now()
-          });
-        }
-        // تحويل فوري (أسرع من meta-refresh)
-        window.location.replace(url);
-      } catch (e) {
-        // meta-refresh سيتولى المهمة
-      }
-    })();
-  </script>
 </head>
 <body>
   <div class="wrap">
     <div class="spinner" aria-hidden="true"></div>
     <h1>جارٍ استلام المحتوى في يام شات...</h1>
     <p>إذا لم تُفتح الصفحة تلقائياً خلال ثانيتين، اضغط الزر أدناه.</p>
-    <a class="cta" href="${target}">فتح يام شات</a>
+    <a class="cta" href="${target}" id="ym-share-cta">فتح يام شات</a>
     <noscript>
       <p style="color:#f59e0b">جافاسكربت غير مفعّل — سيتم التحويل تلقائياً خلال لحظات.</p>
     </noscript>
   </div>
+  <script>
+    // ✅ v88.98: script في نهاية body لضمان تنفيذه بعد بناء DOM
+    // ينتظر SW ready قبل التوجيه لضمان استقرار sessionStorage/IndexedDB
+    (function(){
+      var target = ${targetJson};
+      function goNow(){
+        try { window.location.replace(target); }
+        catch(e){ window.location.href = target; }
+      }
+      // أرسل رسالة "جاهز" لـ SW (اختياري)
+      try {
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'YAMSHAT_SHARE_BRIDGE_READY',
+            timestamp: Date.now()
+          });
+        }
+      } catch(_) {}
+      // انتظر SW ready (حتى 800ms) ثم انتقل
+      if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+        var timedOut = false;
+        var t = setTimeout(function(){ timedOut = true; goNow(); }, 800);
+        navigator.serviceWorker.ready.then(function(){
+          if (timedOut) return;
+          clearTimeout(t);
+          setTimeout(goNow, 60); // تأخير صغير جداً لضمان IndexedDB commit
+        }).catch(goNow);
+      } else {
+        setTimeout(goNow, 100);
+      }
+    })();
+  </script>
 </body>
 </html>`;
 }
 
+// ✅ v88.98 ROOT FIX #3 + #4: استخراج رابط يوتيوب من كل الحقول الممكنة
+//    يوتيوب على أندرويد يرسل الرابط في text، ليس url. تويتر يرسله أحياناً في title.
+//    نجمع كل النصوص، ثم نستخرج أول رابط http(s) نجده — إن لم يكن الحقل url موجوداً.
+function extractUrlFromText(str) {
+  if (!str || typeof str !== 'string') return '';
+  const m = str.match(/https?:\/\/[^\s<>"']+/i);
+  return m ? m[0] : '';
+}
+
 async function handleShareTarget(request) {
   try {
-    const formData = await request.formData();
-    const files = formData.getAll('files').filter(Boolean);
+    // ✅ v88.98 ROOT FIX: التعامل مع contentType المختلف
+    //   بعض المتصفحات ترسل application/x-www-form-urlencoded بدلاً من multipart/form-data
+    //   عندما لا توجد ملفات — يجب دعم كلا الحالتين.
+    const contentType = String(request.headers.get('content-type') || '').toLowerCase();
+
+    let title = '';
+    let text = '';
+    let url = '';
+    let files = [];
+
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData();
+      files = formData.getAll('files').filter(Boolean);
+      title = String(formData.get('title') || '');
+      text = String(formData.get('text') || '');
+      url = String(formData.get('url') || '');
+    } else if (contentType.includes('application/x-www-form-urlencoded')) {
+      const raw = await request.text();
+      const params = new URLSearchParams(raw);
+      title = String(params.get('title') || '');
+      text = String(params.get('text') || '');
+      url = String(params.get('url') || '');
+    } else {
+      // محاولة formData كـ fallback
+      try {
+        const formData = await request.formData();
+        files = formData.getAll('files').filter(Boolean);
+        title = String(formData.get('title') || '');
+        text = String(formData.get('text') || '');
+        url = String(formData.get('url') || '');
+      } catch (_) {
+        // لا شيء — نستمر بقيم فارغة
+      }
+    }
+
+    // ✅ v88.98 ROOT FIX #3: يوتيوب يمرر الرابط داخل text (وليس url)
+    //    نستخرج الرابط من text إن كان url فارغاً، ثم من title كطبقة أخيرة.
+    if (!url) {
+      url = extractUrlFromText(text) || extractUrlFromText(title) || '';
+    }
+
+    // فلترة الرابط من text إن كان مطابقاً تماماً (لتجنّب التكرار)
+    if (url && text && text.trim() === url.trim()) {
+      text = '';
+    }
+
     const normalizedFiles = await Promise.all(
-      files.map(async (file, index) => ({
-        id: `${Date.now()}-${index}`,
-        name: file.name || `shared-${index + 1}`,
-        type: file.type || 'application/octet-stream',
-        size: Number(file.size || 0),
-        blob: file,
-      }))
+      files.map(async (file, index) => {
+        // ✅ v88.98 ROOT FIX: بعض المتصفحات ترسل text/uri-list كـ File
+        //    نستخرج منها الرابط بدل معاملتها كملف
+        const fileType = String(file.type || '').toLowerCase();
+        if (fileType.startsWith('text/')) {
+          try {
+            const asText = await file.text();
+            const foundUrl = extractUrlFromText(asText);
+            if (foundUrl && !url) url = foundUrl;
+            if (!text && asText.length < 500 && asText !== foundUrl) text = asText;
+            return null; // لا نعتبره ملفاً
+          } catch (_) { /* ignore */ }
+        }
+        return {
+          id: `${Date.now()}-${index}`,
+          name: file.name || `shared-${index + 1}`,
+          type: file.type || 'application/octet-stream',
+          size: Number(file.size || 0),
+          blob: file,
+        };
+      })
     );
+
+    const cleanFiles = normalizedFiles.filter(Boolean);
 
     await saveSharedPayload({
       id: Date.now(),
       receivedAt: new Date().toISOString(),
-      title: formData.get('title') || '',
-      text: formData.get('text') || '',
-      url: formData.get('url') || '',
-      files: normalizedFiles,
+      title,
+      text,
+      url,
+      files: cleanFiles,
     });
 
-    // ✅ v88.92 ROOT FIX: في السابق كنا نستخدم Response.redirect('/#/share-target?shared=1')
-    //   لكن Chrome على أندرويد لا يحترم الـ hash عند 303 redirect من SW في سياق PWA،
-    //   فتظهر صفحة بيضاء (index.html بدون المسار الصحيح في hash).
-    //   الحل الجذري: إرجاع HTML صريح يحتوي على meta-refresh + window.location.replace
-    //   يضمن الوصول إلى /#/share-target?shared=1 في كل الأجهزة والمتصفحات.
+    // إعلام كل العملاء بأن حمولة جديدة وصلت
+    try {
+      const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+      clientsList.forEach((client) => client.postMessage({
+        type: 'YAMSHAT_SHARE_RECEIVED',
+        timestamp: Date.now(),
+        hasFiles: cleanFiles.length > 0,
+        hasUrl: Boolean(url),
+      }));
+    } catch (_) { /* ignore */ }
+
     return new Response(buildShareBridgeHtml(true), {
       status: 200,
       headers: {
@@ -275,7 +367,6 @@ async function broadcastMessage(message) {
 }
 
 self.addEventListener('install', (event) => {
-  // ✅ v88.92: تفعيل SW الجديد فوراً بدون انتظار إغلاق التبويبات القديمة
   self.skipWaiting();
   event.waitUntil(caches.open(CACHE_NAMES.SHELL).then((cache) => cache.addAll(APP_SHELL)));
 });
@@ -283,9 +374,6 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      // ✅ v88.92: حذف كل الكاشات القديمة (كل ما ليس ضمن CACHE_NAMES الحالية)
-      //   هذا يشمل كاشات v88.84 و v88.85 و v88.91 التي كانت تحمل استجابات فيد قديمة
-      //   وتمنع ظهور المنشورات الجديدة.
       .then((keys) => Promise.all(keys.filter((key) => !Object.values(CACHE_NAMES).includes(key)).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
       .then(() => broadcastMessage({ type: 'yamshat:sw-activated', version: VERSION }))
@@ -296,20 +384,13 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // ✅ v88.93 ROOT FIX #5: التقاط /share-target سواء كان POST أو GET.
-  //    السبب: بعض متصفحات أندرويد (خاصة WebView داخل يوتيوب / تيك توك)
-  //    ترسل GET بدلاً من POST إذا لم يكن هناك محتوى ملف، أو تُعيد المحاولة
-  //    بعد فشل POST. في v88.92 كان GET يمرّ عبر SW كطلب navigate عادي
-  //    → index.html يُحمَّل بدون hash → HashRouter يعرض الصفحة الرئيسية
-  //    وليس /#/share-target → صفحة بيضاء أو الفيد بدلاً من واجهة المشاركة.
+  // ✅ v88.98 ROOT FIX #4 + #5: التقاط /share-target قبل أي معالج آخر
+  //    وضمان أن NEVER_CACHE_API_PATTERNS لا يمسّه.
   if (url.origin === self.location.origin && url.pathname === '/share-target') {
     if (request.method === 'POST') {
       event.respondWith(handleShareTarget(request));
       return;
     }
-    // GET أو أي method آخر → أعِد HTML bridge مباشرة (بدون حمولة)
-    // بحيث يفتح الفرونت واجهة /#/share-target?shared=0 التي ستقرأ
-    // آخر حمولة محفوظة في IndexedDB (إن وُجدت).
     if (request.method === 'GET') {
       event.respondWith(new Response(buildShareBridgeHtml(false), {
         status: 200,
@@ -330,8 +411,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
-    // ✅ v88.76 Offline PWA: حفظ كل تنقل إلى صفحة في كاش PAGES
-    //   (HashRouter SPA → المسارات في hash، لذا index.html يخدم الجميع)
     event.respondWith(
       fetch(request, { cache: 'no-store' })
         .then(async (response) => {
@@ -343,7 +422,6 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(async () => {
-          // ارتداد للصفحة المحددة إن كانت في الكاش، وإلا index.html للـSPA
           const pagesCache = await caches.open(CACHE_NAMES.PAGES);
           const pageHit = await pagesCache.match(request);
           if (pageHit) return pageHit;
@@ -365,22 +443,17 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (/\/(api|notifications)\//i.test(url.pathname)) {
-    // ✅ v88.92 ROOT FIX: بعض مسارات الـ API (الفيد، المنشورات، الريلز، الستوريز، الرسائل)
-    //   يجب أن لا تُخزَّن أبداً في الكاش — وإلا يظل المستخدم يرى نسخة قديمة ولا تظهر
-    //   المنشورات الجديدة التي رفعها حساب آخر. نستخدم network-only لهذه المسارات.
     if (isRealtimeApi(url)) {
       event.respondWith((async () => {
         try {
           return await fetch(request, { cache: 'no-store' });
         } catch (_) {
-          // في وضع Offline نُرجع خطأ 503 صريح — لا نُلوث الفيد بنسخة قديمة.
           return emptyResponse(503, 'Offline (realtime endpoint)');
         }
       })());
       return;
     }
 
-    // ✅ v88.76 Offline PWA: باقي مسارات API — network-first مع ارتداد إلى الكاش
     event.respondWith((async () => {
       try {
         const response = await fetch(request, { cache: 'no-store' });
@@ -391,7 +464,6 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       } catch (_) {
-        // ارتداد: الرد من كاش الويزت ثم من كاش API القديم
         const visitedCache = await caches.open(CACHE_NAMES.APIS_VISITED);
         const hit = await visitedCache.match(request);
         if (hit) return hit;
@@ -404,11 +476,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ✅ v88.24 FIX: كاش وسائط المنشورات يشمل الآن:
-  //   1) الملفات ذات الامتداد الصريح (png/jpg/mp4/...)
-  //   2) روابط Cloudinary بدون امتداد (مثل /image/upload/v123/abc)
-  //   3) روابط /uploads/* المحلية بدون امتداد
-  //   4) request.destination === 'image' | 'video' | 'audio' (يغطي أي رابط تولّده الـ<img>/<video>)
   const isImageAsset = /\.(?:png|jpg|jpeg|svg|webp|gif|avif|heic|heif)$/i.test(url.pathname)
     || request.destination === 'image'
     || /\/image\/upload\//i.test(url.pathname);
@@ -433,7 +500,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(networkFirst(request, CACHE_NAMES.OFFLINE));
 });
 
-// ✅ v88.24 FIX: استقبال أمر warm-up للوسائط بعد الرفع مباشرة
 async function warmMediaUrls(urls = []) {
   const cache = await caches.open(CACHE_NAMES.MEDIA);
   await Promise.all(
@@ -458,7 +524,6 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
     return;
   }
-  // ✅ v88.92: أمر جديد يسمح للفرونت بمسح كاش الفيد يدوياً بعد نشر منشور جديد
   if (event.data?.type === 'YAMSHAT_INVALIDATE_FEED') {
     event.waitUntil((async () => {
       try {

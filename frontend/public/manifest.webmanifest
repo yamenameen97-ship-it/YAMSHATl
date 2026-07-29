@@ -1,5 +1,5 @@
 {
-  "id": "/?v=88.93",
+  "id": "/?v=88.98",
   "name": "يام شات - Yamshat",
   "short_name": "Yamshat",
   "lang": "ar",
@@ -167,7 +167,15 @@
       "files": [
         {
           "name": "files",
-          "accept": ["image/*", "video/*", "audio/*"]
+          "accept": [
+            "image/*",
+            "video/*",
+            "audio/*",
+            "text/*",
+            "text/plain",
+            "text/uri-list",
+            "application/octet-stream"
+          ]
         }
       ]
     }

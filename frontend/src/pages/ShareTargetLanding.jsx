@@ -122,62 +122,120 @@ export default function ShareTargetLanding() {
   useEffect(() => {
     let mounted = true;
 
-    // ✅ v88.93 ROOT FIX #5: قراءة الحمولة مع محاولة إعادة أطول وذكية:
-    //   - إذا وصلنا عبر via=sw → نحاول حتى 15 مرة (SW مؤكد أرسل حمولة)
-    //   - إذا وصلنا عبر via=direct → 3 محاولات فقط (لا نتوقّع حمولة)
-    //   - نستمع لرسائل SW (broadcastMessage) لمعرفة متى وصلت حمولة جديدة
-    //   السبب: v88.92 كانت 5 محاولات (1s) أحياناً تفوت IndexedDB commit
-    //   على أجهزة أندرويد الضعيفة.
+    // ✅ v88.98 ROOT FIX #3: قراءة الحمولة مع صبر أكبر + استماع لرسائل SW
+    //   - إذا وصلنا عبر via=sw → نحاول حتى 25 مرة × 200ms = 5s كحد أقصى
+    //     (كافٍ لأبطأ أجهزة أندرويد للانتهاء من IndexedDB commit)
+    //   - إذا وصلنا عبر via=direct → 5 محاولات فقط
+    //   - نستمع لرسالة 'YAMSHAT_SHARE_RECEIVED' من SW → نُعيد القراءة فوراً
+    //   - نستمع لحدث 'visibilitychange' → عندما تعود الصفحة للواجهة نعيد المحاولة
+    //   السبب الجذري: قبل الإصلاح كان HashRouter يقرأ الحمولة قبل تحكم SW في العميل
+    //   → القراءة تعود null → صفحة بيضاء أو رسالة "لا يوجد محتوى".
     const viaSw = (searchParams.get('via') || '').toLowerCase() === 'sw'
       || (searchParams.get('shared') || '') === '1';
-    const maxAttempts = viaSw ? 15 : 3;
+    const maxAttempts = viaSw ? 25 : 5;
     const attemptDelay = 200;
+
+    let stopFlag = false;
+    let swMessageHandler = null;
+    let visibilityHandler = null;
+
+    function applyPayload(data) {
+      if (!mounted || stopFlag) return false;
+      const hasContent = data && (data.files?.length || data.url || data.title || data.text);
+      if (!hasContent) return false;
+      setPayload(data);
+      // نظّف URLs السابقة قبل إنشاء الجديدة
+      previewUrlsRef.current.forEach((u) => {
+        try { URL.revokeObjectURL(u); } catch { /* ignore */ }
+      });
+      previewUrlsRef.current = [];
+      const nextPreviews = (data?.files || []).map((file) => {
+        let previewUrl = '';
+        try {
+          previewUrl = URL.createObjectURL(file.blob);
+          previewUrlsRef.current.push(previewUrl);
+        } catch { /* ignore */ }
+        return {
+          ...file,
+          previewUrl,
+          isImage: file.type?.startsWith('image/'),
+          isVideo: file.type?.startsWith('video/'),
+        };
+      });
+      setPreviews(nextPreviews);
+      setLoading(false);
+      stopFlag = true;
+      return true;
+    }
 
     async function loadPayloadWithRetry() {
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (stopFlag) return;
         try {
           const data = await readSharedPayload();
-          if (data && (data.files?.length || data.url || data.title || data.text)) {
-            return data;
-          }
+          if (applyPayload(data)) return;
         } catch { /* ignore and retry */ }
         await new Promise((r) => setTimeout(r, attemptDelay));
       }
-      try { return await readSharedPayload(); } catch { return null; }
+      // محاولة أخيرة
+      if (!stopFlag) {
+        try {
+          const data = await readSharedPayload();
+          if (!applyPayload(data) && mounted) {
+            setPayload(data || null);
+            setLoading(false);
+          }
+        } catch {
+          if (mounted) {
+            setPayload(null);
+            setLoading(false);
+          }
+        }
+      }
     }
 
-    loadPayloadWithRetry()
-      .then((data) => {
-        if (!mounted) return;
-        setPayload(data);
-        const nextPreviews = (data?.files || []).map((file) => {
-          let previewUrl = '';
+    // ✅ v88.98: استماع لرسالة SW YAMSHAT_SHARE_RECEIVED — قراءة فورية بمجرد وصولها
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+      swMessageHandler = async (event) => {
+        if (event?.data?.type === 'YAMSHAT_SHARE_RECEIVED') {
           try {
-            previewUrl = URL.createObjectURL(file.blob);
-            previewUrlsRef.current.push(previewUrl);
+            const data = await readSharedPayload();
+            applyPayload(data);
           } catch { /* ignore */ }
-          return {
-            ...file,
-            previewUrl,
-            isImage: file.type?.startsWith('image/'),
-            isVideo: file.type?.startsWith('video/'),
-          };
-        });
-        setPreviews(nextPreviews);
-      })
-      .catch(() => {
-        if (mounted) setPayload(null);
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
+        }
+      };
+      try {
+        navigator.serviceWorker.addEventListener('message', swMessageHandler);
+      } catch { /* ignore */ }
+    }
+
+    // ✅ v88.98: عند عودة visibility (يوتيوب فتح تبويب جديد ثم عاد)
+    visibilityHandler = async () => {
+      if (document.visibilityState === 'visible' && !stopFlag) {
+        try {
+          const data = await readSharedPayload();
+          applyPayload(data);
+        } catch { /* ignore */ }
+      }
+    };
+    try { document.addEventListener('visibilitychange', visibilityHandler); } catch { /* ignore */ }
+
+    loadPayloadWithRetry();
 
     return () => {
       mounted = false;
+      stopFlag = true;
+      if (swMessageHandler && navigator.serviceWorker) {
+        try { navigator.serviceWorker.removeEventListener('message', swMessageHandler); } catch { /* ignore */ }
+      }
+      if (visibilityHandler) {
+        try { document.removeEventListener('visibilitychange', visibilityHandler); } catch { /* ignore */ }
+      }
       previewUrlsRef.current.forEach((url) => {
         try { URL.revokeObjectURL(url); } catch { /* ignore */ }
       });
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const recommendation = useMemo(() => recommendTarget(payload), [payload]);

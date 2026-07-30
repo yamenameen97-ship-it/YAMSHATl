@@ -162,6 +162,7 @@
         "src/components/chat/MessageContextPopup.jsx",
         "src/components/settings/FontSizeSettings.jsx",
         "src/components/settings/TranslationSettings.jsx",
+        "src/components/system/ShareTargetErrorBoundary.jsx",
         "src/components/chat/PressToRecordMic.jsx",
         "src/components/stories/UserPickerModal.jsx",
         "src/components/feed/ImageViewerModal.jsx",

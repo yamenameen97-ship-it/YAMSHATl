@@ -1,63 +1,74 @@
 /* ============================================================
- * YAMSHAT v88.91 — FEED REELS PAIR (Grid) بعد كل 5 منشورات
+ * YAMSHAT v89.03 — FEED REELS PAIR (Post-Sized Card)
  * ------------------------------------------------------------
- * بطاقة زوج ريلز بنمط YouTube Shorts داخل الفيد.
- * تدعم الجوال (FeedMobile) والويب/لابتوب (FeedEnhanced).
+ * بطاقة "ريلز مقترحة" داخل الفيد بنفس عرض وحجم بطاقة المنشور
+ * (.ym-post-card): نفس العرض الكامل، نفس الحواف، نفس الحدود،
+ * نفس نصف القطر، ونفس الـpadding — مع بطاقتَي ريل داخليتَين
+ * أكبر بكثير لتملأ ارتفاعاً مقارِباً لمنشور عادي.
  * ============================================================ */
 
+/* الحاوية الرئيسية: مطابقة تماماً لأبعاد .ym-post-card */
 .ym-feed-reels-pair {
   position: relative;
-  width: 100%;
-  max-width: 100%;
-  margin: 12px 0 16px 0;
-  padding: 12px 12px 14px 12px;
+  display: block;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 14px !important;
   box-sizing: border-box;
-  background: linear-gradient(180deg,
-    rgba(139, 92, 246, 0.06) 0%,
-    rgba(59, 130, 246, 0.04) 100%);
-  border: 1px solid rgba(139, 92, 246, 0.15);
-  border-radius: 16px;
+  background: #0F1320 !important;
+  border: 1px solid #1F2937 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  color: #fff;
+  overflow: hidden;
   direction: rtl;
   text-align: right;
-  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', sans-serif;
+  font-family: 'Noto Sans Arabic', 'Tajawal', 'Cairo', system-ui, sans-serif;
   isolation: isolate;
 }
 
-/* دعم الوضع الليلي */
+/* الوضع الفاتح: خلفية بيضاء مطابقة للمنشور في اللايت */
+:root:not([data-theme='dark']):not(.dark) body:not(.dark) .ym-feed-reels-pair {
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  color: #111827;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+/* دعم الوضع الليلي (تأكيد إضافي) */
 :root[data-theme='dark'] .ym-feed-reels-pair,
 .dark .ym-feed-reels-pair,
 body.dark .ym-feed-reels-pair {
-  background: linear-gradient(180deg,
-    rgba(139, 92, 246, 0.12) 0%,
-    rgba(59, 130, 246, 0.08) 100%);
-  border-color: rgba(139, 92, 246, 0.25);
+  background: #0F1320 !important;
+  border-color: #1F2937 !important;
 }
 
+/* رأس البطاقة */
 .ym-feed-reels-pair__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin: 0 0 12px 0;
   padding: 0 2px;
+  width: 100%;
 }
 
 .ym-feed-reels-pair__title {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-weight: 700;
-  font-size: 15px;
+  font-weight: 800;
+  font-size: 16px;
+  color: #a78bfa;
+}
+
+:root:not([data-theme='dark']):not(.dark) body:not(.dark) .ym-feed-reels-pair__title {
   color: #7c3aed;
 }
 
-:root[data-theme='dark'] .ym-feed-reels-pair__title,
-.dark .ym-feed-reels-pair__title,
-body.dark .ym-feed-reels-pair__title {
-  color: #c4b5fd;
-}
-
 .ym-feed-reels-pair__title-icon {
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1;
 }
 
@@ -65,12 +76,12 @@ body.dark .ym-feed-reels-pair__title {
   appearance: none;
   border: none;
   background: transparent;
-  color: #7c3aed;
-  font-weight: 600;
-  font-size: 13px;
+  color: #a78bfa;
+  font-weight: 700;
+  font-size: 13.5px;
   cursor: pointer;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -78,19 +89,21 @@ body.dark .ym-feed-reels-pair__title {
   font-family: inherit;
 }
 
+:root:not([data-theme='dark']):not(.dark) body:not(.dark) .ym-feed-reels-pair__more-btn {
+  color: #7c3aed;
+}
+
 .ym-feed-reels-pair__more-btn:hover,
 .ym-feed-reels-pair__more-btn:focus-visible {
-  background: rgba(139, 92, 246, 0.12);
+  background: rgba(139, 92, 246, 0.14);
   outline: none;
 }
 
-:root[data-theme='dark'] .ym-feed-reels-pair__more-btn,
-.dark .ym-feed-reels-pair__more-btn,
-body.dark .ym-feed-reels-pair__more-btn {
-  color: #c4b5fd;
-}
-
-/* الشبكة: عمودان دائماً (مطابق لنمط YouTube Shorts داخل الفيد) */
+/* ============================================================
+ * الشبكة: عمودان بنفس عرض البطاقة الأم — بطاقتان كبيرتان
+ * تملآن العرض الكامل للمنشور. الارتفاع مقارِب لارتفاع منشور
+ * وسائط عادي (≈ ارتفاع صورة/فيديو منشور).
+ * ============================================================ */
 .ym-feed-reels-pair__grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -109,20 +122,21 @@ body.dark .ym-feed-reels-pair__more-btn {
   overflow: hidden;
   position: relative;
   width: 100%;
+  /* ارتفاع أكبر: كل بطاقة ريل تكاد تعادل ارتفاع منشور صورة قصير */
   aspect-ratio: 9 / 16;
-  min-height: 240px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  min-height: 420px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
   transition: transform 0.18s ease, box-shadow 0.18s ease;
   font-family: inherit;
 }
 
 .ym-feed-reels-pair__card:active {
-  transform: scale(0.98);
+  transform: scale(0.985);
 }
 
 .ym-feed-reels-pair__card:hover,
 .ym-feed-reels-pair__card:focus-visible {
-  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.28);
+  box-shadow: 0 10px 28px rgba(124, 58, 237, 0.35);
   outline: none;
 }
 
@@ -151,7 +165,7 @@ body.dark .ym-feed-reels-pair__more-btn {
   align-items: center;
   justify-content: center;
   color: #a78bfa;
-  font-size: 40px;
+  font-size: 48px;
   background: radial-gradient(circle at 50% 40%, #1f1b3a 0%, #0b0b0f 80%);
 }
 
@@ -160,17 +174,17 @@ body.dark .ym-feed-reels-pair__more-btn {
   position: absolute;
   inset: 0;
   background: linear-gradient(180deg,
-    rgba(0, 0, 0, 0.0) 40%,
-    rgba(0, 0, 0, 0.55) 100%);
+    rgba(0, 0, 0, 0.0) 45%,
+    rgba(0, 0, 0, 0.65) 100%);
   pointer-events: none;
 }
 
 .ym-feed-reels-pair__play-badge {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  width: 30px;
-  height: 30px;
+  top: 10px;
+  left: 10px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
@@ -184,9 +198,9 @@ body.dark .ym-feed-reels-pair__more-btn {
 
 .ym-feed-reels-pair__meta {
   position: absolute;
-  right: 8px;
-  left: 8px;
-  bottom: 8px;
+  right: 10px;
+  left: 10px;
+  bottom: 10px;
   color: #fff;
   text-align: right;
   direction: rtl;
@@ -194,8 +208,8 @@ body.dark .ym-feed-reels-pair__more-btn {
 }
 
 .ym-feed-reels-pair__caption {
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: 13.5px;
+  font-weight: 700;
   line-height: 1.35;
   margin-bottom: 4px;
   display: -webkit-box;
@@ -203,64 +217,75 @@ body.dark .ym-feed-reels-pair__more-btn {
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 .ym-feed-reels-pair__stats {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11.5px;
-  opacity: 0.92;
-  font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  opacity: 0.95;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 /* ============================================================
- * تحسينات للجوال (≤ 640px)
+ * الجوال (≤ 640px): نفس عرض المنشور تماماً، ارتفاع كبير
  * ============================================================ */
 @media (max-width: 640px) {
   .ym-feed-reels-pair {
-    margin: 10px 0 14px 0;
-    padding: 10px;
-    border-radius: 14px;
+    margin: 0 !important;
+    padding: 14px !important;
+    border-radius: 16px !important;
   }
 
   .ym-feed-reels-pair__card {
-    min-height: 220px;
+    min-height: 380px;
     border-radius: 12px;
   }
 
   .ym-feed-reels-pair__title {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .ym-feed-reels-pair__caption {
-    font-size: 12px;
+    font-size: 13px;
+  }
+}
+
+/* أجهزة الجوال الأصغر */
+@media (max-width: 380px) {
+  .ym-feed-reels-pair__card {
+    min-height: 340px;
   }
 }
 
 /* ============================================================
- * تحسينات للويب/لابتوب (≥ 900px) داخل عمود الفيد المركزي
+ * الويب/لابتوب (≥ 900px): بنفس عرض عمود الفيد المركزي
  * ============================================================ */
 @media (min-width: 900px) {
-  .yam-post-stack-v2 .ym-feed-reels-pair {
-    margin: 14px 0 18px 0;
-    padding: 14px;
-    border-radius: 18px;
+  .yam-post-stack-v2 .ym-feed-reels-pair,
+  .ym-feed .ym-feed-reels-pair {
+    margin: 0 !important;
+    padding: 16px !important;
+    border-radius: 18px !important;
   }
 
-  .yam-post-stack-v2 .ym-feed-reels-pair__card {
-    min-height: 320px;
+  .yam-post-stack-v2 .ym-feed-reels-pair__card,
+  .ym-feed .ym-feed-reels-pair__card {
+    min-height: 480px;
     border-radius: 14px;
   }
 
-  .yam-post-stack-v2 .ym-feed-reels-pair__title {
-    font-size: 16px;
+  .yam-post-stack-v2 .ym-feed-reels-pair__title,
+  .ym-feed .ym-feed-reels-pair__title {
+    font-size: 17px;
   }
 
-  .yam-post-stack-v2 .ym-feed-reels-pair__caption {
-    font-size: 13.5px;
+  .yam-post-stack-v2 .ym-feed-reels-pair__caption,
+  .ym-feed .ym-feed-reels-pair__caption {
+    font-size: 14px;
   }
 }
 
@@ -272,10 +297,22 @@ body.dark .ym-feed-reels-pair__more-btn {
   transform: rotate(180deg);
 }
 
-/* منع أي CSS خارجي من كسر البطاقة */
+/* حماية box-sizing */
 .ym-feed-reels-pair,
 .ym-feed-reels-pair *,
 .ym-feed-reels-pair *::before,
 .ym-feed-reels-pair *::after {
   box-sizing: border-box;
+}
+
+/* ============================================================
+ * تجاوز أي قواعد سابقة كانت تُصغّر البطاقة داخل .ym-feed
+ * (حيث يُعيّن flex-gap 12px والبطاقات إخوة article/ div)
+ * ============================================================ */
+.ym-feed > .ym-feed-reels-pair,
+.yam-post-stack-v2 > .ym-feed-reels-pair {
+  width: 100% !important;
+  max-width: 100% !important;
+  align-self: stretch;
+  flex: 0 0 auto;
 }

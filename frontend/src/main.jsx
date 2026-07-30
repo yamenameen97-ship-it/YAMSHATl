@@ -745,79 +745,140 @@ function normalizeStandaloneDeepLink() {
   if (typeof window === 'undefined') return;
   const { pathname, search, hash } = window.location;
 
-  // (a) معالجة خاصة لـ /share-target — تأجيل التوجيه حتى يجهز SW
+  // ✅ v89.04 ROOT FIX #4: fallback كامل لأي فشل في ServiceWorker API
+  //   السبب الجذري (المشكلة #4):
+  //     في v89.02 كنّا نستدعي navigator.serviceWorker.ready ونعتمد على أنّه
+  //     سيتحلّ خلال 3s. لكن هناك حالات فشل صامتة:
+  //       (a) SW API موجود لكنّه معطّل (وضع خفي / متصفح قديم / policy)
+  //       (b) navigator.serviceWorker.ready لا يُرجع أبداً (Promise معلّق)
+  //       (c) الاستدعاء نفسه يرمي (mobile FF قديم على أندرويد قديم)
+  //     كان window.location.replace بمعامل search الفارغ يُبقيه فارغاً بلا
+  //     أي توجيه إن حصلت أي إثر أعلاه → صفحة بيضاء.
+  //
+  //   الحل الجذري متعدد الطبقات:
+  //     1) safeRedirect() — أي فشل داخلي في replace يستخدم href كـ fallback.
+  //     2) try/catch حول كل استدعاء SW مع سقوط فوري إلى direct.
+  //     3) مؤقّت طوارئ خارجي 5s يضمن أن التوجيه يحدث حتى لو تعلّق كل شيء.
+  //     4) params دائماً غير فارغة (shared+via+ts) → hash router يقرأها بدقة.
+  //     5) safeRedirect يتحقق من window.location قبل الاستدعاء ويستخدم
+  //        window.location.href كـ ultimate fallback.
   if (pathname === '/share-target') {
-    const params = new URLSearchParams(search || '');
-    if (!params.has('shared')) params.set('shared', '0');
-    if (!params.has('via')) params.set('via', 'direct');
+    // بناء params مع ضمانة قيم افتراضية
+    const buildTarget = (via) => {
+      const p = new URLSearchParams(search || '');
+      p.set('via', via);
+      p.set('shared', via === 'sw' ? '1' : '0');
+      p.set('ts', String(Date.now()));
+      return `/#/share-target?${p.toString()}`;
+    };
 
-    // إذا كان SW مسيطراً بالفعل عند التحميل → توجيه فوري مع via=sw
-    const alreadyControlled = typeof navigator !== 'undefined'
-      && navigator.serviceWorker
-      && navigator.serviceWorker.controller;
+    // fallback آمن مطلقاً — يستخدم كل بدائل التوجيه المتوفرة
+    const safeRedirect = (target) => {
+      if (!target) return;
+      try { window.location.replace(target); return; } catch (_) { /* try next */ }
+      try { window.location.href = target; return; } catch (_) { /* try next */ }
+      try { window.location.assign(target); return; } catch (_) { /* try next */ }
+      // آخر ملاذ: hash فقط
+      try { window.location.hash = target.replace(/^\/#/, '#'); } catch (_) { /* ignore */ }
+    };
+
+    // (1) إذا كان SW مسيطراً بالفعل → توجيه فوري
+    let alreadyControlled = false;
+    try {
+      alreadyControlled = Boolean(navigator?.serviceWorker?.controller);
+    } catch (_) { alreadyControlled = false; }
 
     if (alreadyControlled) {
-      params.set('via', 'sw');
-      params.set('shared', '1');
-      const target = `/#/share-target?${params.toString()}`;
-      window.location.replace(target);
+      safeRedirect(buildTarget('sw'));
       return;
     }
 
-    // خلاف ذلك: انتظار SW ready + controller حتى 3 ثوانٍ ثم توجيه.
-    // لا نُبقي المستخدم على صفحة بيضاء — نضع علامة انتقالية دنيا.
-    if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
-      let redirected = false;
-      const doRedirect = (via) => {
-        if (redirected) return;
-        redirected = true;
-        const p = new URLSearchParams(search || '');
-        p.set('via', via);
-        p.set('shared', via === 'sw' ? '1' : '0');
-        window.location.replace(`/#/share-target?${p.toString()}`);
-      };
+    // (2) لا يوجد SW API إطلاقاً → توجيه مباشر
+    let hasSwApi = false;
+    try {
+      hasSwApi = typeof navigator !== 'undefined' && Boolean(navigator.serviceWorker);
+    } catch (_) { hasSwApi = false; }
 
-      const timeoutId = setTimeout(() => doRedirect('direct'), 3000);
+    if (!hasSwApi) {
+      safeRedirect(buildTarget('direct'));
+      return;
+    }
 
-      // انتظار SW ready + سيطرته الفعلية على العميل
-      navigator.serviceWorker.ready
-        .then(() => {
-          // بعد ready قد لا يكون controller موجوداً بعد (أول تحميل)،
-          // ننتظر controllerchange أو نتأكد فوراً.
-          if (navigator.serviceWorker.controller) {
-            clearTimeout(timeoutId);
-            doRedirect('sw');
-            return;
-          }
-          const onControllerChange = () => {
-            navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-            clearTimeout(timeoutId);
-            doRedirect('sw');
-          };
-          try {
-            navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-          } catch (_) {
-            clearTimeout(timeoutId);
-            doRedirect('direct');
-          }
-        })
-        .catch(() => {
-          clearTimeout(timeoutId);
+    // (3) SW موجود لكن غير مسيطر — انتظار مع 3 طبقات حماية
+    let redirected = false;
+    const doRedirect = (via) => {
+      if (redirected) return;
+      redirected = true;
+      safeRedirect(buildTarget(via));
+    };
+
+    // مؤقّت طوارئ داخلي 3s (لتوجيه direct)
+    let innerTimeoutId = null;
+    try { innerTimeoutId = setTimeout(() => doRedirect('direct'), 3000); } catch (_) { /* ignore */ }
+
+    // مؤقّت طوارئ خارجي 5s (ملاذ أخير لو تعلّق كل شيء)
+    try {
+      setTimeout(() => {
+        if (!redirected) {
+          try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (_) { /* ignore */ }
           doRedirect('direct');
-        });
-      return;
-    }
+        }
+      }, 5000);
+    } catch (_) { /* ignore */ }
 
-    // لا يوجد Service Worker API إطلاقاً (متصفح قديم) → توجيه مباشر
-    const target = `/#/share-target?${params.toString()}`;
-    window.location.replace(target);
+    // انتظار SW ready + controllerchange
+    try {
+      const readyPromise = navigator.serviceWorker.ready;
+      if (readyPromise && typeof readyPromise.then === 'function') {
+        readyPromise
+          .then(() => {
+            try {
+              if (navigator.serviceWorker.controller) {
+                try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (_) { /* ignore */ }
+                doRedirect('sw');
+                return;
+              }
+              const onControllerChange = () => {
+                try { navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange); } catch (_) { /* ignore */ }
+                try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (_) { /* ignore */ }
+                doRedirect('sw');
+              };
+              try {
+                navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+              } catch (_) {
+                try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (__) { /* ignore */ }
+                doRedirect('direct');
+              }
+            } catch (_) {
+              try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (__) { /* ignore */ }
+              doRedirect('direct');
+            }
+          })
+          .catch(() => {
+            try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (_) { /* ignore */ }
+            doRedirect('direct');
+          });
+      } else {
+        // .ready ليس Promise → fallback فوري
+        try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (_) { /* ignore */ }
+        doRedirect('direct');
+      }
+    } catch (_) {
+      // أي استثناء متزامن → fallback فوري
+      try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (__) { /* ignore */ }
+      doRedirect('direct');
+    }
     return;
   }
 
   if (hash && hash.startsWith('#/')) return;
   if (pathname === '/' || pathname === '/index.html') return;
   const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
-  window.location.replace(`/#${normalizedPath}${search}${hash || ''}`);
+  try {
+    window.location.replace(`/#${normalizedPath}${search}${hash || ''}`);
+  } catch (_) {
+    try { window.location.href = `/#${normalizedPath}${search}${hash || ''}`; } catch (__) { /* ignore */ }
+  }
 }
 
 function announceUpdateReady(registration) {

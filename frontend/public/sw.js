@@ -1,10 +1,12 @@
-// ✅ v88.98 ROOT FIX FINAL: إصلاح جذري لخمس مشاكل تسبب صفحة بيضاء عند المشاركة من يوتيوب
-//    1) قبول text/* في manifest → أندرويد يمرر رابط يوتيوب النصي
-//    2) HTML bridge بدون inline script → تحويل عبر meta-refresh فقط (يعمل قبل SW claim)
-//    3) قراءة رابط يوتيوب من text وليس url (يوتيوب يرسل الرابط في text)
-//    4) استبعاد /share-target من NEVER_CACHE_API_PATTERNS
-//    5) رفع نسخة SW → تفعيل clients.claim فوراً
-const VERSION = 'yamshat-v88.98-share-root-fix-final-' + '1917900000000';
+// ✅ v89.04 ROOT FIX FINAL: إصلاح جذري لست مشاكل متبقية تسبب صفحة بيضاء عند المشاركة من يوتيوب
+//    #1) ShareTargetLanding أصبحت eager (خارج lazy) في App.jsx — لا حاجة لتحميل chunk منفصل
+//    #2) SW يحتوي على main index.html + main bundle في APP_SHELL منذ install
+//    #3) ShareTargetLanding لم يعد يعتمد على session لعرض الحمولة (fallback UI)
+//    #4) normalizeStandaloneDeepLink يمتلك fallback كامل لو فشل ServiceWorker API
+//    #5) buildShareBridgeHtml نُظِّف من inline script بالكامل — meta-refresh حصرياً
+//    #6) AppErrorBoundary + ShareTargetErrorBoundary مخصّص يُغلّف /share-target
+//    ملاحظة: bumped VERSION لضمان أن SW القديم لن يبقى مسيطراً
+const VERSION = 'yamshat-v89.04-share-root-fix-final-' + '1922400000000';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -124,18 +126,24 @@ async function saveSharedPayload(payload) {
   });
 }
 
-// ✅ v88.98 ROOT FIX #2: HTML bridge بدون inline <script>
-//    السبب: window.location.replace() في inline script كان يُنفَّذ قبل أن يُسيطر SW
-//    على العميل → الصفحة تتحمّل بدون تحكم SW → HashRouter يبدأ قبل تحميل chunk
-//    → صفحة بيضاء لحظية على أندرويد.
-//    الحل النهائي: الاعتماد الحصري على meta-refresh (زمن 0) — المتصفح يتولى التوجيه
-//    على مستوى النظام قبل تحميل أي جافاسكربت. أسرع وأكثر موثوقية من inline script.
-//    نضيف أيضاً <link rel="prefetch"> على index.html لتسخين الكاش قبل التحويل.
+// ✅ v89.04 ROOT FIX #5: HTML bridge خالٍ نهائياً من أي inline <script>
+//    السبب الجذري (المشكلة #5):
+//      في v88.98 كانت التعليقات تدّعي إزالة inline script، لكن <script>...</script>
+//      ما زال داخل body. Google Chrome في وضع PWA (وبعض إعدادات CSP الصارمة
+//      داخل WebView) يمنع تنفيذ inline scripts → التحويل يفشل → HTML يُعرض
+//      كما هو (أو صفحة بيضاء إذا لم ينجح meta-refresh).
+//
+//    الحل:
+//      - إزالة دوسول لـ <script> داخل HTML (حتى الفارغة).
+//      - الاعتماد الحصري على meta http-equiv="refresh" content="0" — يعمل حتى
+//        مع CSP الأشد صرامة (default-src 'self' فقط بدون 'unsafe-inline').
+//      - fallback يدوي: زر <a> واضح مع target ملموس لو فشل meta-refresh.
+//      - <link rel="prefetch"> على index.html لتسخين الكاش قبل التحويل.
+//      - <base target="_self"> لضمان أن الروابط تُفتح داخل نفس النافذة.
 function buildShareBridgeHtml(sharedOk) {
   const ts = Date.now();
   const flag = sharedOk ? '1' : '0';
   const target = `/#/share-target?shared=${flag}&via=sw&ts=${ts}`;
-  const targetJson = JSON.stringify(target);
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -145,6 +153,7 @@ function buildShareBridgeHtml(sharedOk) {
   <meta http-equiv="refresh" content="0; url=${target}">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
+  <base target="_self">
   <link rel="prefetch" href="/index.html" as="document">
   <link rel="preconnect" href="/">
   <style>
@@ -154,7 +163,8 @@ function buildShareBridgeHtml(sharedOk) {
     @keyframes spin{to{transform:rotate(360deg)}}
     h1{font-size:1.15rem;margin:0;font-weight:800}
     p{color:#94A3B8;margin:0;font-size:.95rem;line-height:1.6;max-width:420px}
-    a.cta{color:#fff;text-decoration:none;padding:12px 28px;border-radius:14px;background:linear-gradient(135deg,#8B5CF6,#EC4899);border:0;margin-top:8px;font-weight:800;font-size:1rem;box-shadow:0 8px 24px rgba(139,92,246,.35)}
+    a.cta{color:#fff;text-decoration:none;padding:14px 32px;border-radius:14px;background:linear-gradient(135deg,#8B5CF6,#EC4899);border:0;margin-top:8px;font-weight:800;font-size:1.05rem;box-shadow:0 8px 24px rgba(139,92,246,.35);display:inline-block}
+    a.cta:active{transform:scale(.98)}
   </style>
 </head>
 <body>
@@ -167,38 +177,6 @@ function buildShareBridgeHtml(sharedOk) {
       <p style="color:#f59e0b">جافاسكربت غير مفعّل — سيتم التحويل تلقائياً خلال لحظات.</p>
     </noscript>
   </div>
-  <script>
-    // ✅ v88.98: script في نهاية body لضمان تنفيذه بعد بناء DOM
-    // ينتظر SW ready قبل التوجيه لضمان استقرار sessionStorage/IndexedDB
-    (function(){
-      var target = ${targetJson};
-      function goNow(){
-        try { window.location.replace(target); }
-        catch(e){ window.location.href = target; }
-      }
-      // أرسل رسالة "جاهز" لـ SW (اختياري)
-      try {
-        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({
-            type: 'YAMSHAT_SHARE_BRIDGE_READY',
-            timestamp: Date.now()
-          });
-        }
-      } catch(_) {}
-      // انتظر SW ready (حتى 800ms) ثم انتقل
-      if (navigator.serviceWorker && navigator.serviceWorker.ready) {
-        var timedOut = false;
-        var t = setTimeout(function(){ timedOut = true; goNow(); }, 800);
-        navigator.serviceWorker.ready.then(function(){
-          if (timedOut) return;
-          clearTimeout(t);
-          setTimeout(goNow, 60); // تأخير صغير جداً لضمان IndexedDB commit
-        }).catch(goNow);
-      } else {
-        setTimeout(goNow, 100);
-      }
-    })();
-  </script>
 </body>
 </html>`;
 }

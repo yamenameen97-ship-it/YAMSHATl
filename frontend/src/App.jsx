@@ -6,6 +6,12 @@ import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { ToastProvider } from './components/admin/ToastProvider.jsx';
 import AppStatusBanner from './components/system/AppStatusBanner.jsx';
 import AppErrorBoundary from './components/system/AppErrorBoundary.jsx';
+// ✅ v89.04 ROOT FIX #1 + #6: ShareTargetLanding يجب أن يكون EAGER (غير lazy)
+//   السبب: أوّل POST من يوتيوب/تيك توك يصل قبل أن يتوفّر أي chunk في الكاش.
+//   إذا كان lazy → المتصفح ينزّل chunk جديد قبل عرض أي شيء → صفحة بيضاء طويلة
+//   أو ChunkLoadError. حلّها: تضمينها داخل main bundle مباشرة.
+import ShareTargetLanding from './pages/ShareTargetLanding.jsx';
+import ShareTargetErrorBoundary from './components/system/ShareTargetErrorBoundary.jsx';
 import InstallPrompt from './components/feedback/InstallPrompt.jsx';
 import OfflineExperience from './components/feedback/OfflineExperience.jsx';
 import AppUpdatePrompt from './components/feedback/AppUpdatePrompt.jsx';
@@ -82,7 +88,6 @@ const GroupAuditLog = lazy(() => import('./pages/groups/GroupAuditLog.jsx'));
 const GroupCreateWizard = lazy(() => import('./pages/groups/GroupCreateWizard.jsx'));
 const GroupDiscover = lazy(() => import('./pages/groups/GroupDiscover.jsx'));
 const GroupNotificationSettings = lazy(() => import('./pages/groups/GroupNotificationSettings.jsx'));
-const ShareTargetLanding = lazy(() => import('./pages/ShareTargetLanding.jsx'));
 // 🎮 ميزات التفاعل والتلعيب + الغرف الصوتية
 const EngagementHub = lazy(() => import('./pages/EngagementHub.jsx'));
 const VoiceRoomsPage = lazy(() => import('./pages/VoiceRoomsPage.jsx'));
@@ -280,7 +285,18 @@ export default function App() {
             <Route path="/settings/inbox" element={<ProtectedRoute><InboxSettingsPage /></ProtectedRoute>} />
             <Route path="/groups/settings" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
             <Route path="/groups/settings/:groupId" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
-            <Route path="/share-target" element={<ShareTargetLanding />} />
+            {/* ✅ v89.04 ROOT FIX #6: مسار /share-target مُحاط بـ ShareTargetErrorBoundary
+                مخصّص يتعامل مع ChunkLoadError بدون إفراغ الحمولة أو حلقة reload.
+                ShareTargetLanding نفسها الآن eager (خارج Suspense) لتجنّب أي
+                chunk load عند أوّل POST خارجي. */}
+            <Route
+              path="/share-target"
+              element={
+                <ShareTargetErrorBoundary>
+                  <ShareTargetLanding />
+                </ShareTargetErrorBoundary>
+              }
+            />
             {/* 🎮 مركز التفاعل والتلعيب */}
             <Route path="/engagement" element={<ProtectedRoute><EngagementHub /></ProtectedRoute>} />
             <Route path="/engagement/:tab" element={<ProtectedRoute><EngagementHub /></ProtectedRoute>} />

@@ -113,11 +113,30 @@ export default function ShareTargetLanding() {
   const [linkPublishing, setLinkPublishing] = useState(false);
   const previewUrlsRef = useRef([]);
 
-  // ✅ فحص تسجيل الدخول
+  // ✅ v89.04 ROOT FIX #3: فحص تسجيل الدخول مع حماية من authHydrated=false الدائمة
+  //   السبب الجذري (المشكلة #3):
+  //     إذا لم يكتمل authHydrated (مثلاً: SW جديد تمّ install قبل التوفق مع
+  //     appStore hydration من sessionStorage/IndexedDB) → الشرط (!authHydrated || authLoading)
+  //     يبقى true إلى الأبد → المستخدم يرى "جارٍ التحقّق من الجلسة..." للأبد.
+  //
+  //   الحل:
+  //     - مؤقت authHydrated قصوى 3s: إن لم يُرفع خلال هذه المدة نعتبر الجلسة
+  //       "غير متوفّرة" ونعرض واجهة تسجيل الدخول (مع الاحتفاظ بالحمولة).
+  //     - الحمولة تُقرأ وتُعرض معاً من IndexedDB حتّى قبل اكتمال auth
+  //       (يرى المستخدم تأكيداً أن المشاركة استُلمت).
   const session = useAppStore((state) => state.session);
   const authHydrated = useAppStore((state) => state.authHydrated);
   const authLoading = useAppStore((state) => state.authLoading);
   const isAuthenticated = Boolean(session?.username || session?.user || session?.email);
+  const [authTimeout, setAuthTimeout] = useState(false);
+
+  // مؤقت طوارئ 3s: إذا بقي authHydrated=false يُعتبر فشل hydration
+  //   ونفتح بوابة تسجيل الدخول (مع إبقاء الحمولة محفوظة في IndexedDB).
+  useEffect(() => {
+    if (authHydrated) return;
+    const timer = setTimeout(() => setAuthTimeout(true), 3000);
+    return () => clearTimeout(timer);
+  }, [authHydrated]);
 
   useEffect(() => {
     let mounted = true;
@@ -495,7 +514,12 @@ export default function ShareTargetLanding() {
     navigate('/login', { state: { from: { pathname: '/share-target', search: '?shared=1' } } });
   };
 
-  const showLoginGate = authHydrated && !authLoading && !isAuthenticated;
+  // ✅ v89.04 ROOT FIX #3: الجلسة تُعتبر جاهزة إمّا:
+  //   - authHydrated مرفوعة فعلاً (وليس authLoading)
+  //   - أو انتهى مؤقت الطوارئ 3s → نفترض أنّها لن تُرفع أبداً
+  const authResolved = authHydrated || authTimeout;
+  const showLoginGate = authResolved && !authLoading && !isAuthenticated;
+  const isAuthChecking = !authResolved || authLoading;
 
   // ✅ v88.84: تحديد ما إذا كان المحتوى قابلاً للتنزيل
   const canDownload = Boolean(firstFile?.blob || payload?.url);
@@ -506,11 +530,12 @@ export default function ShareTargetLanding() {
         <div className="share-target-badge">مشاركة إلى يام شات</div>
         <h1>إلى أين تريد نشر هذا المحتوى؟</h1>
 
-        {/* بوابة تسجيل الدخول */}
-        {(!authHydrated || authLoading) ? (
+        {/* ✅ v89.04 ROOT FIX #3: بوابة تسجيل الدخول — مع مؤقت طوارئ
+            إذا لم تجتز auth hydration خلال 3s نمضي إلى واجهة تسجيل الدخول */}
+        {isAuthChecking ? (
           <div className="share-empty-box">
             <strong>جارٍ التحقّق من الجلسة...</strong>
-            <span>لحظات وسنعرض لك خيارات المشاركة.</span>
+            <span>لحظات وسنعرض لك خيارات المشاركة. المحتوى المُشارَك محفوظ محليّاً.</span>
           </div>
         ) : showLoginGate ? (
           <div className="share-login-gate" role="alert">

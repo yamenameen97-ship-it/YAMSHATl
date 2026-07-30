@@ -1,10 +1,10 @@
 /* ============================================================
- * YAMSHAT v89.05 — FEED REELS PAIR (YouTube Shorts Sized)
+ * YAMSHAT v89.06 — FEED REELS PAIR (YouTube Shorts Sized — MOBILE FIX)
  * ------------------------------------------------------------
- * بطاقة "ريلز مقترحة" داخل الفيد بنفس عرض بطاقة المنشور
- * (.ym-post-card) — مع بطاقتَي ريل داخليتَين كبيرتَين جداً
- * بحجم مطابق لـ YouTube Shorts (نسبة 9:16 حقيقية وارتفاع
- * كبير يملأ الشاشة تقريباً مثل ريلز يوتيوب في صفحة Shorts).
+ * إصلاح جذري لحجم بطاقتَي "ريلز مقترحة" على الجوال:
+ * كانت البطاقات تظهر مستطيلة صغيرة أفقياً بدل شكل YouTube Shorts
+ * العمودي الحقيقي. الآن نُجبر نسبة 9:16 على كل الشاشات مع
+ * ارتفاع كبير مطابق تماماً لصفحة Shorts في يوتيوب.
  * ============================================================ */
 
 /* الحاوية الرئيسية: مطابقة تماماً لأبعاد .ym-post-card */
@@ -102,14 +102,15 @@ body.dark .ym-feed-reels-pair {
 /* ============================================================
  * الشبكة: عمودان يملآن عرض البطاقة كاملاً — بطاقتان كبيرتان
  * جداً بأبعاد مطابقة تقريباً لـ YouTube Shorts.
- * الارتفاع يُحسب من عرض البطاقة (calc) لضمان نسبة 9:16 كاملة
- * وبقاعدة min-height كبيرة جداً (كل بطاقة ≈ ارتفاع منشور فيديو).
+ * الارتفاع يُحسب من عرض البطاقة (aspect-ratio) لضمان نسبة 9:16 كاملة.
  * ============================================================ */
 .ym-feed-reels-pair__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
   gap: 10px;
   width: 100%;
+  /* أهم: مهم إن الـ grid item لا يمتد أوتوماتيكياً بحيث تُحترم aspect-ratio */
+  align-items: stretch;
 }
 
 .ym-feed-reels-pair__card {
@@ -122,11 +123,12 @@ body.dark .ym-feed-reels-pair {
   border-radius: 14px;
   overflow: hidden;
   position: relative;
-  width: 100%;
+  width: 100% !important;
   /* نسبة 9:16 حقيقية مثل YouTube Shorts — الارتفاع يتناسب مع العرض */
-  aspect-ratio: 9 / 16;
-  /* حد أدنى كبير جداً (مثل ريل يوتيوب داخل صفحة Shorts) */
-  min-height: 560px;
+  aspect-ratio: 9 / 16 !important;
+  /* لا نستخدم min-height كبير على الجوال — لأنه يعطّل aspect-ratio عندما
+     يكون العرض صغيراً جداً (شبكة عمودَين على شاشة 400px). */
+  min-height: 0;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
   transition: transform 0.18s ease, box-shadow 0.18s ease;
   font-family: inherit;
@@ -252,10 +254,12 @@ body.dark .ym-feed-reels-pair {
 }
 
 /* ============================================================
- * الجوال (≤ 640px): نسبة 9:16 كاملة + ارتفاع مطابق ليوتيوب Shorts
- * على الجوال، عرض كل بطاقة ≈ (viewport - padding)/2
- * فمثلاً على شاشة 400px = ~180px عرض → ~320px ارتفاع من aspect-ratio
- * لكننا نرفع min-height لضمان الحجم الكبير المطلوب في الصورة.
+ * الجوال (≤ 640px): بطاقتان بنسبة 9:16 حقيقية مطابقة ليوتيوب Shorts
+ * ------------------------------------------------------------
+ * المشكلة السابقة: كنّا نضع min-height كبير (480px) على بطاقتَين
+ * بعرض ~180px، فتفقد النسبة 9:16 وتظهر مستطيلة/طويلة جداً.
+ * الحل: نُلغي min-height تماماً على الجوال ونعتمد على aspect-ratio
+ * لتُحاكي الشكل الحقيقي لـ YouTube Shorts (نفس نسبة الفيديو العمودية).
  * ============================================================ */
 @media (max-width: 640px) {
   .ym-feed-reels-pair {
@@ -265,12 +269,16 @@ body.dark .ym-feed-reels-pair {
   }
 
   .ym-feed-reels-pair__grid {
+    grid-template-columns: 1fr 1fr !important;
     gap: 8px;
   }
 
   .ym-feed-reels-pair__card {
-    /* ارتفاع كبير جداً على الجوال مطابق ليوتيوب Shorts في الفيد */
-    min-height: 480px;
+    /* على الجوال: aspect-ratio 9:16 فقط — الارتفاع يتحدد من العرض تلقائياً */
+    aspect-ratio: 9 / 16 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
     border-radius: 14px;
   }
 
@@ -290,23 +298,28 @@ body.dark .ym-feed-reels-pair {
   }
 }
 
-/* أجهزة الجوال المتوسطة (≤ 480px) */
+/* أجهزة الجوال المتوسطة (≤ 480px) — إجبار النسبة نفسها */
 @media (max-width: 480px) {
   .ym-feed-reels-pair__card {
-    min-height: 440px;
+    aspect-ratio: 9 / 16 !important;
+    min-height: 0 !important;
+    height: auto !important;
   }
 }
 
 /* أجهزة الجوال الصغيرة (≤ 380px) */
 @media (max-width: 380px) {
   .ym-feed-reels-pair__card {
-    min-height: 400px;
+    aspect-ratio: 9 / 16 !important;
+    min-height: 0 !important;
+    height: auto !important;
   }
 }
 
 /* ============================================================
  * الويب/لابتوب (≥ 900px): بنفس عرض عمود الفيد المركزي
  * وارتفاع كبير جداً مثل YouTube Shorts في المتصفح.
+ * على الشاشات الكبيرة يمكن الحفاظ على min-height لأن العرض كافٍ.
  * ============================================================ */
 @media (min-width: 900px) {
   .yam-post-stack-v2 .ym-feed-reels-pair,
@@ -318,6 +331,7 @@ body.dark .ym-feed-reels-pair {
 
   .yam-post-stack-v2 .ym-feed-reels-pair__card,
   .ym-feed .ym-feed-reels-pair__card {
+    aspect-ratio: 9 / 16 !important;
     min-height: 620px;
     border-radius: 16px;
   }
@@ -337,6 +351,7 @@ body.dark .ym-feed-reels-pair {
 @media (min-width: 1200px) {
   .yam-post-stack-v2 .ym-feed-reels-pair__card,
   .ym-feed .ym-feed-reels-pair__card {
+    aspect-ratio: 9 / 16 !important;
     min-height: 680px;
   }
 }
@@ -367,4 +382,21 @@ body.dark .ym-feed-reels-pair {
   max-width: 100% !important;
   align-self: stretch;
   flex: 0 0 auto;
+}
+
+/* ============================================================
+ * حماية إضافية ضدّ أي قواعد خارجية تُجبر ارتفاع البطاقة على الجوال
+ * (مثل height: auto من ym-post-card أو global reset)
+ * ============================================================ */
+.ym-feed-reels-pair .ym-feed-reels-pair__grid > .ym-feed-reels-pair__card {
+  aspect-ratio: 9 / 16 !important;
+}
+
+@media (max-width: 640px) {
+  .ym-feed-reels-pair .ym-feed-reels-pair__grid > .ym-feed-reels-pair__card {
+    aspect-ratio: 9 / 16 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+  }
 }

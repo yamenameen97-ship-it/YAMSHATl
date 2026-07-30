@@ -150,7 +150,6 @@
         "src/components/chat/CallBubble.jsx",
         "src/components/chat/MediaPreviewModal.jsx",
         "src/components/chat/MessageActionsToolbar.jsx",
-        "src/components/mobile/FeedVideoPlayer.jsx",
         "src/components/chat/MessageReactionPicker.jsx",
         "src/components/chat/SafeImage.jsx",
         "src/components/mobile/PWAInstallBanner.jsx",
@@ -162,19 +161,9 @@
         "src/components/chat/MessageContextPopup.jsx",
         "src/components/settings/FontSizeSettings.jsx",
         "src/components/settings/TranslationSettings.jsx",
-        "src/components/system/ShareTargetErrorBoundary.jsx",
         "src/components/chat/PressToRecordMic.jsx",
         "src/components/stories/UserPickerModal.jsx",
         "src/components/feed/ImageViewerModal.jsx",
-        "src/components/admin/TrendingDashboardCard.jsx",
-        "src/components/notifications/AdminAlertNotificationCard.jsx",
-        "src/components/notifications/RestrictionNotificationCard.jsx",
-        "src/components/profile/ProfileFeedList.jsx",
-        "src/components/chat/ChatSettingsPopover.jsx",
-        "src/components/profile/ProfileMediaGrid.jsx",
-        "src/components/profile/ProfileReelsGrid.jsx",
-        "src/components/feed/ExternalSourceCard.jsx",
-        "src/components/feed/FeedReelsPair.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

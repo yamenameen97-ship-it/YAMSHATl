@@ -134,7 +134,7 @@ export default function ShareTargetLanding() {
   //   ونفتح بوابة تسجيل الدخول (مع إبقاء الحمولة محفوظة في IndexedDB).
   useEffect(() => {
     if (authHydrated) return;
-    const timer = setTimeout(() => setAuthTimeout(true), 3000);
+    const timer = setTimeout(() => setAuthTimeout(true), 1500);  // v89.07: 3s→1.5s
     return () => clearTimeout(timer);
   }, [authHydrated]);
 
@@ -533,9 +533,25 @@ export default function ShareTargetLanding() {
         {/* ✅ v89.04 ROOT FIX #3: بوابة تسجيل الدخول — مع مؤقت طوارئ
             إذا لم تجتز auth hydration خلال 3s نمضي إلى واجهة تسجيل الدخول */}
         {isAuthChecking ? (
-          <div className="share-empty-box">
-            <strong>جارٍ التحقّق من الجلسة...</strong>
-            <span>لحظات وسنعرض لك خيارات المشاركة. المحتوى المُشارَك محفوظ محليّاً.</span>
+          /* ✅ v89.07 ROOT FIX: spinner مرئي كبير بدل نص فقط
+             السبب: المستخدم كان يرى شاشة تبدو فارغة (فقط نص صغير) عند العودة
+             من WebView — الآن يرى spinner + بطاقة واضحة فوراً */
+          <div className="share-empty-box" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: 24 }}>
+            <div
+              aria-hidden="true"
+              style={{
+                width: 56, height: 56,
+                border: '5px solid rgba(139,92,246,.2)',
+                borderTopColor: '#8B5CF6',
+                borderRadius: '50%',
+                animation: 'ym-share-spin .85s linear infinite',
+              }}
+            />
+            <style>{`@keyframes ym-share-spin{to{transform:rotate(360deg)}}`}</style>
+            <strong style={{ fontSize: '1.05rem', fontWeight: 800 }}>جارٍ التحقّق من الجلسة...</strong>
+            <span style={{ color: '#94A3B8', fontSize: '.9rem', textAlign: 'center', maxWidth: 360, lineHeight: 1.6 }}>
+              لحظات وسنعرض لك خيارات المشاركة. المحتوى المُشارَك محفوظ محليّاً ولن يُفقد.
+            </span>
           </div>
         ) : showLoginGate ? (
           <div className="share-login-gate" role="alert">

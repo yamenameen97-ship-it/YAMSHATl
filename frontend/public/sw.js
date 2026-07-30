@@ -1,12 +1,22 @@
-// ✅ v89.04 ROOT FIX FINAL: إصلاح جذري لست مشاكل متبقية تسبب صفحة بيضاء عند المشاركة من يوتيوب
-//    #1) ShareTargetLanding أصبحت eager (خارج lazy) في App.jsx — لا حاجة لتحميل chunk منفصل
-//    #2) SW يحتوي على main index.html + main bundle في APP_SHELL منذ install
-//    #3) ShareTargetLanding لم يعد يعتمد على session لعرض الحمولة (fallback UI)
-//    #4) normalizeStandaloneDeepLink يمتلك fallback كامل لو فشل ServiceWorker API
+// ✅ v89.07 ROOT FIX FINAL: إصلاح جذري نهائي لفشل استقبال المشاركات
+//    (الشاشة الفارغة عند المشاركة من يوتيوب/تويتر/إنستجرام/فيسبوك/تيك توك/معرض الجوال)
+//
+//    السبب الجذري في v89.04:
+//      buildShareBridgeHtml اعتمد على meta-refresh فقط (بدون inline JS).
+//      لكن Chrome/WebView على أندرويد في سياق PWA — خاصةً عند العودة من WebView
+//      (يوتيوب/فيسبوك) — يتجاهل meta-refresh أحياناً → شاشة بيضاء لا نهائية.
+//
+//    الإصلاحات:
+//    #1) buildShareBridgeHtml: جمع meta-refresh + inline JS (CSP يسمح unsafe-inline)
+//        + زر <a> يدوي واضح + fallback ثانوي بعد 2.5s → لا شاشة فارغة أبداً.
+//    #2) بطاقة مرئية كاملة مع spinner كبير — المستخدم يرى تأكيداً بصرياً فورياً.
+//    #3) handleShareTarget: حفظ الحمولة حتى لو كانت فارغة تماماً (يمنع الفقدان).
+//    #4) POST fallback: نُرجع HTML bridge كامل دائماً (وليس Response فارغ).
+//    #5) رفع VERSION لإجبار المتصفح على تحديث SW القديم.
 //    #5) buildShareBridgeHtml نُظِّف من inline script بالكامل — meta-refresh حصرياً
 //    #6) AppErrorBoundary + ShareTargetErrorBoundary مخصّص يُغلّف /share-target
 //    ملاحظة: bumped VERSION لضمان أن SW القديم لن يبقى مسيطراً
-const VERSION = 'yamshat-v89.04-share-root-fix-final-' + '1922400000000';
+const VERSION = 'yamshat-v89.07-share-white-screen-fix-' + '1922500000000';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -144,11 +154,22 @@ function buildShareBridgeHtml(sharedOk) {
   const ts = Date.now();
   const flag = sharedOk ? '1' : '0';
   const target = `/#/share-target?shared=${flag}&via=sw&ts=${ts}`;
+  // ✅ v89.07 ROOT FIX: fallback ثلاثي (meta-refresh + inline JS + زر يدوي)
+  //   السبب الجذري السابق:
+  //     v89.04 اعتمدت على meta-refresh فقط. لكن Chrome على أندرويد في سياق PWA —
+  //     خاصةً عند العودة من WebView (يوتيوب/فيسبوك) — يتجاهل meta-refresh أحياناً
+  //     → صفحة بيضاء لا نهائية.
+  //   الحل:
+  //     1) meta-refresh (فوري إن نجح)
+  //     2) inline <script> يستدعي location.replace بعد 150ms (CSP يسمح unsafe-inline)
+  //     3) fallback ثانوي setTimeout(2500ms) لضمان التحويل عند فشل كل شيء
+  //     4) زر <a> واضح مرئي منذ اللحظة الأولى — لا يرى المستخدم شاشة فارغة أبداً
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#7C3AED">
   <title>يام شات — جارٍ استقبال المشاركة</title>
   <meta http-equiv="refresh" content="0; url=${target}">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
@@ -157,26 +178,51 @@ function buildShareBridgeHtml(sharedOk) {
   <link rel="prefetch" href="/index.html" as="document">
   <link rel="preconnect" href="/">
   <style>
-    html,body{margin:0;padding:0;height:100%;background:#0A0D1A;color:#fff;font-family:system-ui,-apple-system,'Noto Sans Arabic',sans-serif}
-    .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:16px;padding:24px;text-align:center}
-    .spinner{width:52px;height:52px;border:4px solid rgba(139,92,246,.2);border-top-color:#8B5CF6;border-radius:50%;animation:spin .8s linear infinite}
+    html,body{margin:0;padding:0;height:100%;background:#0A0D1A;color:#fff;font-family:system-ui,-apple-system,'Noto Sans Arabic','Tajawal',sans-serif;-webkit-font-smoothing:antialiased}
+    .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:18px;padding:24px;text-align:center;box-sizing:border-box}
+    .card{background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);border-radius:22px;padding:28px 22px;max-width:520px;width:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:14px}
+    .badge{display:inline-block;background:linear-gradient(135deg,rgba(139,92,246,.25),rgba(236,72,153,.18));color:#e9d5ff;padding:6px 14px;border-radius:999px;font-size:13px;font-weight:700;border:1px solid rgba(139,92,246,.4)}
+    .spinner{width:56px;height:56px;border:5px solid rgba(139,92,246,.2);border-top-color:#8B5CF6;border-radius:50%;animation:spin .85s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
-    h1{font-size:1.15rem;margin:0;font-weight:800}
-    p{color:#94A3B8;margin:0;font-size:.95rem;line-height:1.6;max-width:420px}
-    a.cta{color:#fff;text-decoration:none;padding:14px 32px;border-radius:14px;background:linear-gradient(135deg,#8B5CF6,#EC4899);border:0;margin-top:8px;font-weight:800;font-size:1.05rem;box-shadow:0 8px 24px rgba(139,92,246,.35);display:inline-block}
-    a.cta:active{transform:scale(.98)}
+    h1{font-size:1.25rem;margin:0;font-weight:900;line-height:1.4}
+    p{color:#94A3B8;margin:0;font-size:.98rem;line-height:1.75;max-width:440px}
+    a.cta{color:#fff;text-decoration:none;padding:14px 34px;border-radius:14px;background:linear-gradient(135deg,#8B5CF6,#EC4899);border:0;margin-top:6px;font-weight:800;font-size:1.05rem;box-shadow:0 10px 28px rgba(139,92,246,.4);display:inline-block;min-width:220px;cursor:pointer;font-family:inherit}
+    a.cta:active{transform:scale(.97)}
+    .hint{color:#64748b;font-size:12px;margin-top:4px}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="spinner" aria-hidden="true"></div>
-    <h1>جارٍ استلام المحتوى في يام شات...</h1>
-    <p>إذا لم تُفتح الصفحة تلقائياً خلال ثانيتين، اضغط الزر أدناه.</p>
-    <a class="cta" href="${target}" id="ym-share-cta">فتح يام شات</a>
-    <noscript>
-      <p style="color:#f59e0b">جافاسكربت غير مفعّل — سيتم التحويل تلقائياً خلال لحظات.</p>
-    </noscript>
+    <div class="card">
+      <span class="badge">مشاركة إلى يام شات</span>
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>جارٍ استلام المحتوى...</h1>
+      <p>تم استلام المحتوى المُشارَك. إذا لم تُفتح الصفحة تلقائياً خلال ثانيتين، اضغط الزر أدناه.</p>
+      <a class="cta" href="${target}" id="ym-share-cta">فتح يام شات</a>
+      <span class="hint">المحتوى محفوظ محليّاً ولن يُفقد</span>
+      <noscript>
+        <p style="color:#f59e0b;margin-top:6px">جافاسكربت غير مفعّل — سيتم التحويل تلقائياً.</p>
+      </noscript>
+    </div>
   </div>
+  <script>
+    // ✅ v89.07: تحويل JS فوري يسبق meta-refresh (CSP يسمح unsafe-inline)
+    (function(){
+      var target = '${target}';
+      try {
+        setTimeout(function(){
+          try { window.location.replace(target); }
+          catch(_) { try { window.location.href = target; } catch(__) {} }
+        }, 150);
+        setTimeout(function(){
+          if (window.location.pathname === '/share-target') {
+            try { window.location.assign(target); }
+            catch(_) { try { window.location.hash = '#/share-target?shared=${flag}&via=sw&ts=${ts}'; } catch(__) {} }
+          }
+        }, 2500);
+      } catch(_) {}
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -264,6 +310,10 @@ async function handleShareTarget(request) {
 
     const cleanFiles = normalizedFiles.filter(Boolean);
 
+    // ✅ v89.07 ROOT FIX #3: نحفظ الحمولة دائماً — حتى لو كانت فارغة تماماً.
+    //   السبب: إذا لم نحفظها، ShareTargetLanding سيبقى في حالة loading انتظاراً
+    //   لإشارة من IndexedDB لن تأتي أبداً → شاشة "جاري التحضير..." لا نهائية.
+    //   الحل: نحفظ حتى الحمولة الفارغة — الواجهة ستكشفها وتعرض "لا يوجد محتوى".
     await saveSharedPayload({
       id: Date.now(),
       receivedAt: new Date().toISOString(),
@@ -271,6 +321,9 @@ async function handleShareTarget(request) {
       text,
       url,
       files: cleanFiles,
+      // marker يُميّز v89.07: مفيد للـ diagnostics
+      _v: 'v89.07',
+      _empty: !(title || text || url || cleanFiles.length),
     });
 
     // إعلام كل العملاء بأن حمولة جديدة وصلت

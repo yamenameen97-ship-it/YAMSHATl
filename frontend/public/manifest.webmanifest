@@ -1,5 +1,5 @@
 {
-  "id": "/?v=88.98",
+  "id": "/?v=89.07",
   "name": "يام شات - Yamshat",
   "short_name": "Yamshat",
   "lang": "ar",
@@ -7,12 +7,20 @@
   "start_url": "/?pwa=1",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui", "browser"],
+  "display_override": [
+    "standalone",
+    "minimal-ui",
+    "browser"
+  ],
   "orientation": "portrait-primary",
   "background_color": "#0A0D1A",
   "theme_color": "#7C3AED",
   "description": "تطبيق التواصل الاجتماعي العربي - منصة للتواصل والمشاركة والتفاعل والبث المباشر والريلز",
-  "categories": ["social", "communication", "entertainment"],
+  "categories": [
+    "social",
+    "communication",
+    "entertainment"
+  ],
   "prefer_related_applications": false,
   "screenshots": [
     {
@@ -169,12 +177,41 @@
           "name": "files",
           "accept": [
             "image/*",
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "image/gif",
             "video/*",
+            "video/mp4",
+            "video/webm",
+            "video/quicktime",
+            "video/x-matroska",
             "audio/*",
+            "audio/mpeg",
+            "audio/wav",
+            "audio/mp4",
+            "audio/ogg",
             "text/*",
             "text/plain",
             "text/uri-list",
-            "application/octet-stream"
+            "text/html",
+            "application/octet-stream",
+            "application/pdf",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+            ".gif",
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".mkv",
+            ".mp3",
+            ".wav",
+            ".m4a",
+            ".ogg",
+            ".txt",
+            ".pdf"
           ]
         }
       ]
@@ -184,9 +221,23 @@
     {
       "action": "/open-file",
       "accept": {
-        "image/*": [".png", ".jpg", ".jpeg", ".webp", ".gif"],
-        "video/*": [".mp4", ".webm", ".mov"],
-        "audio/*": [".mp3", ".wav", ".m4a"]
+        "image/*": [
+          ".png",
+          ".jpg",
+          ".jpeg",
+          ".webp",
+          ".gif"
+        ],
+        "video/*": [
+          ".mp4",
+          ".webm",
+          ".mov"
+        ],
+        "audio/*": [
+          ".mp3",
+          ".wav",
+          ".m4a"
+        ]
       }
     }
   ],
@@ -197,7 +248,10 @@
     }
   ],
   "launch_handler": {
-    "client_mode": ["navigate-new", "auto"]
+    "client_mode": [
+      "navigate-new",
+      "auto"
+    ]
   },
   "note_taking": {
     "new_note_url": "/#/new-note"

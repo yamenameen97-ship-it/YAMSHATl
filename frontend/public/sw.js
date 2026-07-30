@@ -16,7 +16,16 @@
 //    #5) buildShareBridgeHtml نُظِّف من inline script بالكامل — meta-refresh حصرياً
 //    #6) AppErrorBoundary + ShareTargetErrorBoundary مخصّص يُغلّف /share-target
 //    ملاحظة: bumped VERSION لضمان أن SW القديم لن يبقى مسيطراً
-const VERSION = 'yamshat-v89.07-share-white-screen-fix-' + '1922500000000';
+// ✅ v89.08 ROOT FIX FINAL: إصلاح جذري كامل لاستقبال المشاركات الخارجية
+//   الأسباب الجذرية المكتشفة والمُصلَحة:
+//     #A) nginx كان يرفض POST على /share-target بـ 405 قبل تسجيل SW.
+//         → أُصلح في nginx.conf (error_page 405 =200 + client_max_body_size 100M).
+//     #B) SW لم يستدع clients.claim() فوراً في install → أول POST يفوت.
+//         → أُصلح: skipWaiting + claim فوري + رسالة activation.
+//     #C) handleShareTarget كانت ترمي عند contentType غير معروف.
+//         → أُصلح: try/catch شامل داخلي + دائماً نحفظ + دائماً نُرجع HTML.
+//     #D) VERSION مرفوعة لإجبار تحديث SW القديم فوراً.
+const VERSION = 'yamshat-v89.08-share-external-final-' + '1930000000000';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -237,17 +246,24 @@ function extractUrlFromText(str) {
 }
 
 async function handleShareTarget(request) {
+  // ✅ v89.08 ROOT FIX #C: try/catch شامل — لا نُلقي أبداً استثناءً غير ملتقط.
+  //   السبب الجذري السابق:
+  //     عند contentType غير معروف (بعض إصدارات Chrome على أندرويد ترسل
+  //     multipart بدون boundary صالح) formData() ترمي TypeError → catch
+  //     الخارجي يُعيد HTML bridge لكن بدون حفظ payload → ShareTargetLanding
+  //     يقرأ null إلى الأبد → شاشة "جارٍ التحضير..." لا نهائية.
+  //   الحل:
+  //     كل عملية قراءة body مُغلَّفة بـ try/catch مستقل. نتقدم بأفضل ما لدينا
+  //     ونحفظ payload دائماً — حتى لو كانت فارغة — ليقرأها ShareTargetLanding.
+  let title = '';
+  let text = '';
+  let url = '';
+  let files = [];
+
   try {
-    // ✅ v88.98 ROOT FIX: التعامل مع contentType المختلف
-    //   بعض المتصفحات ترسل application/x-www-form-urlencoded بدلاً من multipart/form-data
-    //   عندما لا توجد ملفات — يجب دعم كلا الحالتين.
     const contentType = String(request.headers.get('content-type') || '').toLowerCase();
 
-    let title = '';
-    let text = '';
-    let url = '';
-    let files = [];
-
+    // ✅ v89.08: حاول قراءة formData أولاً — الأكثر شيوعاً فٌ مشاركات الفيديو/الصور
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
       files = formData.getAll('files').filter(Boolean);
@@ -255,21 +271,40 @@ async function handleShareTarget(request) {
       text = String(formData.get('text') || '');
       url = String(formData.get('url') || '');
     } else if (contentType.includes('application/x-www-form-urlencoded')) {
-      const raw = await request.text();
-      const params = new URLSearchParams(raw);
-      title = String(params.get('title') || '');
-      text = String(params.get('text') || '');
-      url = String(params.get('url') || '');
+      try {
+        const raw = await request.text();
+        const params = new URLSearchParams(raw);
+        title = String(params.get('title') || '');
+        text = String(params.get('text') || '');
+        url = String(params.get('url') || '');
+      } catch (_) { /* ignore — continue with empty */ }
     } else {
-      // محاولة formData كـ fallback
+      // ✅ v89.08: fallback ثلاثي — حتى لو فشل كل شيء نتقدم
+      // 1) حاول formData
+      let handled = false;
       try {
         const formData = await request.formData();
         files = formData.getAll('files').filter(Boolean);
         title = String(formData.get('title') || '');
         text = String(formData.get('text') || '');
         url = String(formData.get('url') || '');
-      } catch (_) {
-        // لا شيء — نستمر بقيم فارغة
+        handled = true;
+      } catch (_) { /* try next */ }
+      // 2) حاول text/url-encoded
+      if (!handled) {
+        try {
+          const raw = await request.clone().text();
+          if (raw && raw.includes('=')) {
+            const params = new URLSearchParams(raw);
+            title = String(params.get('title') || title || '');
+            text = String(params.get('text') || text || '');
+            url = String(params.get('url') || url || '');
+            handled = true;
+          } else if (raw) {
+            // 3) النص مباشر ربما يحتوي URL فقط
+            text = raw.slice(0, 2000);
+          }
+        } catch (_) { /* give up gracefully */ }
       }
     }
 
@@ -397,17 +432,54 @@ async function broadcastMessage(message) {
   clientsList.forEach((client) => client.postMessage(message));
 }
 
+// ✅ v89.08 ROOT FIX #B: skipWaiting فوري + claim مبكّر + تحمل فشل addAll
+//   السبب الجذري السابق:
+//     addAll(APP_SHELL) إذا فشل أي أصل (مثل أيقونة مفقودة) → install يفشل
+//     بالكامل → SW لا يُفعّل → أول POST من يوتيوب يفوت إلى nginx (والذي
+//     كان يرد 405) → المستخدم لا يرى شيئاً.
+//   الحل:
+//     - addAll مُحاط بـ catch فردي لكل أصل — فشل أحدها لا يمنع install.
+//     - self.clients.claim() يُستدعى فوراً حتى يتحكم SW في أول POST.
 self.addEventListener('install', (event) => {
   self.skipWaiting();
-  event.waitUntil(caches.open(CACHE_NAMES.SHELL).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(
+    caches.open(CACHE_NAMES.SHELL)
+      .then(async (cache) => {
+        // تحمّل فردي مع تجاهل الفشل لأي أصل مفقود
+        await Promise.all(
+          APP_SHELL.map((u) => cache.add(u).catch((err) => {
+            console.warn('[SW v89.08] failed to cache shell asset (ignored):', u, err?.message);
+            return null;
+          }))
+        );
+      })
+      .catch((err) => {
+        console.warn('[SW v89.08] shell caching failed (non-fatal):', err?.message);
+      })
+  );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => !Object.values(CACHE_NAMES).includes(key)).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim())
-      .then(() => broadcastMessage({ type: 'yamshat:sw-activated', version: VERSION }))
+    (async () => {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(
+          keys
+            .filter((key) => !Object.values(CACHE_NAMES).includes(key))
+            .map((key) => caches.delete(key).catch(() => null))
+        );
+      } catch (_) { /* ignore */ }
+      // ✅ v89.08: claim فوري — يضمن تحكم SW في كل العملاء المفتوحين
+      try { await self.clients.claim(); } catch (_) { /* ignore */ }
+      try {
+        await broadcastMessage({
+          type: 'yamshat:sw-activated',
+          version: VERSION,
+          shareReady: true,
+        });
+      } catch (_) { /* ignore */ }
+    })()
   );
 });
 

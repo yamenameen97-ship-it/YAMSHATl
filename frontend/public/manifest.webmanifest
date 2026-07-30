@@ -1,10 +1,10 @@
 {
-  "id": "/?v=89.07",
+  "id": "/",
   "name": "يام شات - Yamshat",
   "short_name": "Yamshat",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "/?pwa=1",
+  "start_url": "/?pwa=1&v=89.08",
   "scope": "/",
   "display": "standalone",
   "display_override": [
@@ -32,18 +32,6 @@
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "form_factor": "wide"
-    },
-    {
-      "src": "/screenshots/screenshot-540x720.png",
-      "sizes": "540x720",
-      "type": "image/png",
-      "form_factor": "narrow"
-    },
-    {
-      "src": "/screenshots/screenshot-1280x720.png",
-      "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide"
     }
@@ -221,23 +209,9 @@
     {
       "action": "/open-file",
       "accept": {
-        "image/*": [
-          ".png",
-          ".jpg",
-          ".jpeg",
-          ".webp",
-          ".gif"
-        ],
-        "video/*": [
-          ".mp4",
-          ".webm",
-          ".mov"
-        ],
-        "audio/*": [
-          ".mp3",
-          ".wav",
-          ".m4a"
-        ]
+        "image/*": [".png", ".jpg", ".jpeg", ".webp", ".gif"],
+        "video/*": [".mp4", ".webm", ".mov"],
+        "audio/*": [".mp3", ".wav", ".m4a"]
       }
     }
   ],
@@ -248,10 +222,7 @@
     }
   ],
   "launch_handler": {
-    "client_mode": [
-      "navigate-new",
-      "auto"
-    ]
+    "client_mode": ["navigate-existing", "auto"]
   },
   "note_taking": {
     "new_note_url": "/#/new-note"

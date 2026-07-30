@@ -384,15 +384,19 @@ function FeedMobile() {
   }, [session]);
 
   const handleRepost = useCallback(async (post) => {
-    // إعادة النشر = نفس endpoint للمشاركة (repost) — backend يتعامل معها كـ share من نوع repost
+    // ✅ v88.99 — إعادة النشر بتبديل (toggle) عبر share_type='repost'
     if (!post?.rawId) return;
     if (!requireAuth()) return;
     const newReposted = !post.reposted;
     const newReposts = Math.max(0, Number(post.reposts || 0) + (newReposted ? 1 : -1));
     setOverlayFor(post.id, { reposted: newReposted, reposts: newReposts });
     try {
-      await sharePost(post.rawId, 'repost');
-      pushToast?.({ type: 'success', title: newReposted ? 'تمت إعادة النشر' : 'تم إلغاء إعادة النشر' });
+      const response = await sharePost(post.rawId, { share_type: 'repost' });
+      // ✅ v88.99 — استخدم القيم المرجعة من الباك إند إن وُجدت
+      const apiReposted = response?.data?.reposted ?? response?.data?.is_reposted ?? newReposted;
+      const apiReposts = response?.data?.reposts_count ?? response?.data?.repost_count ?? newReposts;
+      setOverlayFor(post.id, { reposted: apiReposted, reposts: apiReposts });
+      pushToast?.({ type: 'success', title: apiReposted ? 'تمت إعادة النشر' : 'تم إلغاء إعادة النشر' });
       queryClient.invalidateQueries({ queryKey: ['feed-data'] });
     } catch (err) {
       console.error('Repost failed', err);

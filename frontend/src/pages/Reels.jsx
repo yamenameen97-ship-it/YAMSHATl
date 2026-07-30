@@ -320,8 +320,8 @@ export default function Reels() {
         left: 6 + Math.random() * 34,
         // ✅ v88.55: تعزيز الانحراف الأفقي ليكون واضحاً مع الحركة البطيئة
         drift: (Math.random() * 90 - 45).toFixed(1),
-        // ✅ v88.55: زيادة الحجم بشكل كبير — من 26-42px إلى 64-96px ليلاحظها المستخدم بوضوح على الجوال
-        size: 64 + Math.floor(Math.random() * 32),
+        // ✅ v89.00: تصغير بسيط للقلوب — من 64-96px إلى 54-78px حتى لا تحجب المشهد على الجوال
+        size: 54 + Math.floor(Math.random() * 24),
         // ✅ v88.55: تأخير أطول قليلاً بين القلوب المتزامنة لإحساس أكثر طبيعية مع البطء الجديد
         delay: Math.floor(Math.random() * 220),
       });
@@ -526,9 +526,36 @@ export default function Reels() {
     }, 60);
   };
 
-  const closeReelMenu = () => {
+  const closeReelMenu = useCallback(() => {
     if (!reelActionLoading) setMenuReel(null);
-  };
+  }, [reelActionLoading]);
+
+  // ✅ v89.00: الإغلاق بالضغط خارج صندوق خيارات الريل — إصلاح جذري للجوال.
+  //   الجذر: الـ backdrop زر فارغ خلف الورقة (z-index أدنى)، وعلى بعض متصفحات الجوال
+  //   يبتلع السكرول/اللمس الأحداث فلا يصل النقر للزر أبداً، فيضطر المستخدم لزر ✕ فقط.
+  //   الحل: نستمع لـ pointerdown + touchstart على المستند بمرحلة الالتقاط، وإن كان الهدف
+  //   خارج الورقة نغلق القائمة فوراً. يعمل هذا حتى لو فشل onClick على الـ backdrop كلياً.
+  useEffect(() => {
+    if (!menuReel) return undefined;
+    const onOutside = (e) => {
+      const t = e.target;
+      if (!t || typeof t.closest !== 'function') return;
+      // نقرة داخل الورقة نفسها → لا نغلق (الأزرار الداخلية تعمل كالمعتاد)
+      if (t.closest('.ym-reel-menu-sheet')) return;
+      closeReelMenu();
+    };
+    const onEsc = (e) => {
+      if (e.key === 'Escape') closeReelMenu();
+    };
+    document.addEventListener('pointerdown', onOutside, true);
+    document.addEventListener('touchstart', onOutside, true);
+    document.addEventListener('keydown', onEsc, true);
+    return () => {
+      document.removeEventListener('pointerdown', onOutside, true);
+      document.removeEventListener('touchstart', onOutside, true);
+      document.removeEventListener('keydown', onEsc, true);
+    };
+  }, [menuReel, closeReelMenu]);
 
   const saveReelCaption = async () => {
     if (!menuReel) return;
@@ -2076,12 +2103,12 @@ export default function Reels() {
           .ym-reels-flying-heart {
             position: absolute;
             bottom: 0;
-            color: #ff8fd0;
-            /* ✅ v88.55: توهج أقوى للقلوب الكبيرة ليصبح مرئياً وجذاباً */
+            /* ✅ v89.00: قلب شفاف — لون بنفاذية حتى يظهر المشهد خلفه بدل الشكل الداكن المصمت */
+            color: rgba(255, 143, 208, 0.72);
+            /* ✅ v89.00: تخفيف التوهج حتى لا يتراكم فوق القلب ويصبح كتلة غامقة */
             text-shadow:
-              0 0 10px rgba(255, 143, 208, 0.75),
-              0 0 22px rgba(255, 105, 180, 0.55),
-              0 0 34px rgba(255, 105, 180, 0.28);
+              0 0 8px rgba(255, 143, 208, 0.35),
+              0 0 18px rgba(255, 105, 180, 0.22);
             opacity: 0;
             transform: translateY(0) translateX(0) scale(.6);
             /* ✅ v88.55: زيادة مدة الحركة من 2.8s → 5.5s ليلاحظها المستخدم عند النقر المزدوج */
@@ -2095,22 +2122,24 @@ export default function Reels() {
           }
           /* ✅ v88.77: keyframes خاص بالجوال — نفس المسار لكن بطيء نسبياً بشكل ملحوظ لتظهر القلوب بوضوح للمستخدم */
           @keyframes ym-reel-heart-rise-mobile {
+            /* ✅ v89.00: ذروة الشفافية .78 بدل 1 حتى يبقى القلب شفافاً ولا يبدو غامقاً مصمتاً */
             0%   { opacity: 0;    transform: translateY(40px)   translateX(0)                                            scale(.55) rotate(-8deg); }
-            6%   { opacity: 1;    transform: translateY(-20px)  translateX(calc(var(--drift, 0px) * .06))                scale(1)    rotate(3deg); }
-            20%  { opacity: 1;    transform: translateY(-140px) translateX(calc(var(--drift, 0px) * .20))                scale(1.12) rotate(-2deg); }
-            40%  { opacity: 1;    transform: translateY(-300px) translateX(calc(var(--drift, 0px) * .40))                scale(1.18) rotate(2deg); }
-            60%  { opacity: 1;    transform: translateY(-460px) translateX(calc(var(--drift, 0px) * .60))                scale(1.22) rotate(-3deg); }
-            78%  { opacity: .9;   transform: translateY(-620px) translateX(calc(var(--drift, 0px) * .78))                scale(1.24) rotate(3deg); }
-            92%  { opacity: .5;   transform: translateY(-780px) translateX(calc(var(--drift, 0px) * .92))                scale(1.26) rotate(-2deg); }
+            6%   { opacity: .78;  transform: translateY(-20px)  translateX(calc(var(--drift, 0px) * .06))                scale(1)    rotate(3deg); }
+            20%  { opacity: .78;  transform: translateY(-140px) translateX(calc(var(--drift, 0px) * .20))                scale(1.12) rotate(-2deg); }
+            40%  { opacity: .78;  transform: translateY(-300px) translateX(calc(var(--drift, 0px) * .40))                scale(1.18) rotate(2deg); }
+            60%  { opacity: .78;  transform: translateY(-460px) translateX(calc(var(--drift, 0px) * .60))                scale(1.22) rotate(-3deg); }
+            78%  { opacity: .68;  transform: translateY(-620px) translateX(calc(var(--drift, 0px) * .78))                scale(1.24) rotate(3deg); }
+            92%  { opacity: .38;  transform: translateY(-780px) translateX(calc(var(--drift, 0px) * .92))                scale(1.26) rotate(-2deg); }
             100% { opacity: 0;    transform: translateY(-88dvh) translateX(var(--drift, 0px))                            scale(1.3)  rotate(0deg); }
           }
           /* ✅ v88.55: حركة صعود بطيئة + ارتفاع أقل + مراحل ثبات ليمكث القلب مرئياً وقتاً أطول */
           @keyframes ym-reel-heart-rise {
+            /* ✅ v89.00: ذروة الشفافية .78 بدل 1 حتى يبقى القلب شفافاً ولا يبدو غامقاً مصمتاً */
             0%   { opacity: 0;   transform: translateY(20px)  translateX(0)                                       scale(.65) rotate(-6deg); }
-            10%  { opacity: 1;   transform: translateY(-10px) translateX(calc(var(--drift, 0px) * .1))            scale(1)    rotate(2deg); }
-            30%  { opacity: 1;   transform: translateY(-70px) translateX(calc(var(--drift, 0px) * .3))            scale(1.08) rotate(-2deg); }
-            55%  { opacity: .9;  transform: translateY(-140px) translateX(calc(var(--drift, 0px) * .55))          scale(1.12) rotate(3deg); }
-            80%  { opacity: .55; transform: translateY(-220px) translateX(calc(var(--drift, 0px) * .85))          scale(1.15) rotate(-3deg); }
+            10%  { opacity: .78; transform: translateY(-10px) translateX(calc(var(--drift, 0px) * .1))            scale(1)    rotate(2deg); }
+            30%  { opacity: .78; transform: translateY(-70px) translateX(calc(var(--drift, 0px) * .3))            scale(1.08) rotate(-2deg); }
+            55%  { opacity: .68; transform: translateY(-140px) translateX(calc(var(--drift, 0px) * .55))          scale(1.12) rotate(3deg); }
+            80%  { opacity: .42; transform: translateY(-220px) translateX(calc(var(--drift, 0px) * .85))          scale(1.15) rotate(-3deg); }
             100% { opacity: 0;   transform: translateY(-300px) translateX(var(--drift, 0px))                     scale(1.2)  rotate(0deg); }
           }
           /* ✅ v88.62: على شاشات الجوال الصغيرة (< 640px) نضاعف الحجم فعلياً + رحلة كاملة من الأسفل إلى الأعلى ببطء واضح.
@@ -2120,22 +2149,22 @@ export default function Reels() {
             .ym-reels-flying-heart {
               /* الحد الأدنى المضمون على الجوال — إجباري أكبر من قواعد JS العشوائية */
               min-width: 1.4em;
-              /* تكبير الحجم قسراً على الجوال بغضّ النظر عن قيمة inline style (نستخدم !important لأن fontSize يُطبَّق عبر style prop) */
-              font-size: clamp(96px, 22vw, 150px) !important;
+              /* ✅ v89.00: تصغير بسيط على الجوال — من clamp(96px,22vw,150px) إلى clamp(72px,17vw,108px) */
+              font-size: clamp(72px, 17vw, 108px) !important;
               /* ✅ v88.77: إبطاء ملحوظ — من 8s إلى 16s (ضعف المدة) ليظهر القلب ببطء واضح للمستخدم عبر كامل الشاشة */
               animation: ym-reel-heart-rise-mobile 16s cubic-bezier(.22,.61,.36,1) forwards !important;
-              /* توهج أقوى ملحوظ فوق الفيديو */
+              /* ✅ v89.00: توهج خفيف شفاف — التوهج القوي السابق هو ما جعل القلب يبدو غامقاً مصمتاً */
               text-shadow:
-                0 0 14px rgba(255, 143, 208, 0.9),
-                0 0 30px rgba(255, 105, 180, 0.7),
-                0 0 50px rgba(255, 105, 180, 0.4);
-              filter: drop-shadow(0 4px 12px rgba(0,0,0,.55));
+                0 0 10px rgba(255, 143, 208, 0.4),
+                0 0 22px rgba(255, 105, 180, 0.25);
+              filter: drop-shadow(0 3px 8px rgba(0,0,0,.3));
             }
           }
           /* ✅ v88.77: على شاشات الجوال الأصغر جداً (< 380px مثل iPhone SE) نُبقي الحجم كبيراً وواضحاً ونبطئ أكثر قليلاً */
           @media (max-width: 380px) {
             .ym-reels-flying-heart {
-              font-size: clamp(88px, 26vw, 130px) !important;
+              /* ✅ v89.00: تصغير بسيط على الشاشات الأصغر — من clamp(88px,26vw,130px) إلى clamp(64px,20vw,92px) */
+              font-size: clamp(64px, 20vw, 92px) !important;
               animation-duration: 17s !important;
             }
           }

@@ -283,7 +283,15 @@ def save_post(post_id: int, db: Session = Depends(get_db), current_user: User = 
 
 @router.post('/{post_id}/share')
 def share(post_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return share_post(db, user_id=current_user.id, post_id=post_id, platform=payload.get('platform'))
+    # ✅ v88.99 — تمرير share_type و quote_text لدعم إعادة النشر (repost)
+    return share_post(
+        db,
+        user_id=current_user.id,
+        post_id=post_id,
+        platform=payload.get('platform'),
+        share_type=payload.get('share_type') or payload.get('type'),
+        quote_text=payload.get('quote_text') or payload.get('quoteText'),
+    )
 
 
 @router.post('/{post_id}/poll-vote')

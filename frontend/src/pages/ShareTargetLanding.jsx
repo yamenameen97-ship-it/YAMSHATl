@@ -122,17 +122,26 @@ export default function ShareTargetLanding() {
   useEffect(() => {
     let mounted = true;
 
-    // ✅ v88.98 ROOT FIX #3: قراءة الحمولة مع صبر أكبر + استماع لرسائل SW
-    //   - إذا وصلنا عبر via=sw → نحاول حتى 25 مرة × 200ms = 5s كحد أقصى
-    //     (كافٍ لأبطأ أجهزة أندرويد للانتهاء من IndexedDB commit)
-    //   - إذا وصلنا عبر via=direct → 5 محاولات فقط
-    //   - نستمع لرسالة 'YAMSHAT_SHARE_RECEIVED' من SW → نُعيد القراءة فوراً
-    //   - نستمع لحدث 'visibilitychange' → عندما تعود الصفحة للواجهة نعيد المحاولة
-    //   السبب الجذري: قبل الإصلاح كان HashRouter يقرأ الحمولة قبل تحكم SW في العميل
-    //   → القراءة تعود null → صفحة بيضاء أو رسالة "لا يوجد محتوى".
-    const viaSw = (searchParams.get('via') || '').toLowerCase() === 'sw'
-      || (searchParams.get('shared') || '') === '1';
-    const maxAttempts = viaSw ? 25 : 5;
+    // ✅ v89.02 ROOT FIX #4: تحرّي دقيق لمصدر الوصول + مهلة كافية لجميع الحالات
+    //   السبب الجذري:
+    //     قبل الإصلاح، الحالة via=direct&shared=0 (أي nginx fallback دون تحكم SW
+    //     أولي) كانت تأخذ 5 محاولات فقط × 200ms = 1s، وهي غير كافية لأن SW
+    //     الجديد ما زال يسجّل ويحول الطلب إلى IndexedDB (قد يأخذ 2–5 ثوانٍ
+    //     على أجهزة أندرويد المتوسطة/الضعيفة).
+    //
+    //   الحل:
+    //   - نرفع maxAttempts لجميع الحالات إلى حد أدنى كافٍ
+    //     (via=direct: 30 × 200ms = 6s, via=sw: 40 × 200ms = 8s).
+    //   - نعتبر أي وصول لـ /share-target محتمل أن يكون SW لم يتحكم بعد،
+    //     حتى إذا وصلنا عبر nginx fallback (shared=0&via=direct).
+    //   - نضيف الاستماع لـ navigator.serviceWorker.ready و controllerchange:
+    //     فور تحكّم SW في العميل → نعيد القراءة مباشرة دون انتظار polling.
+    const viaRaw = (searchParams.get('via') || '').toLowerCase();
+    const sharedRaw = searchParams.get('shared') || '';
+    const viaSw = viaRaw === 'sw' || sharedRaw === '1';
+    // في حالة nginx fallback (via=direct&shared=0) نأخذ مهلة أطول لأن SW
+    // لا يزال يحفظ الحمولة في IndexedDB في الخلفية.
+    const maxAttempts = viaSw ? 40 : 30;
     const attemptDelay = 200;
 
     let stopFlag = false;
@@ -195,6 +204,8 @@ export default function ShareTargetLanding() {
     }
 
     // ✅ v88.98: استماع لرسالة SW YAMSHAT_SHARE_RECEIVED — قراءة فورية بمجرد وصولها
+    let controllerChangeHandler = null;
+    let swReadyPromise = null;
     if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
       swMessageHandler = async (event) => {
         if (event?.data?.type === 'YAMSHAT_SHARE_RECEIVED') {
@@ -207,6 +218,32 @@ export default function ShareTargetLanding() {
       try {
         navigator.serviceWorker.addEventListener('message', swMessageHandler);
       } catch { /* ignore */ }
+
+      // ✅ v89.02 ROOT FIX #4: فور تحكّم SW للمرة الأولى → إعادة قراءة فورية.
+      //   هذا يغطي الحالة via=direct&shared=0 حيث يصل المستخدم عبر nginx
+      //   قبل تثبيت SW ويجب أن نلتقط أول تحكّم دون انتظار polling.
+      controllerChangeHandler = async () => {
+        try {
+          const data = await readSharedPayload();
+          applyPayload(data);
+        } catch { /* ignore */ }
+      };
+      try {
+        navigator.serviceWorker.addEventListener('controllerchange', controllerChangeHandler);
+      } catch { /* ignore */ }
+
+      // إذا لم يكن SW مسيطراً بعد → انتظار ready ثم إعادة القراءة مرة إضافية.
+      if (!navigator.serviceWorker.controller) {
+        try {
+          swReadyPromise = navigator.serviceWorker.ready.then(async () => {
+            if (stopFlag) return;
+            try {
+              const data = await readSharedPayload();
+              applyPayload(data);
+            } catch { /* ignore */ }
+          }).catch(() => null);
+        } catch { /* ignore */ }
+      }
     }
 
     // ✅ v88.98: عند عودة visibility (يوتيوب فتح تبويب جديد ثم عاد)
@@ -227,6 +264,9 @@ export default function ShareTargetLanding() {
       stopFlag = true;
       if (swMessageHandler && navigator.serviceWorker) {
         try { navigator.serviceWorker.removeEventListener('message', swMessageHandler); } catch { /* ignore */ }
+      }
+      if (controllerChangeHandler && navigator.serviceWorker) {
+        try { navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler); } catch { /* ignore */ }
       }
       if (visibilityHandler) {
         try { document.removeEventListener('visibilitychange', visibilityHandler); } catch { /* ignore */ }

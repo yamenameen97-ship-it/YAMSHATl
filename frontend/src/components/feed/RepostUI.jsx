@@ -26,13 +26,19 @@ const RepostUI = memo(function RepostUI({ post, onRepost }) {
   const [isReposting, setIsReposting] = useState(false);
 
   const repostMutation = useMutation({
-    mutationFn: (data) => sharePost(post.id, { ...data, type: 'repost' }),
-    onSuccess: () => {
+    // ✅ v88.99 — نمرر share_type='repost' و quote_text بشكل صريح
+    mutationFn: (data) => sharePost(post.id, { share_type: 'repost', quote_text: data?.quote_text || '' }),
+    onSuccess: (response) => {
       queryClient.invalidateQueries(['feed-data']);
       setShowRepostModal(false);
       setQuoteText('');
-      pushToast({ type: 'success', title: 'تم إعادة النشر بنجاح' });
-      onRepost?.();
+      const reposted = response?.data?.reposted ?? response?.data?.is_reposted ?? true;
+      const count = response?.data?.reposts_count ?? response?.data?.repost_count;
+      pushToast({
+        type: 'success',
+        title: reposted ? 'تم إعادة النشر بنجاح' : 'تم إلغاء إعادة النشر',
+      });
+      onRepost?.({ reposted, reposts_count: count });
     },
     onError: (error) => {
       pushToast({ type: 'error', title: 'تعذر إعادة النشر', description: error?.response?.data?.detail || error?.message });
@@ -105,7 +111,7 @@ const RepostUI = memo(function RepostUI({ post, onRepost }) {
         }}
       >
         <span style={{ fontSize: 18 }}>🔄</span>
-        <span>{post.repost_count || 0}</span>
+        <span>{post.reposts_count || post.repost_count || 0}</span>
       </button>
 
       {/* Repost Modal */}

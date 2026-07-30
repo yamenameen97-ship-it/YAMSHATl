@@ -314,9 +314,16 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         poll_votes[vote.option_key] = poll_votes.get(vote.option_key, 0) + 1
     saved_by_me = False
     liked_by_me = False
+    reposted_by_me = False
     if current_user is not None:
         saved_by_me = db.query(PostSave.id).filter(PostSave.post_id == post.id, PostSave.user_id == current_user.id).first() is not None
         liked_by_me = db.query(Like.id).filter(Like.post_id == post.id, Like.user_id == current_user.id).first() is not None
+        # ✅ v88.99 — تحقق هل المستخدم أعاد نشر هذا المنشور (share_type='repost')
+        reposted_by_me = db.query(PostShare.id).filter(
+            PostShare.post_id == post.id,
+            PostShare.user_id == current_user.id,
+            PostShare.share_type == 'repost',
+        ).first() is not None
     poll_items = [
         {
             **option,
@@ -371,6 +378,11 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         'share_count': int(post.share_count or 0),
         'save_count': int(post.save_count or 0),
         'edit_count': int(post.edit_count or 0),
+        # ✅ v88.99 — حقول إعادة النشر المنفصلة عن المشاركة العادية
+        'reposts_count': int(getattr(post, 'reposts_count', 0) or 0),
+        'repost_count': int(getattr(post, 'reposts_count', 0) or 0),
+        'reposted': reposted_by_me,
+        'is_reposted': reposted_by_me,
         'liked_by_me': liked_by_me,
         'saved_by_me': saved_by_me,
         'share_url': _share_url(post.id),
@@ -858,15 +870,117 @@ def toggle_save_post(db: Session, user_id: int, post_id: int) -> dict:
     }
 
 
-def share_post(db: Session, user_id: int, post_id: int, platform: str | None = None) -> dict:
+def share_post(db: Session, user_id: int, post_id: int, platform: str | None = None, *, share_type: str | None = None, quote_text: str | None = None) -> dict:
+    """v88.99 — مشاركة أو إعادة نشر منشور.
+
+    - platform: المنصة المستهدفة للمشاركة العادية ('copy', 'whatsapp', ...).
+    - share_type: 'repost' لإعادة النشر، أو 'share' (افتراضي) للمشاركة العادية.
+    - quote_text: نص الاقتباس عند إعادة النشر من نوع quote.
+
+    سلوك إعادة النشر (repost): تبديل (toggle) — إذا كان المستخدم قد أعاد نشر
+    المنشور مسبقاً يتم إلغاء إعادة النشر، وإلا تُسجَّل إعادة نشر جديدة.
+    """
     post = db.query(Post).filter(Post.id == post_id).first()
     if post is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Post not found')
 
-    share = PostShare(post_id=post_id, user_id=user_id, platform=str(platform or 'copy')[:60] or 'copy')
+    resolved_share_type = str(share_type or 'share').strip().lower()
+    if resolved_share_type not in ('share', 'repost'):
+        resolved_share_type = 'share'
+
+    # ==========================================================
+    # ✅ v88.99 — معالجة إعادة النشر (repost) كتبديل (toggle)
+    # ==========================================================
+    if resolved_share_type == 'repost':
+        existing_repost = db.query(PostShare).filter(
+            PostShare.post_id == post_id,
+            PostShare.user_id == user_id,
+            PostShare.share_type == 'repost',
+        ).first()
+
+        if existing_repost is not None:
+            # إلغاء إعادة النشر — احذف السجل ونقص العداد
+            db.delete(existing_repost)
+            db.flush()
+            reposts_count = db.query(func.count(PostShare.id)).filter(
+                PostShare.post_id == post_id,
+                PostShare.share_type == 'repost',
+            ).scalar() or 0
+            try:
+                post.reposts_count = int(reposts_count)
+            except Exception:
+                pass
+            db.commit()
+            return {
+                'post_id': post_id,
+                'reposted': False,
+                'is_reposted': False,
+                'reposts_count': int(reposts_count),
+                'repost_count': int(reposts_count),
+                'share_type': 'repost',
+                'share_url': _share_url(post_id),
+            }
+        else:
+            # تسجيل إعادة نشر جديدة
+            share = PostShare(
+                post_id=post_id,
+                user_id=user_id,
+                platform='repost',
+                share_type='repost',
+                quote_text=str(quote_text or '').strip()[:500] or None if quote_text else None,
+            )
+            db.add(share)
+            db.flush()
+            reposts_count = db.query(func.count(PostShare.id)).filter(
+                PostShare.post_id == post_id,
+                PostShare.share_type == 'repost',
+            ).scalar() or 0
+            try:
+                post.reposts_count = int(reposts_count)
+            except Exception:
+                pass
+            db.commit()
+
+            # v87.0 — إشعار: شخص أعاد نشر منشورك
+            if post.user_id and int(post.user_id) != int(user_id):
+                actor = db.query(User).filter(User.id == user_id).first()
+                _notify(
+                    db,
+                    user_id=int(post.user_id),
+                    notification_type='POST_REPOST',
+                    data={
+                        'post_id': int(post_id),
+                        'from_user_id': int(user_id),
+                        'username': (actor.username if actor else None),
+                        'actor_avatar': (getattr(actor, 'avatar', None) if actor else None),
+                    },
+                )
+
+            return {
+                'post_id': post_id,
+                'reposted': True,
+                'is_reposted': True,
+                'reposts_count': int(reposts_count),
+                'repost_count': int(reposts_count),
+                'share_type': 'repost',
+                'share_url': _share_url(post_id),
+            }
+
+    # ==========================================================
+    # المشاركة العادية (share) — تبقى كما هي
+    # ==========================================================
+    share = PostShare(
+        post_id=post_id,
+        user_id=user_id,
+        platform=str(platform or 'copy')[:60] or 'copy',
+        share_type='share',
+    )
     db.add(share)
     db.flush()
-    share_count = db.query(func.count(PostShare.id)).filter(PostShare.post_id == post_id).scalar() or 0
+    share_count = db.query(func.count(PostShare.id)).filter(
+        PostShare.post_id == post_id,
+        PostShare.share_type == 'share',
+    ).scalar() or 0
     post.share_count = int(share_count)
     db.commit()
 
@@ -889,6 +1003,7 @@ def share_post(db: Session, user_id: int, post_id: int, platform: str | None = N
         'post_id': post_id,
         'share_count': int(share_count),
         'platform': share.platform,
+        'share_type': 'share',
         'share_url': _share_url(post_id),
     }
 
@@ -927,12 +1042,13 @@ def get_post_insights(db: Session, post_id: int, current_user: User) -> dict:
 
     likes_count = db.query(func.count(Like.id)).filter(Like.post_id == post_id).scalar() or 0
     comments_count = db.query(func.count(Comment.id)).filter(Comment.post_id == post_id).scalar() or 0
-    shares_count = db.query(func.count(PostShare.id)).filter(PostShare.post_id == post_id).scalar() or 0
+    shares_count = db.query(func.count(PostShare.id)).filter(PostShare.post_id == post_id, PostShare.share_type == 'share').scalar() or 0
+    reposts_count = db.query(func.count(PostShare.id)).filter(PostShare.post_id == post_id, PostShare.share_type == 'repost').scalar() or 0
     saves_count = db.query(func.count(PostSave.id)).filter(PostSave.post_id == post_id).scalar() or 0
     edits_count = db.query(func.count(PostEditHistory.id)).filter(PostEditHistory.post_id == post_id).scalar() or 0
     votes_count = db.query(func.count(PostPollVote.id)).filter(PostPollVote.post_id == post_id).scalar() or 0
 
-    engagement_total = int(likes_count) + int(comments_count) + int(shares_count) + int(saves_count) + int(votes_count)
+    engagement_total = int(likes_count) + int(comments_count) + int(shares_count) + int(saves_count) + int(votes_count) + int(reposts_count)
     return {
         'post_id': post_id,
         'like_count': int(likes_count),
@@ -941,6 +1057,9 @@ def get_post_insights(db: Session, post_id: int, current_user: User) -> dict:
         'comments_count': int(comments_count),
         'share_count': int(shares_count),
         'shares_count': int(shares_count),
+        # ✅ v88.99 — حقول إعادة النشر المنفصلة
+        'reposts_count': int(reposts_count),
+        'repost_count': int(reposts_count),
         'save_count': int(saves_count),
         'saved_count': int(saves_count),
         'poll_votes_count': int(votes_count),

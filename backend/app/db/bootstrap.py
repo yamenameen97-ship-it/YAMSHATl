@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.security import hash_password, verify_password
 from app.db.base import Base
 
-CURRENT_ALEMBIC_REVISION = '20260728_0021'
+CURRENT_ALEMBIC_REVISION = '20260729_0022'
 LEGACY_USER_TABLE_NAMES = ('suser', 'user')
 DEFAULT_SUBSCRIBER = {
     'username': ((settings.DEMO_ACCOUNT_EMAIL or 'yasryameen21@gmail.com').split('@')[0] or 'yasryameen21').strip().lower(),
@@ -86,6 +86,8 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
         'admin_source_title', 'admin_source_text', 'admin_source_author',
         'admin_source_channel', 'admin_source_captured_at', 'admin_source_share_mode',
         'admin_source_download_size', 'admin_source_download_mime',
+        # v88.99 — عمود عدّاد إعادات النشر
+        'reposts_count',
     },
     'comments': {'user_id', 'username', 'comment', 'content'},
     'messages': {'sender_id', 'receiver_id', 'sender', 'receiver', 'message', 'content'},
@@ -442,6 +444,8 @@ def _migrate_posts_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'posts', 'edit_count', 'edit_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'posts', 'share_count', 'share_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'posts', 'save_count', 'save_count INTEGER NOT NULL DEFAULT 0')
+    # ✅ v88.99 — عمود عدّاد إعادات النشر (منفصل عن المشاركة العادية)
+    _add_column_if_missing(engine, 'posts', 'reposts_count', 'reposts_count INTEGER NOT NULL DEFAULT 0')
     _add_column_if_missing(engine, 'posts', 'created_at', 'created_at TIMESTAMP NULL')
 
     # ==========================================================
@@ -693,6 +697,21 @@ def _migrate_live_room_sessions_table(engine: Engine) -> None:
                 updates['id'] = row['id']
                 connection.execute(text(f'UPDATE live_room_sessions SET {assignments} WHERE id = :id'), updates)
 
+
+
+def _migrate_post_shares_table(engine: Engine) -> None:
+    """v88.99 — إضافة أعمدة share_type و quote_text لجدول post_shares
+    لتمييز إعادة النشر (repost) عن المشاركة العادية (share)."""
+    if not _table_exists(engine, 'post_shares'):
+        return
+    _add_column_if_missing(engine, 'post_shares', 'share_type', "share_type VARCHAR(20) NOT NULL DEFAULT 'share'")
+    _add_column_if_missing(engine, 'post_shares', 'quote_text', 'quote_text TEXT NULL')
+    try:
+        if engine.dialect.name == 'postgresql':
+            with engine.begin() as connection:
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_post_shares_share_type ON post_shares (share_type)'))
+    except Exception:
+        pass
 
 
 def _migrate_reel_comments_table(engine: Engine) -> None:
@@ -1241,6 +1260,7 @@ def initialize_database(engine: Engine, force: bool = False) -> None:
     except Exception as exc:
         _log.warning('Base.metadata.create_all second pass failed: %s', exc)
     _safe(_migrate_posts_table, 'migrate_posts_table')
+    _safe(_migrate_post_shares_table, 'migrate_post_shares_table')  # v88.99
     _safe(_migrate_comments_table, 'migrate_comments_table')
     _safe(_migrate_messages_table, 'migrate_messages_table')
     _safe(_migrate_live_room_sessions_table, 'migrate_live_room_sessions_table')

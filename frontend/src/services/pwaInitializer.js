@@ -338,14 +338,35 @@ export class PWAInitializer {
     });
 
     // مراقبة تغييرات Service Worker
+    //
+    // ✅ v89.01 ROOT FIX #1 (تعارض تسجيل Service Worker — السبب الرئيسي للصفحة البيضاء):
+    //   قبل هذا الإصلاح كان هذا المستمع + مستمع مماثل في main.jsx يستدعيان
+    //   window.location.reload() عند أول تغيّر controller. وعندما يصل المستخدم
+    //   إلى /share-target عبر meta-refresh، يُفعَّل SW جديد → controllerchange
+    //   → reload لا نهائي → صفحة بيضاء. الحل: إلغاء reload تماماً من هذا المستمع،
+    //   والاكتفاء بإطلاق حدث window ليعالجه من يحتاجه (invalidateQueries)،
+    //   مع تخطي الإطلاق أثناء مسار /share-target حتى لا يتداخل مع استقبال المشاركة.
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         console.log('[PWA] Service Worker controller changed');
         this.emit('controller-changed');
+
+        // v89.01: أثناء استقبال المشاركة الخارجية لا نُطلق أي حدث قد يُسبّب reload/refetch
+        try {
+          const path = (window.location && window.location.pathname) || '';
+          const hash = (window.location && window.location.hash) || '';
+          const inShareTarget = path === '/share-target'
+            || hash.startsWith('#/share-target')
+            || hash.includes('/share-target');
+          if (inShareTarget) {
+            console.log('[PWA] controllerchange skipped inside /share-target flow');
+            return;
+          }
+        } catch (_) { /* ignore */ }
+
         // ✅ v88.94 ROOT FIX: عند تغير controller (أول مرة يسيطر SW على الصفحة)
-        //   نُطلق حدث window يُبطل كاش React Query للبيانات الحيّة (فيد/منشورات/ريلز/ستوريز/إشعارات)
-        //   السبب: أي طلب حدث قبل هذه اللحظة لم يمر عبر SW → لم يُطبَّق NEVER_CACHE_API_PATTERNS
-        //   وقد تكون البيانات قديمة/فارغة/من نسخة سابقة.
+        //   نُطلق حدث window يُبطل كاش React Query للبيانات الحيّة فقط.
+        //   ⚠️ ممنوع منعاً باتاً استدعاء window.location.reload() هنا.
         try {
           window.dispatchEvent(new CustomEvent('yamshat:sw-controlling', {
             detail: { at: Date.now() },

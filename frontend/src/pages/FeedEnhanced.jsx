@@ -463,7 +463,7 @@ function PostCard({ post }) {
 
   // ✅ v88.82: زر إعادة النشر (Repost) — ربط فعلي مع الخادم.
   //   • تحديث متفائل فوري لـ isReposted و repostsCount.
-  //   • استدعاء apiSharePost(post.rawId, 'repost') — نفس endpoint المشاركة مع تمييز النوع 'repost'
+  //   • استدعاء apiSharePost(post.rawId, { share_type: 'repost' }) — تبديل (toggle) في الباك إند
   //     (مطابق للمنطق المُطبّق فعلياً في FeedMobile.jsx).
   //   • عند الفشل: rollback + toast خطأ.
   //   • منع الضغط المتكرر أثناء الطلب عبر busyAction === 'repost'.
@@ -491,10 +491,18 @@ function PostCard({ post }) {
 
     setBusyAction('repost');
     try {
-      await apiSharePost(post.rawId, 'repost');
+      // ✅ v88.99 — تمرير share_type='repost' بشكل صريح
+      const response = await apiSharePost(post.rawId, { share_type: 'repost' });
+      // استخدم القيم المرجعة من الباك إند إن وُجدت
+      const apiReposted = response?.data?.reposted ?? response?.data?.is_reposted ?? nextReposted;
+      const apiReposts = response?.data?.reposts_count ?? response?.data?.repost_count;
+      if (apiReposts !== undefined && apiReposts !== null) {
+        setRepostsCount(apiReposts);
+      }
+      setIsReposted(apiReposted);
       pushToast({
         type: 'success',
-        title: nextReposted ? 'تمّت إعادة النشر' : 'تم إلغاء إعادة النشر',
+        title: apiReposted ? 'تمّت إعادة النشر' : 'تم إلغاء إعادة النشر',
       });
     } catch (err) {
       // Rollback عند الفشل

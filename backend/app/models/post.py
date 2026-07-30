@@ -30,6 +30,8 @@ class Post(Base):
     edit_count = Column(Integer, default=0, nullable=False)
     share_count = Column(Integer, default=0, nullable=False)
     save_count = Column(Integer, default=0, nullable=False)
+    # ✅ v88.99 — عدّاد إعادات النشر (منفصل عن المشاركة العادية)
+    reposts_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     # ==========================================================

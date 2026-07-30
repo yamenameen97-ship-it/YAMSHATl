@@ -399,11 +399,11 @@ function FeedVideoPlayer({ src, poster }) {
           border-radius: 8px;
         }
 
-        /* ============ زر الميكروفون العائم ============ */
+        /* ============ زر الميكروفون العائم (v88.99 — الزاوية العلوية اليسرى مثل YouTube) ============ */
         .ym-fv-mic {
           position: absolute;
-          bottom: 12px;
-          inset-inline-end: 12px;
+          top: 12px;
+          inset-inline-start: 12px;
           width: 40px;
           height: 40px;
           border-radius: 50%;
@@ -424,10 +424,10 @@ function FeedVideoPlayer({ src, poster }) {
         .ym-fv-mic:hover { background: rgba(0,0,0,0.75); }
         .ym-fv-mic:active { transform: scale(0.92); }
 
-        /* نقطة تشغيل صغيرة (اختيارية) */
+        /* نقطة تشغيل صغيرة (v88.99 — نُقلت لأسفل-يسار لتفادي التعارض مع زر الصوت) */
         .ym-fv-live-dot {
           position: absolute;
-          top: 12px;
+          bottom: 12px;
           inset-inline-start: 12px;
           z-index: 2;
         }
@@ -552,7 +552,7 @@ function FeedVideoPlayer({ src, poster }) {
         }
 
         @media (max-width: 480px) {
-          .ym-fv-mic { width: 38px; height: 38px; bottom: 10px; }
+          .ym-fv-mic { width: 38px; height: 38px; top: 10px; }
           .ym-fv-close { width: 40px; height: 40px; }
         }
       `}</style>

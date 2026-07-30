@@ -469,10 +469,27 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v88.95-QUERYCLIENT-HARDRESET-ROOT-FIX';
+const BUILD_ID = 'yamshat-v89.02-SHARE-TARGET-SW-ROOT-FIX';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 const LAST_RESET_KEY = 'yamshat_build_reset_ts';
-const BUILD_CURRENT_TAG = 'v88.95';
+const BUILD_CURRENT_TAG = 'v89.02';
+
+// ✅ v89.01: أداة موحّدة تحدّد ما إذا كنّا حالياً داخل مسار /share-target.
+//    نستخدمها لمنع أي reload/skipWaiting أثناء استقبال المشاركة الخارجية،
+//    وهو ما كان يُنتج حلقة reload لا نهائية وصفحة بيضاء.
+function isInShareTargetFlow() {
+  try {
+    if (typeof window === 'undefined') return false;
+    const path = window.location.pathname || '';
+    const hash = window.location.hash || '';
+    return path === '/share-target'
+      || path.startsWith('/share-target/')
+      || hash.startsWith('#/share-target')
+      || hash.includes('/share-target');
+  } catch (_) {
+    return false;
+  }
+}
 
 // ✅ v88.95 ROOT FIX #4: نقطة إصلاح نظام المشاركات الرابعة والأخيرة.
 //    قبل v88.95: hardResetIfBuildChanged كانت تحذف caches وترسل SKIP_WAITING
@@ -672,20 +689,30 @@ async function hardResetIfBuildChanged() {
   purgeStaleIndexedDBs();
 
   // 🔥 (e) طلب SKIP_WAITING من كل SW registrations كي يتم استبدال SW القديم فوراً
+  //
+  // ✅ v89.01 ROOT FIX #1: أثناء مسار /share-target لا نرسل SKIP_WAITING إطلاقاً.
+  //    إرسال SKIP_WAITING إلى SW يُطلق controllerchange في نفس اللحظة التي
+  //    يعالج فيها SW طلب POST القادم من يوتيوب → SW يفوّت الطلب →
+  //    nginx يُعيد index.html → HashRouter بلا hash → صفحة بيضاء / حلقة reload.
+  //    السلوك الآمن: نتخطى تحديث SW في هذه اللحظة، وسيُطبَّق التحديث لاحقاً عبر
+  //    updatefound → <AppUpdatePrompt />. خارج مسار /share-target: نُبقي السلوك كما هو.
   try {
     if ('serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const reg of registrations) {
-        try {
-          if (reg.waiting) {
-            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-          }
-          if (reg.active) {
-            reg.active.postMessage({ type: 'SKIP_WAITING' });
-          }
-          // فحص فوري للتحديثات
-          await reg.update().catch(() => null);
-        } catch { /* ignore individual reg */ }
+      if (isInShareTargetFlow()) {
+        console.log('[Yamshat] SKIP_WAITING suppressed — currently inside /share-target flow');
+      } else {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          try {
+            if (reg.waiting) {
+              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+            // ⚠️ v89.01: أزلنا postMessage({SKIP_WAITING}) إلى reg.active —
+            //    لا يفعل شيئاً بروتوكولياً إلا الإخلال بالتوقيت، وكان يُسهم في
+            //    إطلاق controllerchange دائماً عند تبدّل BUILD_ID.
+            await reg.update().catch(() => null);
+          } catch { /* ignore individual reg */ }
+        }
       }
     }
   } catch (err) {
@@ -695,20 +722,93 @@ async function hardResetIfBuildChanged() {
   return false;
 }
 
-// ✅ v88.93 ROOT FIX #4b: توجيه مسار /share-target داخل SPA (HashRouter)
-//   إذا وصل طلب GET /share-target إلى index.html مباشرة (مثلاً عبر nginx fallback
-//   أو قبل تثبيت SW)، HashRouter لا يرى /share-target لأنه ليس في hash.
-//   نحوّل أي طلب pathname == '/share-target' إلى /#/share-target?shared=0 مباشرة،
-//   ثم ShareTargetLanding سيقرأ أي حمولة محفوظة من IndexedDB (إن وُجدت).
+// ✅ v89.02 ROOT FIX #3: انتظار SW قبل التوجيه من /share-target إلى /#/share-target
+//   السبب الجذري:
+//     قبل الإصلاح كنا نستدعي normalizeStandaloneDeepLink() بشكل متزامن قبل أي
+//     تسجيل لـ Service Worker → عند وصول POST من يوتيوب إلى /share-target عبر
+//     nginx fallback، كنا نعيد التوجيه فوراً إلى /#/share-target?shared=0&via=direct
+//     قبل أن يحصل SW على فرصة معالجة الطلب وحفظ الحمولة في IndexedDB.
+//     النتيجة: ShareTargetLanding يقرأ null → صفحة فارغة.
+//
+//   الحل:
+//     - لأي مسار غير /share-target: نُطبّق نفس المنطق فوراً (لا تغيير).
+//     - لمسار /share-target تحديداً:
+//         1) لا نعيد التوجيه فوراً.
+//         2) ننتظر navigator.serviceWorker.ready (بمهلة قصوى 3s) مع polling
+//            لتحكم SW في العميل (navigator.serviceWorker.controller).
+//         3) إذا سيطر SW خلال المهلة → نعتبر أن الحمولة قد حُفظت في IndexedDB
+//            بواسطة handleShareTarget، فنوجّه مع via=sw&shared=1.
+//         4) إذا انتهت المهلة → نتابع بالتوجيه القديم via=direct&shared=0
+//            كـ fallback (بدل الوقوف على صفحة بيضاء).
+//     - في جميع الحالات: التوجيه يستخدم replace ولا يحدث reload.
 function normalizeStandaloneDeepLink() {
   if (typeof window === 'undefined') return;
   const { pathname, search, hash } = window.location;
 
-  // (a) معالجة خاصة لـ /share-target
+  // (a) معالجة خاصة لـ /share-target — تأجيل التوجيه حتى يجهز SW
   if (pathname === '/share-target') {
     const params = new URLSearchParams(search || '');
     if (!params.has('shared')) params.set('shared', '0');
     if (!params.has('via')) params.set('via', 'direct');
+
+    // إذا كان SW مسيطراً بالفعل عند التحميل → توجيه فوري مع via=sw
+    const alreadyControlled = typeof navigator !== 'undefined'
+      && navigator.serviceWorker
+      && navigator.serviceWorker.controller;
+
+    if (alreadyControlled) {
+      params.set('via', 'sw');
+      params.set('shared', '1');
+      const target = `/#/share-target?${params.toString()}`;
+      window.location.replace(target);
+      return;
+    }
+
+    // خلاف ذلك: انتظار SW ready + controller حتى 3 ثوانٍ ثم توجيه.
+    // لا نُبقي المستخدم على صفحة بيضاء — نضع علامة انتقالية دنيا.
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+      let redirected = false;
+      const doRedirect = (via) => {
+        if (redirected) return;
+        redirected = true;
+        const p = new URLSearchParams(search || '');
+        p.set('via', via);
+        p.set('shared', via === 'sw' ? '1' : '0');
+        window.location.replace(`/#/share-target?${p.toString()}`);
+      };
+
+      const timeoutId = setTimeout(() => doRedirect('direct'), 3000);
+
+      // انتظار SW ready + سيطرته الفعلية على العميل
+      navigator.serviceWorker.ready
+        .then(() => {
+          // بعد ready قد لا يكون controller موجوداً بعد (أول تحميل)،
+          // ننتظر controllerchange أو نتأكد فوراً.
+          if (navigator.serviceWorker.controller) {
+            clearTimeout(timeoutId);
+            doRedirect('sw');
+            return;
+          }
+          const onControllerChange = () => {
+            navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+            clearTimeout(timeoutId);
+            doRedirect('sw');
+          };
+          try {
+            navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+          } catch (_) {
+            clearTimeout(timeoutId);
+            doRedirect('direct');
+          }
+        })
+        .catch(() => {
+          clearTimeout(timeoutId);
+          doRedirect('direct');
+        });
+      return;
+    }
+
+    // لا يوجد Service Worker API إطلاقاً (متصفح قديم) → توجيه مباشر
     const target = `/#/share-target?${params.toString()}`;
     window.location.replace(target);
     return;
@@ -744,11 +844,17 @@ function watchServiceWorkerUpdates(registration) {
     });
   });
 
-  let refreshing = false;
+  // ✅ v89.01 ROOT FIX #1 (السبب الرئيسي للصفحة البيضاء):
+  //   الاستماع لـ controllerchange + window.location.reload() هنا + مستمع مماثل
+  //   داخل pwaInitializer = تعارض مزدوج. عند وصول POST من يوتيوب إلى
+  //   /share-target يُفعّل SW جديد → controllerchange → reload → SW يفوّت
+  //   الطلب في الشوط الثاني → nginx fallback يُعيد index.html بدون hash →
+  //   HashRouter يقرأ '/share-target' بدون hash → صفحة بيضاء وحلقة reload لا نهائية.
+  //
+  //   الحل: نُلغي reload تماماً من هذا المستمع. تحديث SW يفعلياً عبر updatefound →
+  //   <AppUpdatePrompt /> بضغطة المستخدم. لم نعد بحاجة لأي reload تلقائي هنا.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
+    console.log('[Yamshat] controllerchange observed (no reload — handled by <AppUpdatePrompt />)');
   });
 
   return registration;
@@ -766,7 +872,28 @@ if (typeof window !== 'undefined') {
   installBrokenMediaSuppressor();
   initializeViewportTracker();
 
-  // تفعيل تحسينات PWA وتجربة المستخدم بشكل مؤجل لضمان سرعة ظهور الصفحة الأولى
+  // ✅ v89.01 ROOT FIX #2 (pwaInitializer.init() كان مؤجّلاً داخل requestIdleCallback):
+  //   قبل هذا الإصلاح كنّا نؤجّل init() داخل requestIdleCallback (أو setTimeout 1000ms).
+  //   نتيجةً لذلك، عندما يرسل يوتيوب/إنستغرام POST إلى /share-target في أول مشاركة،
+  //   لم يكن SW مُسجَّلاً بعد → handleShareTarget لا يُستدعى أبداً → nginx fallback
+  //   يُعيد index.html → HashRouter يقرأ /share-target بدون hash → SPA بيضاء.
+  //
+  //   الحل: نفصل تسجيل Service Worker (يجب أن يحدث فوراً وبشكل متزامن مع بقية التمهيد)
+  //   عن باقي تحسينات اللمس/الأجهزة القديمة (التي تُبقى داخل requestIdleCallback
+  //   لأنها لا تعطّل استقبال المشاركة).
+  //   → نستدعي pwaInitializer.init({ swPath: '/sw.js' }) فوراً هنا،
+  //   قبل أي أرباح أداء مؤجّلة.
+  try {
+    pwaInitializer.init({ swPath: '/sw.js' }).then(() => {
+      console.log('[Yamshat] PWA initialized successfully (eager — v89.01)');
+    }).catch(err => {
+      console.warn('[Yamshat] PWA initialization error:', err);
+    });
+  } catch (err) {
+    console.warn('[Yamshat] Eager PWA init failed:', err);
+  }
+
+  // تفعيل تحسينات UX/اللمس بشكل مؤجل لضمان سرعة ظهور الصفحة الأولى
   const initializeEnhancements = () => {
     try {
       // 🔧 v49: تعطيل smoothTouchLayer على document.documentElement لأنه
@@ -797,18 +924,21 @@ if (typeof window !== 'undefined') {
         console.log('[Yamshat] Legacy device optimizations applied');
       }
 
-      // تفعيل PWA - نستخدم sw.js الرئيسي الموحد
-      pwaInitializer.init({ swPath: '/sw.js' }).then(() => {
-        console.log('[Yamshat] PWA initialized successfully');
-      }).catch(err => {
-        console.warn('[Yamshat] PWA initialization error:', err);
-      });
+      // v89.01: pwaInitializer.init() أصبح يُستدعى فوراً أعلاه (خارج requestIdleCallback).
+      // نبقي هنا على استدعاء idempotent كـ safety-net إذا فشل الاستدعاء العاجل لأي سبب.
+      if (!pwaInitializer?.state?.isInitialized && !pwaInitializer?.state?.initPromise) {
+        pwaInitializer.init({ swPath: '/sw.js' }).then(() => {
+          console.log('[Yamshat] PWA initialized successfully (idle fallback)');
+        }).catch(err => {
+          console.warn('[Yamshat] PWA initialization error (idle fallback):', err);
+        });
+      }
     } catch (err) {
       console.warn('[Yamshat] Enhancement initialization error:', err);
     }
   };
 
-  // تأجيل التهيئة قليلاً للسماح للمتصفح برسم الواجهة أولاً
+  // تأجيل تحسينات اللمس فقط — تسجيل SW تم فعلياً قبل هذه النقطة.
   if (window.requestIdleCallback) {
     window.requestIdleCallback(() => initializeEnhancements());
   } else {

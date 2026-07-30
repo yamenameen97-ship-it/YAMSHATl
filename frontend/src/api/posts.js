@@ -207,7 +207,21 @@ export const uploadPostMedia = (file, onUploadProgress) => {
 
 export const likePost = (postId) => API.post(`/posts/${postId}/like`);
 export const savePost = (postId) => API.post(`/posts/${postId}/save`);
-export const sharePost = (postId, platform = 'copy') => API.post(`/posts/${postId}/share`, { platform });
+export const sharePost = (postId, data = 'copy') => {
+  // ✅ v88.99 — دعم تمرير share_type='repost' و quote_text لإعادة النشر
+  // التوافق مع النداء القديم: sharePost(id, 'whatsapp') و sharePost(id, { platform, type, quote_text })
+  if (typeof data === 'string') {
+    return API.post(`/posts/${postId}/share`, { platform: data });
+  }
+  const payload = {
+    platform: data.platform || 'copy',
+  };
+  if (data.type) payload.share_type = data.type;
+  if (data.share_type) payload.share_type = data.share_type;
+  if (data.quote_text) payload.quote_text = data.quote_text;
+  if (data.quoteText) payload.quote_text = data.quoteText;
+  return API.post(`/posts/${postId}/share`, payload);
+};
 export const votePoll = (postId, optionKey) => API.post(`/posts/${postId}/poll-vote`, { option_key: optionKey });
 export const addComment = (postId, content, parentId = null) => API.post(`/posts/${postId}/comment`, { content, parent_id: parentId });
 export const getComments = (postId, params = {}) => API.get(`/comments/${postId}/comments`, { params, cache: false, forceRefresh: true });

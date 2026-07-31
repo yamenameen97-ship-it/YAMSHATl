@@ -921,12 +921,48 @@ function watchServiceWorkerUpdates(registration) {
   return registration;
 }
 
+// ✅ v89.09 ROOT FIX #4: قاتل Service Workers القديمة (kill-switch)
+//   السبب الجذري:
+//     الأجهزة التي كانت تحمل sw-pwa-enhanced.js أو sw-enhanced.js (SW قديم بلا
+//     معالج /share-target) تبقى تستخدمه إلى الأبد حتى بعد رفع نسخة تحتوي
+//     على sw.js الصحيح — لأن المتصفح لا يتحقق تلقائياً من ملف SW مختلف.
+//     النتيجة: كل POST من يوتيوب/تويتر/إنستجرام يفوّت المعالج ويصل إلى
+//     nginx فقط → صفحة فارغة أو شاشة تحميل لا نهائية.
+//   الحل:
+//     نفحص كل registrations الحالية ونُلغي تسجيل أي واحدة scriptURL منها
+//     يشير إلى ملفات SW القديمة. sw.js الجديد سيتسجّل بعدها بشكل نظيف.
+async function killLegacyServiceWorkers() {
+  try {
+    if (!('serviceWorker' in navigator)) return;
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    for (const reg of registrations) {
+      try {
+        const scriptURL = reg?.active?.scriptURL
+          || reg?.waiting?.scriptURL
+          || reg?.installing?.scriptURL
+          || '';
+        // نُلغي أي SW لا يتطابق مع /sw.js الحديث
+        const isLegacy = /\/sw-pwa-enhanced\.js(\?|$)/i.test(scriptURL)
+          || /\/sw-enhanced\.js(\?|$)/i.test(scriptURL);
+        if (isLegacy) {
+          console.warn('[Yamshat v89.09] Unregistering legacy SW:', scriptURL);
+          await reg.unregister().catch(() => null);
+        }
+      } catch (_) { /* ignore individual */ }
+    }
+  } catch (err) {
+    console.warn('[Yamshat v89.09] killLegacyServiceWorkers failed (non-fatal):', err?.message);
+  }
+}
+
 if (typeof window !== 'undefined') {
   normalizeStandaloneDeepLink();
   // v59.13.35 — تطبيق حجم الخط المحفوظ فوراً على <html> (قبل أي رسم)
   try { applyFontSize(getStoredFontSize()); } catch (_) { /* ignore */ }
   window.__YAMSHAT_BUILD__ = BUILD_ID;
   window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
+  // ✅ v89.09: قتل أي SW قديم قبل تسجيل الجديد (لا ننتظر — يعمل بالتوازي)
+  killLegacyServiceWorkers();
   initializePerformanceToolkit();
   initializeRuntimeErrorCapture();
   // v59.12: كتم أخطاء 404 للوسائط التالفة (/uploads/*) واستبدالها بـ placeholder محلي

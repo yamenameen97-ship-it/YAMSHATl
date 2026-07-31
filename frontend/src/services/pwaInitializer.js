@@ -15,7 +15,12 @@ import { smoothTouchLayer } from './smoothTouchLayer';
 export class PWAInitializer {
   constructor(options = {}) {
     this.config = {
-      swPath: '/sw-pwa-enhanced.js',
+      // ✅ v89.10 ROOT FIX #1: الافتراضي كان '/sw-pwa-enhanced.js' وهو SW قديم
+      //   بدون معالج /share-target. إذا فشل killLegacyServiceWorkers() لأي سبب
+      //   (وضع خفي/بلا صلاحيات/getRegistrations معطّل) → يُسجَّل SW القديم
+      //   من جديد → أول POST من يوتيوب يفوّت المعالج → شاشة بيضاء.
+      //   الحل: الافتراضي الآن '/sw.js' الحديث الذي يحتوي على handleShareTarget.
+      swPath: '/sw.js',
       enableTouchLayer: true,
       enableInstallPrompt: true,
       enableNotifications: true,
@@ -122,7 +127,33 @@ export class PWAInitializer {
         return;
       }
 
-      const registration = await navigator.serviceWorker.register(this.config.swPath, {
+      // ✅ v89.10 ROOT FIX #2: حماية ذاتية — لا نسمح أبداً بتسجيل SW قديم
+      //   حتى لو تم استدعاء init() بـ swPath: '/sw-pwa-enhanced.js' من كود قديم
+      //   عالق في bundler cache، نُجبره على /sw.js. هذا خط الدفاع الأخير.
+      let effectiveSwPath = this.config.swPath || '/sw.js';
+      if (/sw-pwa-enhanced\.js|sw-enhanced\.js/i.test(effectiveSwPath)) {
+        console.warn('[PWA v89.10] Refusing to register legacy SW:', effectiveSwPath, '→ forcing /sw.js');
+        effectiveSwPath = '/sw.js';
+        this.config.swPath = '/sw.js';
+      }
+
+      // ✅ v89.10 ROOT FIX #3: تنظيف SW القديم مباشرة قبل التسجيل (متزامن)
+      //   killLegacyServiceWorkers() في main.jsx غير حاجب — قد يتسابق مع هذا التسجيل.
+      //   هنا نضمن الحذف قبل أي register().
+      try {
+        const existing = await navigator.serviceWorker.getRegistrations();
+        for (const reg of existing) {
+          try {
+            const url = reg?.active?.scriptURL || reg?.waiting?.scriptURL || reg?.installing?.scriptURL || '';
+            if (/sw-pwa-enhanced\.js|sw-enhanced\.js/i.test(url)) {
+              console.warn('[PWA v89.10] Unregistering legacy SW before new registration:', url);
+              await reg.unregister().catch(() => null);
+            }
+          } catch (_) { /* ignore individual */ }
+        }
+      } catch (_) { /* ignore — proceed with registration */ }
+
+      const registration = await navigator.serviceWorker.register(effectiveSwPath, {
         scope: '/',
         updateViaCache: 'none'
       });

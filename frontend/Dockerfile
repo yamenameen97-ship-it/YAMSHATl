@@ -1,37 +1,17 @@
-# Build stage
+# Production build
 FROM node:22-alpine AS builder
 
 WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies
-RUN npm ci
-
-# Copy source code
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY . .
-
-# Build the application
 RUN npm run build
 
-# Production stage
-FROM node:22-alpine
+# Static hosting with explicit POST handling for the PWA Web Share Target.
+FROM nginx:1.27-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-WORKDIR /app
-
-# Install serve to run the preview
-RUN npm install -g serve
-
-# Copy built files from builder
-COPY --from=builder /app/dist ./dist
-
-# Expose port
-EXPOSE 4173
-
-# Health check
+EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:4173', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
-
-# Start the application
-CMD ["serve", "-s", "dist", "-l", "4173"]
+  CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1

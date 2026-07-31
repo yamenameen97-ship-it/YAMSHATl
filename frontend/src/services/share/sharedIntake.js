@@ -23,17 +23,61 @@ export const SHARE_TARGETS = ['reel', 'post', 'story', 'chat', 'groups'];
 let _memoryPending = null;
 
 // ---------- IndexedDB helpers ----------
+// ✅ v89.10 ROOT FIX #4: معالجة VersionError عندما يكون هناك DB أعلى إصداراً
+//   السبب الجذري السابق:
+//     كنا نفتح indexedDB.open(DB_NAME, 1) ثابتاً على الإصدار 1. إذا كان لدى
+//     المتصفح نسخة أقدم من التطبيق أنشأت DB بإصدار أعلى (مثلاً بعد ترقية عالقة
+//     لم تكتمل)، فتحه بإصدار 1 يفشل بـ VersionError → openDatabase يرمي →
+//     readSharedPayload يعيد null → ShareTargetLanding يظل "جارٍ التحضير..."
+//     إلى الأبد → شاشة بيضاء فعلياً.
+//   الحل:
+//     - نفتح DB بدون تحديد إصدار (open(name)) لقراءة الإصدار الحالي.
+//     - إن لم يوجد ObjectStore المطلوب → نُغلق ونُعيد الفتح بإصدار +1
+//       لإنشاء الـ store عبر onupgradeneeded.
+//     - أي فشل حاسم يُلتقط ولا يمنع باقي التدفق.
 function openDatabase() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
+    let request;
+    try {
+      request = indexedDB.open(DB_NAME);
+    } catch (err) {
+      reject(err);
+      return;
+    }
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
+        try { db.createObjectStore(STORE_NAME); } catch (_) { /* ignore */ }
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      // إذا لم يوجد store → أعِد الفتح بإصدار أعلى لإنشائه
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const nextVersion = (db.version || 1) + 1;
+        db.close();
+        let upgradeReq;
+        try {
+          upgradeReq = indexedDB.open(DB_NAME, nextVersion);
+        } catch (err) {
+          reject(err);
+          return;
+        }
+        upgradeReq.onupgradeneeded = () => {
+          const udb = upgradeReq.result;
+          if (!udb.objectStoreNames.contains(STORE_NAME)) {
+            try { udb.createObjectStore(STORE_NAME); } catch (_) { /* ignore */ }
+          }
+        };
+        upgradeReq.onsuccess = () => resolve(upgradeReq.result);
+        upgradeReq.onerror = () => reject(upgradeReq.error);
+        upgradeReq.onblocked = () => reject(new Error('IDB upgrade blocked'));
+      } else {
+        resolve(db);
+      }
+    };
     request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error('IDB open blocked'));
   });
 }
 

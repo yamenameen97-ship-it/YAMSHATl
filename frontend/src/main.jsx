@@ -469,7 +469,7 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v89.02-SHARE-TARGET-SW-ROOT-FIX';
+const BUILD_ID = 'yamshat-v89.10-DEEP-FIX';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 const LAST_RESET_KEY = 'yamshat_build_reset_ts';
 const BUILD_CURRENT_TAG = 'v89.02';
@@ -956,13 +956,20 @@ async function killLegacyServiceWorkers() {
 }
 
 if (typeof window !== 'undefined') {
+  // ✅ v89.10 ROOT FIX #5: killLegacyServiceWorkers قبل normalizeStandaloneDeepLink.
+  //   السبب الجذري:
+  //     في v89.09 كنّا نستدعي normalizeStandaloneDeepLink() أولاً وهي تفحص
+  //     navigator.serviceWorker.controller. إذا كان SW القديم (sw-pwa-enhanced)
+  //     ما زال مسيطراً → alreadyControlled=true → التوجيه فوري إلى via=sw&shared=1
+  //     مع أن SW القديم لا يحفظ payload → ShareTargetLanding يقرأ null → شاشة بيضاء.
+  //   الحل: نقتل SW القديم أوّلاً (بشكل غير حاجب — تنظيف لاحق) ثم نُطبِّق التوجيه.
+  //   في الطلبات القادمة، pwaInitializer سيُسجِّل /sw.js الحديث.
+  killLegacyServiceWorkers();
   normalizeStandaloneDeepLink();
   // v59.13.35 — تطبيق حجم الخط المحفوظ فوراً على <html> (قبل أي رسم)
   try { applyFontSize(getStoredFontSize()); } catch (_) { /* ignore */ }
   window.__YAMSHAT_BUILD__ = BUILD_ID;
   window.__YAMSHAT_SW_READY__ = Promise.resolve(null);
-  // ✅ v89.09: قتل أي SW قديم قبل تسجيل الجديد (لا ننتظر — يعمل بالتوازي)
-  killLegacyServiceWorkers();
   initializePerformanceToolkit();
   initializeRuntimeErrorCapture();
   // v59.12: كتم أخطاء 404 للوسائط التالفة (/uploads/*) واستبدالها بـ placeholder محلي

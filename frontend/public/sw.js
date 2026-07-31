@@ -25,7 +25,7 @@
 //     #C) handleShareTarget كانت ترمي عند contentType غير معروف.
 //         → أُصلح: try/catch شامل داخلي + دائماً نحفظ + دائماً نُرجع HTML.
 //     #D) VERSION مرفوعة لإجبار تحديث SW القديم فوراً.
-const VERSION = 'yamshat-v89.08-share-external-final-' + '1930000000000';
+const VERSION = 'yamshat-v20260731-171347-1785518027599' + '1930000000002';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -266,7 +266,10 @@ async function handleShareTarget(request) {
     // ✅ v89.08: حاول قراءة formData أولاً — الأكثر شيوعاً فٌ مشاركات الفيديو/الصور
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
-      files = formData.getAll('files').filter(Boolean);
+      // بعض تطبيقات أندرويد القديمة تستخدم file أو media بدلاً من files.
+      // نقبل الأسماء الثلاثة، ثم لا نحتفظ إلا بـ File/Blob صالح.
+      const candidates = ['files', 'file', 'media'].flatMap((name) => formData.getAll(name));
+      files = candidates.filter((value) => value && typeof value !== 'string' && typeof value.arrayBuffer === 'function');
       title = String(formData.get('title') || '');
       text = String(formData.get('text') || '');
       url = String(formData.get('url') || '');
@@ -284,7 +287,10 @@ async function handleShareTarget(request) {
       let handled = false;
       try {
         const formData = await request.formData();
-        files = formData.getAll('files').filter(Boolean);
+        // بعض تطبيقات أندرويد القديمة تستخدم file أو media بدلاً من files.
+        // نقبل الأسماء الثلاثة، ثم لا نحتفظ إلا بـ File/Blob صالح.
+        const candidates = ['files', 'file', 'media'].flatMap((name) => formData.getAll(name));
+        files = candidates.filter((value) => value && typeof value !== 'string' && typeof value.arrayBuffer === 'function');
         title = String(formData.get('title') || '');
         text = String(formData.get('text') || '');
         url = String(formData.get('url') || '');
@@ -320,7 +326,7 @@ async function handleShareTarget(request) {
     }
 
     const normalizedFiles = await Promise.all(
-      files.map(async (file, index) => {
+      files.filter((file) => file && typeof file !== 'string' && typeof file.arrayBuffer === 'function').map(async (file, index) => {
         // ✅ v88.98 ROOT FIX: بعض المتصفحات ترسل text/uri-list كـ File
         //    نستخرج منها الرابط بدل معاملتها كملف
         const fileType = String(file.type || '').toLowerCase();

@@ -1,18 +1,41 @@
 {
   "id": "/",
-  "name": "Yamshat",
+  "name": "يام شات - Yamshat",
   "short_name": "Yamshat",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "/",
+  "start_url": "/?pwa=1&v=89.08",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui", "browser"],
-  "orientation": "portrait",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
-  "description": "Yamshat social app with chat, reels, live, push notifications, offline support, and share target support.",
-  "categories": ["social", "communication", "entertainment"],
+  "display_override": [
+    "standalone",
+    "minimal-ui",
+    "browser"
+  ],
+  "orientation": "portrait-primary",
+  "background_color": "#0A0D1A",
+  "theme_color": "#7C3AED",
+  "description": "تطبيق التواصل الاجتماعي العربي - منصة للتواصل والمشاركة والتفاعل والبث المباشر والريلز",
+  "categories": [
+    "social",
+    "communication",
+    "entertainment"
+  ],
+  "prefer_related_applications": false,
+  "screenshots": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
   "icons": [
     {
       "src": "/icons/icon-72.png",
@@ -77,23 +100,10 @@
   ],
   "shortcuts": [
     {
-      "name": "الدردشة",
-      "short_name": "الدردشة",
-      "description": "افتح المحادثات مباشرة",
-      "url": "/#/chat",
-      "icons": [
-        {
-          "src": "/icons/icon-192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
       "name": "الرسائل",
       "short_name": "الرسائل",
-      "description": "الذهاب إلى صندوق الرسائل",
-      "url": "/#/inbox",
+      "description": "افتح الرسائل المباشرة",
+      "url": "/#/messages",
       "icons": [
         {
           "src": "/icons/icon-192.png",
@@ -105,7 +115,7 @@
     {
       "name": "الإشعارات",
       "short_name": "الإشعارات",
-      "description": "عرض آخر الإشعارات",
+      "description": "افتح الإشعارات",
       "url": "/#/notifications",
       "icons": [
         {
@@ -116,10 +126,23 @@
       ]
     },
     {
-      "name": "البث المباشر",
-      "short_name": "البث",
-      "description": "افتح البث المباشر بسرعة",
-      "url": "/#/live",
+      "name": "الملف الشخصي",
+      "short_name": "الملف الشخصي",
+      "description": "افتح ملفك الشخصي",
+      "url": "/#/profile",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "الريلز",
+      "short_name": "الريلز",
+      "description": "شاهد الريلز",
+      "url": "/#/reels",
       "icons": [
         {
           "src": "/icons/icon-192.png",
@@ -140,9 +163,68 @@
       "files": [
         {
           "name": "files",
-          "accept": ["image/*", "video/*"]
+          "accept": [
+            "image/*",
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "image/gif",
+            "video/*",
+            "video/mp4",
+            "video/webm",
+            "video/quicktime",
+            "video/x-matroska",
+            "audio/*",
+            "audio/mpeg",
+            "audio/wav",
+            "audio/mp4",
+            "audio/ogg",
+            "text/*",
+            "text/plain",
+            "text/uri-list",
+            "text/html",
+            "application/octet-stream",
+            "application/pdf",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+            ".gif",
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".mkv",
+            ".mp3",
+            ".wav",
+            ".m4a",
+            ".ogg",
+            ".txt",
+            ".pdf"
+          ]
         }
       ]
     }
+  },
+  "file_handlers": [
+    {
+      "action": "/open-file",
+      "accept": {
+        "image/*": [".png", ".jpg", ".jpeg", ".webp", ".gif"],
+        "video/*": [".mp4", ".webm", ".mov"],
+        "audio/*": [".mp3", ".wav", ".m4a"]
+      }
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+yamshat",
+      "url": "/?protocol=%s"
+    }
+  ],
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
+  "note_taking": {
+    "new_note_url": "/#/new-note"
   }
 }

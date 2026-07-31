@@ -395,12 +395,14 @@ function MobilePostCard({
           )}
           {banner.type === 'video' && (
             <div className="banner-video-container">
-              {/* ✅ v88.61 ROOT FIX (2026-07-24): تشغيل بأسلوب فيسبوك
-                  - autoplay مكتوم عند الظهور، إيقاف عند الخروج من الرؤية
-                  - زر ميكروفون عائم لفتح/كتم الصوت دون فتح الفيديو
-                  - نقر على الفيديو → Fullscreen داخلي مع صوت وشريط تحكم
-                  - زر × لإرجاع المستخدم للصفحة والتمرير طبيعي
-                  - touch-action: pan-y حتى لا يمنع الفيديو تمرير الخلاصة */}
+              {/* ✅ v89.12 ROOT FIX (2026-07-31): مطابقة صفحة FeedEnhanced.jsx
+                  - المشكلة السابقة: زر الصوت العائم كان يجعل الفيديو يهرب جانبياً
+                    ويأخذ مساحة زائدة عند العرض على شاشة الكمبيوتر.
+                  - الحل: FeedVideoPlayer الجديد يستخدم controls أصلية للمتصفح
+                    (صوت + تكبير + إعدادات + شريط تقدم) مطابقاً للصفحة الرئيسية
+                    العادية التي تعمل بجدارة.
+                  - autoplay مكتوم عند الظهور عبر IntersectionObserver.
+                  - touch-action: pan-y حتى لا يمنع تمرير الخلاصة. */}
               <FeedVideoPlayer src={banner.url} poster={banner.poster} />
             </div>
           )}
@@ -756,12 +758,28 @@ function MobilePostCard({
           display: block;
           cursor: zoom-in;
         }
-        .banner-image-container,
-        .banner-video-container {
+        .banner-image-container {
           position: relative;
           width: 100%;
           height: 100%;
           background: #000;
+        }
+        /* ✅ v89.12 ROOT FIX (2026-07-31): إزالة height:100% من حاوية الفيديو.
+           السبب الجذري لهروب الفيديو جانبياً وأخذ مساحة زائدة على شاشة الكمبيوتر:
+             - الأب .ym-post-banner-new يستخدم aspect-ratio: auto (بدون ارتفاع محدد).
+             - إذا فرضنا height: 100% على حاوية الفيديو، فإن المتصفح لا يجد مرجعاً
+               للارتفاع فيتعامل معها بشكل غير متوقع خصوصاً في الشاشات العريضة،
+               مما يسبب انزلاق زر الصوت العائم إلى جانب الفيديو (كما في الصورة الأولى).
+           الحل: نجعل الحاوية تأخذ حجمها من محتواها (الفيديو الأصلي) — نفس أسلوب
+                 صفحة FeedEnhanced.jsx المُثبت جدارتها. */
+        .banner-video-container {
+          position: relative;
+          width: 100%;
+          max-width: 100%;
+          background: #000;
+          display: block;
+          overflow: hidden;
+          box-sizing: border-box;
         }
         .banner-image-container img {
           width: 100%;
@@ -781,15 +799,20 @@ function MobilePostCard({
             linear-gradient(135deg, rgba(139,92,246,0.10) 0%, rgba(15,20,34,0.6) 100%);
         }
         .banner-image-container img.is-loaded { opacity: 1; }
-        /* ✅ v87.19: فيديو حقيقي داخل البطاقة */
+        /* ✅ v89.12 (2026-07-31): فيديو حقيقي داخل البطاقة — controls أصلية للمتصفح
+           تعرض شريطاً موحداً بالأسفل يحوي:
+             [تشغيل/إيقاف] [الزمن] [شريط التقدم] [🔊 الصوت] [⋮ الإعدادات] [⛶ التكبير]
+           مطابق تماماً لسلوك FeedEnhanced.jsx (الصفحة الرئيسية للكمبيوتر). */
         .banner-video-container video {
           width: 100%;
           height: auto;
+          max-width: 100%;
           max-height: min(78dvh, 720px);
           object-fit: contain;
           display: block;
           background: #000;
-          /* controls native */
+          /* شريط التحكم الأصلي دائماً LTR (لا نعكسه مع الاتجاه RTL للبطاقة) */
+          direction: ltr;
         }
         /* ✅ v87.19: إطار fallback أنيق (بدل شاشة سوداء فيها حرف) */
         .banner-image-fallback {

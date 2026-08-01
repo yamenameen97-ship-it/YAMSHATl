@@ -26,7 +26,8 @@
 //         → أُصلح: try/catch شامل داخلي + دائماً نحفظ + دائماً نُرجع HTML.
 //     #D) VERSION مرفوعة لإجبار تحديث SW القديم فوراً.
 // ✅ v89.13 ROOT FIX FINAL: رفع VERSION لإجبار تحديث SW القديم + إصلاح DB VersionError + fallback postMessage
-const VERSION = 'yamshat-v20260801-093600-v89.13-ROOT-DB-FIX' + '2000000000001';
+// ✅ v89.14 ROOT FIX FINAL: رفع VERSION لإجبار تحديث SW القديم + Cache Storage fallback + ready pong
+const VERSION = 'yamshat-v20260801-153000-v89.14-CACHE-FALLBACK' + '2100000000001';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -75,6 +76,10 @@ async function trimCache(cacheName, maxEntries) {
 const SHARE_DB_NAME = 'yamshat-pwa-db';
 const SHARE_STORE_NAME = 'shared-content';
 const SHARE_KEY = 'latest';
+// ✅ v89.14 ROOT FIX: Cache Storage كـ fallback ثانوي — يصمد حتى لو فشل IDB
+//   ومهما كان توقيت فتح ShareTargetLanding (قبل/بعد استقبال POST).
+const SHARE_FALLBACK_CACHE = 'yamshat-share-fallback-v1';
+const SHARE_FALLBACK_URL = '/__yamshat_share_fallback__';
 
 const APP_SHELL = [
   '/',
@@ -178,10 +183,43 @@ function openShareDatabase() {
   });
 }
 
-// ✅ v89.13 ROOT FIX #B: saveSharedPayload لن يرمي أبداً — postMessage fallback
-//   إن فشل IndexedDB لأي سبب (VersionError, quota, private mode)، نُرسل الحمولة
-//   عبر postMessage للعملاء الذين سيحفظونها بأنفسهم (YAMSHAT_SHARE_PAYLOAD_FALLBACK).
+// ✅ v89.14 ROOT FIX: بناء نسخة نصية خفيفة صالحة للـ Cache/postMessage
+function buildLightPayload(payload, err) {
+  return {
+    id: payload && payload.id,
+    receivedAt: payload && payload.receivedAt,
+    title: (payload && payload.title) || '',
+    text: (payload && payload.text) || '',
+    url: (payload && payload.url) || '',
+    filesCount: Array.isArray(payload && payload.files) ? payload.files.length : 0,
+    v: (payload && payload._v) || 'v89.14',
+    _v: (payload && payload._v) || 'v89.14',
+    _empty: !!(payload && payload._empty),
+    _fallback: 'cache+postMessage',
+    _dbError: err ? String((err && err.message) || err) : null,
+  };
+}
+
+// ✅ v89.14 ROOT FIX #B1: حفظ Cache Storage fallback — يصمد عبر إعادة التحميل والعملاء الجدد
+async function writeCacheFallback(lightPayload) {
+  try {
+    const cache = await caches.open(SHARE_FALLBACK_CACHE);
+    const body = JSON.stringify(lightPayload);
+    const res = new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+    });
+    await cache.put(SHARE_FALLBACK_URL, res);
+    return true;
+  } catch (_) { return false; }
+}
+
+// ✅ v89.14 ROOT FIX #B: saveSharedPayload لن يرمي أبداً — 3 مستويات fallback:
+//   1) IndexedDB (المفضل — يحفظ الملفات الكاملة)
+//   2) Cache Storage (نص خفيف — يصمد عبر إعادة التحميل)
+//   3) postMessage (لأي عميل مفتوح الآن)
 async function saveSharedPayload(payload) {
+  let idbErr = null;
   try {
     const db = await openShareDatabase();
     await new Promise((resolve, reject) => {
@@ -191,31 +229,35 @@ async function saveSharedPayload(payload) {
       tx.onerror = () => reject(tx.error || new Error('share tx failed'));
       tx.onabort = () => reject(tx.error || new Error('share tx aborted'));
     });
+    // نجحت IDB — نمسح Cache fallback القديم (لتفادي payload قديم)
+    try {
+      const cache = await caches.open(SHARE_FALLBACK_CACHE);
+      await cache.delete(SHARE_FALLBACK_URL);
+    } catch (_) { /* ignore */ }
     return true;
   } catch (err) {
-    // fallback: أرسل الحمولة عبر postMessage للعميل الذي سيحفظها بنفسه
-    try {
-      const lightPayload = {
-        id: payload && payload.id,
-        receivedAt: payload && payload.receivedAt,
-        title: (payload && payload.title) || '',
-        text: (payload && payload.text) || '',
-        url: (payload && payload.url) || '',
-        // لا نرسل ملفات ثقيلة في postMessage — نرسل عدداً فقط
-        filesCount: Array.isArray(payload && payload.files) ? payload.files.length : 0,
-        v: payload && payload._v,
-        _empty: payload && payload._empty,
-        _fallback: 'postMessage',
-        _dbError: String((err && err.message) || err),
-      };
-      const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
-      clientsList.forEach((client) => client.postMessage({
-        type: 'YAMSHAT_SHARE_PAYLOAD_FALLBACK',
-        payload: lightPayload,
-      }));
-    } catch (_) { /* ignore */ }
-    return false;
+    idbErr = err;
   }
+
+  // fallback ثانوي: نص خفيف
+  const lightPayload = buildLightPayload(payload, idbErr);
+
+  // 2) Cache Storage — يصمد عبر إعادة التحميل
+  try { await writeCacheFallback(lightPayload); } catch (_) { /* ignore */ }
+
+  // 3) postMessage لأي عميل مفتوح الآن
+  try {
+    const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+    clientsList.forEach((client) => {
+      try {
+        client.postMessage({
+          type: 'YAMSHAT_SHARE_PAYLOAD_FALLBACK',
+          payload: lightPayload,
+        });
+      } catch (_) { /* ignore individual */ }
+    });
+  } catch (_) { /* ignore */ }
+  return false;
 }
 
 // ✅ v89.04 ROOT FIX #5: HTML bridge خالٍ نهائياً من أي inline <script>
@@ -704,6 +746,27 @@ async function warmMediaUrls(urls = []) {
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
+    return;
+  }
+  // ✅ v89.14 ROOT FIX #C: عند فتح ShareTargetLanding يُرسل hello —
+  //   نرد له بـ fallback payload من Cache Storage إن وجد (يعالج السباق الزمني).
+  if (event.data?.type === 'YAMSHAT_SHARE_HELLO') {
+    event.waitUntil((async () => {
+      try {
+        const cache = await caches.open(SHARE_FALLBACK_CACHE);
+        const cached = await cache.match(SHARE_FALLBACK_URL);
+        if (cached) {
+          const lightPayload = await cached.json();
+          const source = event.source;
+          if (source && source.postMessage) {
+            source.postMessage({
+              type: 'YAMSHAT_SHARE_PAYLOAD_FALLBACK',
+              payload: lightPayload,
+            });
+          }
+        }
+      } catch (_) { /* ignore */ }
+    })());
     return;
   }
   if (event.data?.type === 'YAMSHAT_INVALIDATE_FEED') {

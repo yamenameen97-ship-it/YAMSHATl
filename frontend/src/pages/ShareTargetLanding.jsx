@@ -270,11 +270,26 @@ export default function ShareTargetLanding() {
         navigator.serviceWorker.addEventListener('message', swMessageHandler);
       } catch { /* ignore */ }
 
+      // ✅ v89.14 ROOT FIX #E: أرسل hello للـ SW لطلب أي fallback payload مخزّن في Cache Storage.
+      //   يعالج السباق الزمني: SW يحفظ fallback قبل ما ShareTargetLanding يفتح.
+      const sendHello = () => {
+        try {
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_HELLO' });
+          }
+        } catch { /* ignore */ }
+      };
+      sendHello();
+
       // ✅ v89.02 ROOT FIX #4: فور تحكّم SW للمرة الأولى → إعادة قراءة فورية.
       //   هذا يغطي الحالة via=direct&shared=0 حيث يصل المستخدم عبر nginx
       //   قبل تثبيت SW ويجب أن نلتقط أول تحكّم دون انتظار polling.
       controllerChangeHandler = async () => {
         try {
+          // ✅ v89.14: فور تحكّم SW أرسل hello أيضاً (قد يكون مخزناً fallback من POST سابق)
+          if (navigator.serviceWorker.controller) {
+            try { navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_HELLO' }); } catch (_) { /* ignore */ }
+          }
           const data = await readAny();
           applyPayload(data);
         } catch { /* ignore */ }
@@ -289,6 +304,10 @@ export default function ShareTargetLanding() {
           swReadyPromise = navigator.serviceWorker.ready.then(async () => {
             if (stopFlag) return;
             try {
+              // ✅ v89.14: أرسل hello بمجرد جاهزية SW (يحل حالة first-install)
+              if (navigator.serviceWorker.controller) {
+                try { navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_HELLO' }); } catch (_) { /* ignore */ }
+              }
               const data = await readAny();
               applyPayload(data);
             } catch { /* ignore */ }

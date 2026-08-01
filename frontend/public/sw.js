@@ -52,7 +52,7 @@
 //    #5 ShareTargetLanding: watchdog زمني 12s + زر إعادة محاولة صريح +
 //       بطاقة تشخيص عند _empty بدل عرض أزرار الوجهات كأن كل شيء طبيعي.
 //    #6 sw-pwa-enhanced.js + sw-push.js: تحويلهما إلى kill-stubs لا يتنافسان مع sw.js.
-const VERSION = 'yamshat-v20260801-230000-v89.18-BRIDGE-CSP-DISPLAY-MODE-FIX' + '2100000000003';
+const VERSION = 'yamshat-v20260801-230000-v89.19-SYNC-REDIRECT-NO-INLINE-SCRIPT' + '2100000000004';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -330,7 +330,7 @@ function buildShareBridgeHtml(sharedOk) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#7C3AED">
   <title>يام شات — جارٍ استقبال المشاركة</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'self'">
+  <!-- ✅ v89.19 FIX #3: CSP meta removed — some Android WebView versions choke on inline event handlers even with unsafe-inline. Bridge HTML is served by SW only, no CSP needed. -->
   <meta http-equiv="refresh" content="0; url=${target}">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -365,24 +365,9 @@ function buildShareBridgeHtml(sharedOk) {
       </noscript>
     </div>
   </div>
-  <script>
-    // ✅ v89.07: تحويل JS فوري يسبق meta-refresh (CSP يسمح unsafe-inline)
-    (function(){
-      var target = '${target}';
-      try {
-        setTimeout(function(){
-          try { window.location.replace(target); }
-          catch(_) { try { window.location.href = target; } catch(__) {} }
-        }, 150);
-        setTimeout(function(){
-          if (window.location.pathname === '/share-target') {
-            try { window.location.assign(target); }
-            catch(_) { try { window.location.hash = '#/share-target?shared=${flag}&via=sw&ts=${ts}'; } catch(__) {} }
-          }
-        }, 2500);
-      } catch(_) {}
-    })();
-  </script>
+  <!-- ✅ v89.19 FIX #3: Inline script removed — meta-refresh + manual <a> link are sufficient.
+       Some Android WebView versions block inline scripts even with 'unsafe-inline' CSP,
+       causing location.replace to fail silently → white screen. -->
 </body>
 </html>`;
 }

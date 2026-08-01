@@ -4,12 +4,8 @@
   "short_name": "Yamshat",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "/?pwa=1&v=89.18",
+  "start_url": "/?pwa=1&v=89.19",
   "scope": "/",
-  "scope_extensions": [
-    { "origin": "/share-target" },
-    { "origin": "/share-target/" }
-  ],
   "display": "standalone",
   "display_override": [
     "window-controls-overlay",

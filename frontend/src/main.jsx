@@ -469,10 +469,10 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v89.10-DEEP-FIX';
+const BUILD_ID = 'yamshat-v89.19-SYNC-SHARE-REDIRECT';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 const LAST_RESET_KEY = 'yamshat_build_reset_ts';
-const BUILD_CURRENT_TAG = 'v89.02';
+const BUILD_CURRENT_TAG = 'v89.19';
 
 // ✅ v89.01: أداة موحّدة تحدّد ما إذا كنّا حالياً داخل مسار /share-target.
 //    نستخدمها لمنع أي reload/skipWaiting أثناء استقبال المشاركة الخارجية،
@@ -763,115 +763,59 @@ function normalizeStandaloneDeepLink() {
   //     5) safeRedirect يتحقق من window.location قبل الاستدعاء ويستخدم
   //        window.location.href كـ ultimate fallback.
   if (pathname === '/share-target') {
-    // بناء params مع ضمانة قيم افتراضية
-    const buildTarget = (via) => {
-      const p = new URLSearchParams(search || '');
-      p.set('via', via);
-      p.set('shared', via === 'sw' ? '1' : '0');
-      p.set('ts', String(Date.now()));
-      return `/#/share-target?${p.toString()}`;
-    };
-
-    // fallback آمن مطلقاً — يستخدم كل بدائل التوجيه المتوفرة
-    const safeRedirect = (target) => {
-      if (!target) return;
-      try { window.location.replace(target); return; } catch (_) { /* try next */ }
-      try { window.location.href = target; return; } catch (_) { /* try next */ }
-      try { window.location.assign(target); return; } catch (_) { /* try next */ }
-      // آخر ملاذ: hash فقط
-      try { window.location.hash = target.replace(/^\/#/, '#'); } catch (_) { /* ignore */ }
-    };
-
-    // (1) إذا كان SW مسيطراً بالفعل → توجيه فوري
-    let alreadyControlled = false;
+    // ✅ v89.19 ROOT FIX #1 + #2: توجيه متزامن فوري — لا انتظار لـ Service Worker
+    //   السبب الجذري السابق:
+    //     normalizeStandaloneDeepLink كان ينتظر navigator.serviceWorker.ready
+    //     (حتى 3s مؤقّت داخلي + 5s مؤقّت خارجي) قبل التوجيه. خلال هذه المدة
+    //     تكون الصفحة تعرض ما يراه HashRouter على المسار "/" (الصفحة الرئيسية
+    //     الفارغة بدون تسجيل دخول = شاشة بيضاء). ثم يُوجِّه إلى /#/share-target
+    //     لكن ShareTargetLanding يقرأ null لأن SW لم يحفظ الحمولة بعد.
+    //
+    //   الحل الجذري:
+    //     1) توجيه متزامن فوري باستخدام history.replaceState (بدون إعادة تحميل).
+    //     2) لا ننتظر SW إطلاقاً — ShareTargetLanding يستطيع polling الحمولة
+    //        من IndexedDB / Cache Storage / in-memory stash بمجرد وصوله.
+    //     3) إذا فشل replaceState → fallback إلى location.replace (مع إعادة تحميل).
+    //     4) إذا فشل ذلك أيضاً → تعيين hash مباشرة.
+    const stParams = new URLSearchParams(search || '');
+    let stVia = 'direct';
+    let stShared = '0';
     try {
-      alreadyControlled = Boolean(navigator?.serviceWorker?.controller);
-    } catch (_) { alreadyControlled = false; }
-
-    if (alreadyControlled) {
-      safeRedirect(buildTarget('sw'));
-      return;
-    }
-
-    // (2) لا يوجد SW API إطلاقاً → توجيه مباشر
-    let hasSwApi = false;
-    try {
-      hasSwApi = typeof navigator !== 'undefined' && Boolean(navigator.serviceWorker);
-    } catch (_) { hasSwApi = false; }
-
-    if (!hasSwApi) {
-      safeRedirect(buildTarget('direct'));
-      return;
-    }
-
-    // (3) SW موجود لكن غير مسيطر — انتظار مع 3 طبقات حماية
-    let redirected = false;
-    const doRedirect = (via) => {
-      if (redirected) return;
-      redirected = true;
-      safeRedirect(buildTarget(via));
-    };
-
-    // مؤقّت طوارئ داخلي 3s (لتوجيه direct)
-    let innerTimeoutId = null;
-    try { innerTimeoutId = setTimeout(() => doRedirect('direct'), 3000); } catch (_) { /* ignore */ }
-
-    // مؤقّت طوارئ خارجي 5s (ملاذ أخير لو تعلّق كل شيء)
-    try {
-      setTimeout(() => {
-        if (!redirected) {
-          try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (_) { /* ignore */ }
-          doRedirect('direct');
-        }
-      }, 5000);
-    } catch (_) { /* ignore */ }
-
-    // انتظار SW ready + controllerchange
-    try {
-      const readyPromise = navigator.serviceWorker.ready;
-      if (readyPromise && typeof readyPromise.then === 'function') {
-        readyPromise
-          .then(() => {
-            try {
-              if (navigator.serviceWorker.controller) {
-                try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (_) { /* ignore */ }
-                doRedirect('sw');
-                return;
-              }
-              const onControllerChange = () => {
-                try { navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange); } catch (_) { /* ignore */ }
-                try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (_) { /* ignore */ }
-                doRedirect('sw');
-              };
-              try {
-                navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-              } catch (_) {
-                try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (__) { /* ignore */ }
-                doRedirect('direct');
-              }
-            } catch (_) {
-              try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (__) { /* ignore */ }
-              doRedirect('direct');
-            }
-          })
-          .catch(() => {
-            try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (_) { /* ignore */ }
-            doRedirect('direct');
-          });
-      } else {
-        // .ready ليس Promise → fallback فوري
-        try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (_) { /* ignore */ }
-        doRedirect('direct');
+      if (navigator?.serviceWorker?.controller) {
+        stVia = 'sw';
+        stShared = '1';
       }
-    } catch (_) {
-      // أي استثناء متزامن → fallback فوري
-      try { if (innerTimeoutId) clearTimeout(innerTimeoutId); } catch (__) { /* ignore */ }
-      doRedirect('direct');
-    }
+    } catch (_) { /* keep direct */ }
+    stParams.set('via', stVia);
+    stParams.set('shared', stShared);
+    stParams.set('ts', String(Date.now()));
+    const stHash = '#/share-target?' + stParams.toString();
+    const stTarget = '/' + stHash;
+
+    // (1) الأفضل: history.replaceState — يغيّر URL بدون إعادة تحميل الصفحة
+    //     HashRouter سيقرأ hash الجديد عند تهيئته ويُعرض ShareTargetLanding فوراً.
+    try {
+      window.history.replaceState(null, '', stTarget);
+      // إطلاق حدث hashchange حتى HashRouter يلتقط التغيير إن كان قد تهيّأ بالفعل
+      try { window.dispatchEvent(new HashChangeEvent('hashchange')); } catch (_) {
+        try { window.dispatchEvent(new Event('hashchange')); } catch (__) { /* ignore */ }
+      }
+      return;
+    } catch (_) { /* fallthrough */ }
+
+    // (2) fallback: location.replace (قد يُسبب إعادة تحميل — لكنه مضمون)
+    try { window.location.replace(stTarget); return; } catch (_) { /* fallthrough */ }
+
+    // (3) fallback: location.href
+    try { window.location.href = stTarget; return; } catch (_) { /* fallthrough */ }
+
+    // (4) آخر ملاذ: تعيين hash فقط (يُبقي pathname = /share-target لكن hash = #/share-target)
+    //     HashRouter قد لا يلتقطه لأن pathname ليس "/"، لكن نحاول.
+    try { window.location.hash = stHash; } catch (_) { /* give up gracefully */ }
     return;
   }
 
-  if (hash && hash.startsWith('#/')) return;
+   if (hash && hash.startsWith('#/')) return;
   if (pathname === '/' || pathname === '/index.html') return;
   const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
   try {

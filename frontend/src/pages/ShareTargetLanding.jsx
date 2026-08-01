@@ -192,6 +192,16 @@ export default function ShareTargetLanding() {
   //   ولم يصل payload خلال 4s نعتبر أنّ Share Target API فشلت (متوقّع في browser)
   //   ونعرض شاشة التثبيت مبكراً بدل انتظار الـ 12s watchdog.
   const [browserFallbackShown, setBrowserFallbackShown] = useState(false);
+
+  // ✅ v89.19 ROOT FIX #6: totalRenderTimeout — ضمان مطلق أن شيئاً ما يُعرض دائماً
+  //   السبب الجذري السابق:
+  //     عند الفراغ الحقيقي، تسلسل state updates يجعل الشرط
+  //     loading && waitTimedOut && !(isBrowserMode && browserFallbackShown)
+  //     قد لا يتحقّق أحياناً → شاشة "جارٍ التحقق من الجلسة..." للأبد → أبيض.
+  //   الحل:
+  //     مؤقّت إجمالي 15s يضمن أنه بعد انتهائه يتم فرض loading=false وعرض
+  //     بطاقة شاملة تتضمن جميع خيارات الإنقاذ (إعادة محاولة + مسح كاش + عودة).
+  const [totalRenderTimeout, setTotalRenderTimeout] = useState(false);
   useEffect(() => {
     if (!isBrowserMode) return undefined;
     if (!loading) return undefined;
@@ -199,6 +209,17 @@ export default function ShareTargetLanding() {
     const timer = setTimeout(() => setBrowserFallbackShown(true), 4000);
     return () => clearTimeout(timer);
   }, [isBrowserMode, loading, payload, retryTick]);
+
+  // ✅ v89.19 ROOT FIX #6: مؤقّت إجمالي 15s — ضمان مطلق لعرض شيء ما
+  useEffect(() => {
+    if (!loading && !isAuthChecking) return undefined;
+    const timer = setTimeout(() => {
+      setTotalRenderTimeout(true);
+      // فرض إنهاء loading إن كان لا يزال true
+      try { setLoading(false); } catch (_) { /* ignore */ }
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [loading, isAuthChecking, retryTick]);
 
   const handleInstallPWA = useCallback(async () => {
     if (!installPromptEvent) return;
@@ -756,10 +777,10 @@ export default function ShareTargetLanding() {
 
         {/* ✅ v89.04 ROOT FIX #3: بوابة تسجيل الدخول — مع مؤقت طوارئ
             إذا لم تجتز auth hydration خلال 3s نمضي إلى واجهة تسجيل الدخول */}
-        {isAuthChecking ? (
+        {isAuthChecking && !totalRenderTimeout ? (
           /* ✅ v89.07 ROOT FIX: spinner مرئي كبير بدل نص فقط
-             السبب: المستخدم كان يرى شاشة تبدو فارغة (فقط نص صغير) عند العودة
-             من WebView — الآن يرى spinner + بطاقة واضحة فوراً */
+             ✅ v89.19 ROOT FIX #6: إضافة totalRenderTimeout escape — لو استمر
+             isAuthChecking أكثر من 15s نتجاوزه ونعرض المحتوى المتاح. */
           <div className="share-empty-box" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: 24 }}>
             <div
               aria-hidden="true"
@@ -989,6 +1010,49 @@ export default function ShareTargetLanding() {
             {searchParams.get('shared') === '0' ? (
               <div className="share-error-note">
                 تعذّر استلام المشاركة بالكامل. جرّب المشاركة مرة أخرى من التطبيق المصدر.
+              </div>
+            ) : null}
+
+            {/* ✅ v89.19 ROOT FIX #6: catch-all fallback — ضمان مطلق أن شيئاً ما يُعرض
+                حتى لو فشلت كل الشروط أعلاه بسبب تسلسل state updates. */}
+            {totalRenderTimeout && !payload && !loading ? (
+              <div className="share-empty-box" role="alert" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', background: 'rgba(239, 68, 68, 0.06)' }}>
+                <strong>⚠️ انتهت مهلة الانتظار</strong>
+                <span>
+                  مرّت 15 ثانية دون استلام محتوى قابل للعرض. قد يكون Service Worker
+                  غير مسجّل أو أن التطبيق المصدر لم يُرفق أي بيانات. جرّب الخيارات أدناه.
+                </span>
+                <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                  <button type="button" className="share-primary" onClick={handleShareRetry}>
+                    🔄 إعادة المحاولة
+                  </button>
+                  <button type="button" className="share-action" onClick={handleSharePurgeReload}>
+                    🧹 مسح الكاش وإعادة التحميل
+                  </button>
+                  <Link to="/" className="share-action">العودة للتطبيق</Link>
+                </div>
+              </div>
+            ) : null}
+
+            {/* ✅ v89.19 ROOT FIX #6: catch-all أثناء loading — إذا لم يعرض أي شيء
+                آخر (لا previews، لا watchdog، لا browser fallback) نُظهر spinner
+                واضح بدل شاشة فارغة. */}
+            {loading && !waitTimedOut && !(isBrowserMode && browserFallbackShown) && !totalRenderTimeout ? (
+              <div className="share-empty-box" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: 24 }}>
+                <div
+                  aria-hidden="true"
+                  style={{
+                    width: 48, height: 48,
+                    border: '4px solid rgba(139,92,246,.2)',
+                    borderTopColor: '#8B5CF6',
+                    borderRadius: '50%',
+                    animation: 'ym-share-spin .85s linear infinite',
+                  }}
+                />
+                <strong style={{ fontSize: '1rem', fontWeight: 800 }}>جارٍ استلام المحتوى المُشارَك...</strong>
+                <span style={{ color: '#94A3B8', fontSize: '.88rem', textAlign: 'center', maxWidth: 360, lineHeight: 1.6 }}>
+                  نقوم بالبحث عن المحتوى في الذاكرة المؤقتة. قد يستغرق هذا لحظات.
+                </span>
               </div>
             ) : null}
           </>

@@ -1,9 +1,10 @@
-// v89.10 — Legacy SW Kill Stub
-// هذا الملف كان يحتوي على Service Worker قديم بدون معالج /share-target.
-// الآن يقوم ذاتيّاً بإلغاء تسجيل نفسه ومسح الكاش القديم فور تحميله.
-// أي جهاز عالق على هذا SW سيقوم بتنظيف نفسه تلقائياً عند أول تحميل.
+// ✅ v89.16 ROOT FIX #6 — Legacy PWA Enhanced SW Kill Stub
+// نفس المنطق: يُلغي تسجيل نفسه فوراً ويمسح الكاش القديم بدون لمس
+// yamshat-share-fallback-v1 (كاش المشاركات المحمي).
 
-self.addEventListener('install', (event) => {
+const LEGACY_TAG = 'yamshat-pwa-enhanced-legacy-killed-v89.16';
+
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
@@ -11,11 +12,15 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     try {
       const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k).catch(() => null)));
+      await Promise.all(
+        keys
+          .filter((k) => !/^yamshat-share-fallback/i.test(k))
+          .map((k) => caches.delete(k).catch(() => null))
+      );
     } catch (_) { /* ignore */ }
     try {
       await self.registration.unregister();
-      console.warn('[Yamshat v89.10] Legacy SW self-unregistered.');
+      console.warn(`[${LEGACY_TAG}] Legacy PWA enhanced SW self-unregistered.`);
     } catch (_) { /* ignore */ }
     try {
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
@@ -23,5 +28,3 @@ self.addEventListener('activate', (event) => {
     } catch (_) { /* ignore */ }
   })());
 });
-
-// لا نلتقط أي fetch — نترك المتصفح يعود إلى الشبكة/nginx حتى يتم تسجيل /sw.js الجديد.

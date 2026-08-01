@@ -113,6 +113,13 @@ export default function ShareTargetLanding() {
   const [linkPublishing, setLinkPublishing] = useState(false);
   const previewUrlsRef = useRef([]);
 
+  // ✅ v89.16 ROOT FIX #5: watchdog زمني + محاولة إعادة صريحة
+  //   السبب الجذري: عند payload._empty كان يُعرض أزرار الوجهات الخمس كأن كل
+  //   شيء طبيعي، ولا يوجد توقيت محدّد يتوقف عنده الـ polling ولا يوجد
+  //   زر إعادة محاولة يراه المستخدم. الحل: watchdog بـ 12s + زر إعادة صريح.
+  const [waitTimedOut, setWaitTimedOut] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
+
   // ✅ v89.04 ROOT FIX #3: فحص تسجيل الدخول مع حماية من authHydrated=false الدائمة
   //   السبب الجذري (المشكلة #3):
   //     إذا لم يكتمل authHydrated (مثلاً: SW جديد تمّ install قبل التوفق مع
@@ -137,6 +144,15 @@ export default function ShareTargetLanding() {
     const timer = setTimeout(() => setAuthTimeout(true), 1500);  // v89.07: 3s→1.5s
     return () => clearTimeout(timer);
   }, [authHydrated]);
+
+  // ✅ v89.16 ROOT FIX #5: watchdog زمني 12s — إذا بقي loading=true
+  //   لمدة 12 ثانية دون وصول أي payload → نعتبر أن SW/IDB/Cache فشلت
+  //   ونعرض واجهة بديلة فيها تشخيص + زر إعادة محاولة.
+  useEffect(() => {
+    if (!loading) return undefined;
+    const timer = setTimeout(() => setWaitTimedOut(true), 12000);
+    return () => clearTimeout(timer);
+  }, [loading, retryTick]);
 
   useEffect(() => {
     let mounted = true;
@@ -378,6 +394,36 @@ export default function ShareTargetLanding() {
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryTick]);
+
+  // ✅ v89.16 ROOT FIX #5: معالج handler لزر إعادة المحاولة
+  const handleShareRetry = useCallback(async () => {
+    setWaitTimedOut(false);
+    setLoading(true);
+    setPayload(null);
+    // أرسل hello لـ SW يطلب fallback من Cache Storage
+    try {
+      if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_HELLO' });
+      }
+    } catch { /* ignore */ }
+    // ازد الـ tick لتشغيل useEffect الرئيسي مرة أخرى
+    setRetryTick((n) => n + 1);
+  }, []);
+
+  const handleSharePurgeReload = useCallback(async () => {
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        // احتفظ بـ share-fallback (قد يحوي مشاركة في الطريق)
+        await Promise.all(
+          keys
+            .filter((k) => !/^yamshat-share-fallback/i.test(k))
+            .map((k) => caches.delete(k).catch(() => null))
+        );
+      }
+    } catch { /* ignore */ }
+    try { window.location.reload(); } catch { window.location.href = '/'; }
   }, []);
 
   const recommendation = useMemo(() => recommendTarget(payload), [payload]);
@@ -696,17 +742,71 @@ export default function ShareTargetLanding() {
               </div>
             ) : null}
 
-            {!loading && !payload ? (
+            {/* ✅ v89.16 ROOT FIX #5: watchdog زمني — إذا لم تصل حمولة خلال 12s */}
+            {loading && waitTimedOut ? (
+              <div className="share-empty-box" role="alert">
+                <strong>⚠️ تأخر استلام المحتوى المُشارَك</strong>
+                <span>
+                  مرّت 12 ثانية دون وصول أي بيانات. في الأغلب أن Service Worker لم يتمكن
+                  من الإمساك بأول POST من التطبيق المصدر. جرّب إعادة المحاولة أو مسح الكاش
+                  ثم المشاركة مرة أخرى.
+                </span>
+                <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                  <button type="button" className="share-primary" onClick={handleShareRetry}>
+                    🔄 إعادة المحاولة
+                  </button>
+                  <button type="button" className="share-action" onClick={handleSharePurgeReload}>
+                    🧹 مسح الكاش وإعادة التحميل
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {/* ✅ v89.16 ROOT FIX #5: payload._empty → بطاقة تشخيص مفصّلة
+                بدل إظهار أزرار الوجهات الخمس كأن كل شيء طبيعي. */}
+            {!loading && payload && payload._empty ? (
+              <div className="share-empty-box" role="alert">
+                <strong>📭 المشاركة وصلت فارغة</strong>
+                <span>
+                  تمّ استلام إشارة المشاركة من التطبيق المصدر، لكن لم يُرفق معها أي رابط
+                  أو نص أو ملف. هذا يحدث أحياناً مع يوتيوب/إنستجرام عندما يفشل التطبيق
+                  في تمرير حقل الرابط.
+                </span>
+                {payload._diag ? (
+                  <details style={{ marginTop: 10, textAlign: 'right', direction: 'rtl' }}>
+                    <summary style={{ cursor: 'pointer', color: '#c4b5fd', fontWeight: 700 }}>
+                      🔍 تفاصيل تقنية
+                    </summary>
+                    <pre style={{ fontSize: 11, color: '#94A3B8', whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: '8px 0 0' }}>
+{JSON.stringify(payload._diag, null, 2)}
+                    </pre>
+                  </details>
+                ) : null}
+                <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                  <button type="button" className="share-primary" onClick={handleShareRetry}>
+                    🔄 محاولة إعادة القراءة
+                  </button>
+                  <Link to="/" className="share-action">العودة للتطبيق</Link>
+                </div>
+              </div>
+            ) : null}
+
+            {!loading && !payload && !waitTimedOut ? (
               <div className="share-empty-box">
                 <strong>لا يوجد محتوى مُستلم حالياً</strong>
                 <span>
                   افتح يوتيوب (أو أي تطبيق) → اضغط زر <b>مشاركة</b> → اختر <b>Yamshat</b>،
                   وستعود إلى هذه الصفحة تلقائياً.
                 </span>
+                <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                  <button type="button" className="share-primary" onClick={handleShareRetry}>
+                    🔄 إعادة المحاولة
+                  </button>
+                </div>
               </div>
             ) : null}
 
-            {!loading && payload ? (
+            {!loading && payload && !payload._empty ? (
               <>
                 <div className="share-choose-hint">
                   <div className="share-choose-hint-icon" aria-hidden="true">💡</div>

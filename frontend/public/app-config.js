@@ -1,6 +1,18 @@
 (function () {
-  const CONFIG_BUILD = 'yamshat-config-20260526-r9-ui-fixes';
+  // ✅ v89.16 ROOT FIX #1: bump build → إجبار المتصفح على قراءة app-config.js الجديدة
+  //   الذي لا يمسح كل الكاشات ولا يُلغي تسجيل SW عند التحديث.
+  const CONFIG_BUILD = 'yamshat-config-20260801-r11-share-preserve';
   const CONFIG_BUILD_KEY = 'yamshat_config_build';
+
+  // ✅ v89.16 ROOT FIX #1: قائمة الكاشات المحمية — يجب ألا تُمس أبداً عند التحديث
+  //   السبب الجذري السابق: purgeRuntimeCaches() كان يمسح كل الكاشات بلا استثناء
+  //   ويُلغي تسجيل كل SW → أول POST /share-target بعد التحديث يفوت إلى nginx (405)
+  //   → الشاشة البيضاء. الحل: نحمي yamshat-share-fallback-v1 و SW الحالي.
+  const PROTECTED_CACHE_PATTERNS = [
+    /^yamshat-share-fallback/i,   // fallback المشاركات — يجب أن يصمد
+    /^yamshat-v\d+/i,              // كاش SW النشط الجديد
+  ];
+  const isProtectedCache = (key) => PROTECTED_CACHE_PATTERNS.some((rx) => rx.test(String(key || '')));
 
   const trim = (value) => String(value || '').trim().replace(/\/+$/, '');
   const toApiBase = (value) => {
@@ -111,15 +123,20 @@
   const legacyBackendDetected = Boolean(expectedBackendOrigin) && renderOriginMismatch(storedBackend, expectedBackendOrigin);
   const legacyApiDetected = Boolean(expectedApiBase) && renderApiMismatch(storedApi, expectedApiBase);
   const shouldPurgeRuntimeState = Boolean(buildChanged || legacyBackendDetected || legacyApiDetected);
+  // ✅ v89.16 ROOT FIX #1: purgeRuntimeCaches انتقائي — لا يلمس SW الحالي
+  //   ولا يمسح كاش fallback المشاركات. السبب: كنّا نُلغي تسجيل SW النشط ونمسح
+  //   yamshat-share-fallback-v1 عند كل bump للـ CONFIG_BUILD → المستخدم يفقد
+  //   أي مشاركة كانت مخزّنة، وأول POST بعد التحديث يفوت.
   const purgeRuntimeCaches = () => {
     try {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          registrations.forEach((registration) => registration.unregister().catch(() => null));
-        }).catch(() => null);
-      }
+      // ✅ لا نُلغي تسجيل SW أبداً — SW الجديد سيتولّى التحديث ذاتياً بـ skipWaiting
+      //   والتحكم بالعملاء بـ clients.claim(). إلغاء التسجيل يفتح نافذة زمنية
+      //   لا يكون فيها أي SW مسيطراً → أول POST /share-target يفوت إلى nginx.
       if ('caches' in window) {
-        caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key)))).catch(() => null);
+        caches.keys().then((keys) => {
+          const toDelete = keys.filter((key) => !isProtectedCache(key));
+          return Promise.all(toDelete.map((key) => caches.delete(key).catch(() => null)));
+        }).catch(() => null);
       }
     } catch (_) {}
   };

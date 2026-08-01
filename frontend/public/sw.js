@@ -30,7 +30,16 @@
 // ✅ v89.15 ROOT FIX FINAL: معالجة الأسباب الجذرية الأربعة — stashInMemoryPayload عالمي،
 //    منع _empty:true قبل استنفاد المصادر، broadcast fallback لـ event.source null،
 //    وإرفاق payload خفيفة في YAMSHAT_SHARE_RECEIVED مباشرة للـ landing.
-const VERSION = 'yamshat-v20260801-190000-v89.15-ROOT-FIX-4' + '2100000000001';
+// ✅ v89.16 ROOT FIX FINAL: 6 إصلاحات جذرية لنظام استقبال المشاركات على الجوال:
+//    #1 app-config.js: purgeRuntimeCaches انتقائي — يحمي SHARE_FALLBACK_CACHE و SW.
+//    #2 sw.js activate: يحمي SHARE_FALLBACK_CACHE من الحذف + GET /share-target يقرأ
+//       الحمولة المخزنة من Cache Storage قبل إرجاع الـ bridge.
+//    #3 isRuntimeConfigPath: يشمل sw-pwa-enhanced.js و sw-push.js الآن.
+//    #4 index.html: watchdog على تحميل حزمة React (fallback بعد 8s).
+//    #5 ShareTargetLanding: watchdog زمني 12s + زر إعادة محاولة صريح +
+//       بطاقة تشخيص عند _empty بدل عرض أزرار الوجهات كأن كل شيء طبيعي.
+//    #6 sw-pwa-enhanced.js + sw-push.js: تحويلهما إلى kill-stubs لا يتنافسان مع sw.js.
+const VERSION = 'yamshat-v20260801-200000-v89.16-ROOT-FIX-6' + '2100000000001';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -81,8 +90,12 @@ const SHARE_STORE_NAME = 'shared-content';
 const SHARE_KEY = 'latest';
 // ✅ v89.14 ROOT FIX: Cache Storage كـ fallback ثانوي — يصمد حتى لو فشل IDB
 //   ومهما كان توقيت فتح ShareTargetLanding (قبل/بعد استقبال POST).
+// ✅ v89.16 ROOT FIX #2: هذا الكاش مستقل عن VERSION — يجب ألا يُحذف عند activate
+//   لأن حذفه يعني فقدان أي مشاركة استُقبلت قبيل التحديث.
 const SHARE_FALLBACK_CACHE = 'yamshat-share-fallback-v1';
 const SHARE_FALLBACK_URL = '/__yamshat_share_fallback__';
+// ✅ v89.16 ROOT FIX #2: قائمة الكاشات المحمية من التنظيف في activate
+const PROTECTED_CACHES = new Set([SHARE_FALLBACK_CACHE]);
 
 const APP_SHELL = [
   '/',
@@ -104,8 +117,11 @@ const APP_SHELL = [
   '/brand/yamshat-logo.png',
 ];
 
+// ✅ v89.16 ROOT FIX #3: يشمل الآن كل ملفات SW الجانبية (sw-pwa-enhanced.js و sw-push.js)
+//   السبب الجذري السابق: هذان الملفان كانا يُخدَمان من كاش قديم عبر staleWhileRevalidate
+//   بسبب امتداد .js → يبقى المتصفح على النسخة القديمة إلى الأبد ولا يرى الـ kill-stub.
 function isRuntimeConfigPath(url) {
-  return /^\/(?:app-config\.js|background-sync\.js|sw(?:-enhanced)?\.js)$/i.test(url.pathname);
+  return /^\/(?:app-config\.js|background-sync\.js|sw(?:-enhanced|-pwa-enhanced|-push)?\.js)$/i.test(url.pathname);
 }
 
 function isSignedMedia(url) {
@@ -634,9 +650,14 @@ self.addEventListener('activate', (event) => {
     (async () => {
       try {
         const keys = await caches.keys();
+        const validCacheNames = new Set(Object.values(CACHE_NAMES));
         await Promise.all(
           keys
-            .filter((key) => !Object.values(CACHE_NAMES).includes(key))
+            // ✅ v89.16 ROOT FIX #2: احتفظ بـ SHARE_FALLBACK_CACHE + كل الكاشات المحمية
+            //   السبب الجذري السابق: activate كان يمسح كل ما ليس ضمن CACHE_NAMES →
+            //   SHARE_FALLBACK_CACHE (yamshat-share-fallback-v1) يُحذف كل تفعيل →
+            //   أي مشاركة استُقبلت قبل تفعيل SW الجديد تختفي فوراً.
+            .filter((key) => !validCacheNames.has(key) && !PROTECTED_CACHES.has(key))
             .map((key) => caches.delete(key).catch(() => null))
         );
       } catch (_) { /* ignore */ }
@@ -665,13 +686,24 @@ self.addEventListener('fetch', (event) => {
       return;
     }
     if (request.method === 'GET') {
-      event.respondWith(new Response(buildShareBridgeHtml(false), {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-store, no-cache, must-revalidate',
-        },
-      }));
+      // ✅ v89.16 ROOT FIX #2: عند GET /share-target — تحقّق أولاً من
+      //   وجود fallback payload مخزّن (من POST سابق قبل التحديث/إعادة التحميل).
+      //   إن وُجد → استخدمه كإشارة أن shared=1 (بدل إظهار bridge فارغ).
+      event.respondWith((async () => {
+        let hasStoredPayload = false;
+        try {
+          const cache = await caches.open(SHARE_FALLBACK_CACHE);
+          const cached = await cache.match(SHARE_FALLBACK_URL);
+          if (cached) hasStoredPayload = true;
+        } catch (_) { /* ignore */ }
+        return new Response(buildShareBridgeHtml(hasStoredPayload), {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+          },
+        });
+      })());
       return;
     }
   }

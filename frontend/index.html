@@ -83,7 +83,63 @@
     <link rel="manifest" href="/manifest.webmanifest" />
 
     <title>YAMSHAT - يام شات</title>
-    <script src="/app-config.js?v=20260616-r10-pixel-perfect" data-backend-origin="%VITE_BACKEND_ORIGIN%" data-api-base="%VITE_API_BASE%" data-socket-url="%VITE_SOCKET_URL%"></script>
+    <script src="/app-config.js?v=20260801-r11-share-preserve" data-backend-origin="%VITE_BACKEND_ORIGIN%" data-api-base="%VITE_API_BASE%" data-socket-url="%VITE_SOCKET_URL%"></script>
+
+    <!-- ✅ v89.16 ROOT FIX #4: watchdog على تحميل حزمة React (main.jsx)
+         السبب الجذري: إذا تعطّل CDN الخط، أو فشل تحميل main.jsx بسبب كاش قديم،
+         أو انهار Vite bundle على شبكة بطيئة → #root يبقى فارغاً إلى الأبد وشاشة
+         التحميل النبضية تبقى معلّقة → المستخدم يرى شاشة بيضاء لا نهائية.
+         الحل: بعد 8 ثوانٍ من عدم ظهور أي شيء داخل #root نعرض بطاقة تشخيص واضحة
+         + زر إعادة تحميل + زر مسح الكاش. -->
+    <script>
+      (function () {
+        var WATCHDOG_MS = 8000;
+        var kicked = false;
+        function kick() {
+          if (kicked) return;
+          try {
+            var root = document.getElementById('root');
+            if (root && root.childElementCount > 0) return; // React mounted
+          } catch (_) { /* ignore */ }
+          kicked = true;
+          try {
+            var wrap = document.createElement('div');
+            wrap.setAttribute('dir', 'rtl');
+            wrap.style.cssText = 'position:fixed;inset:0;background:#0A0D1A;color:#fff;font-family:system-ui,-apple-system,"Noto Sans Arabic","Tajawal",sans-serif;display:flex;align-items:center;justify-content:center;padding:24px;z-index:2147483647';
+            wrap.innerHTML = '<div style="max-width:480px;width:100%;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.35);border-radius:20px;padding:24px;text-align:center;box-sizing:border-box">' +
+              '<div style="font-size:44px;line-height:1">⚠️</div>' +
+              '<h1 style="font-size:1.2rem;margin:14px 0 6px;font-weight:900">تعذّر تحميل يام شات</h1>' +
+              '<p style="color:#94A3B8;margin:0 0 16px;font-size:.95rem;line-height:1.7">لم تكتمل حزمة التطبيق خلال 8 ثوانٍ. قد يكون هذا بسبب اتصال ضعيف أو نسخة قديمة محفوظة على جهازك.</p>' +
+              '<button id="ym-wd-reload" style="width:100%;padding:12px 18px;border:0;border-radius:12px;background:linear-gradient(135deg,#8B5CF6,#EC4899);color:#fff;font-weight:800;font-size:1rem;margin-bottom:10px;cursor:pointer;font-family:inherit">🔄 إعادة تحميل الصفحة</button>' +
+              '<button id="ym-wd-purge" style="width:100%;padding:12px 18px;border:1px solid rgba(139,92,246,.4);border-radius:12px;background:transparent;color:#e9d5ff;font-weight:700;font-size:.95rem;cursor:pointer;font-family:inherit">🧹 مسح الكاش وإعادة التحميل</button>' +
+              '<p style="color:#64748b;font-size:12px;margin:14px 0 0">إذا استمرت المشكلة، أغلق تطبيق يام شات من الخلفية ثم افتحه من جديد.</p>' +
+              '</div>';
+            document.body.appendChild(wrap);
+            var reloadBtn = document.getElementById('ym-wd-reload');
+            var purgeBtn = document.getElementById('ym-wd-purge');
+            if (reloadBtn) reloadBtn.addEventListener('click', function () {
+              try { window.location.reload(); } catch (_) { window.location.href = '/'; }
+            });
+            if (purgeBtn) purgeBtn.addEventListener('click', function () {
+              try {
+                if ('caches' in window) {
+                  caches.keys().then(function (keys) {
+                    // احتفظ بـ share-fallback (يحوي أي مشاركة مستقبلة)
+                    var kill = keys.filter(function (k) { return !/^yamshat-share-fallback/i.test(k); });
+                    return Promise.all(kill.map(function (k) { return caches.delete(k).catch(function () { return null; }); }));
+                  }).then(function () { window.location.reload(); }).catch(function () { window.location.reload(); });
+                } else {
+                  window.location.reload();
+                }
+              } catch (_) { window.location.reload(); }
+            });
+          } catch (_) {
+            try { window.location.reload(); } catch (__) {}
+          }
+        }
+        setTimeout(kick, WATCHDOG_MS);
+      })();
+    </script>
   </head>
   <body dir="rtl">
     <div id="root"></div>

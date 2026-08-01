@@ -30,6 +30,19 @@
 // ✅ v89.15 ROOT FIX FINAL: معالجة الأسباب الجذرية الأربعة — stashInMemoryPayload عالمي،
 //    منع _empty:true قبل استنفاد المصادر، broadcast fallback لـ event.source null،
 //    وإرفاق payload خفيفة في YAMSHAT_SHARE_RECEIVED مباشرة للـ landing.
+// ✅ v89.17 ROOT FIX FINAL: 5 إصلاحات جذرية لفشل استقبال المشاركات على ويب الجوال (Chrome tab):
+//    #1 manifest.webmanifest: start_url رُفع من v=89.08 إلى v=89.17 —
+//       أندرويد يحفظ intent المشاركة بناءً على start_url عند التثبيت،
+//       والقيمة القديمة كانت تحوّل POST إلى SW مسجّل بمسار قديم.
+//    #2 manifest.webmanifest: أُضيف scope_extensions يشمل /share-target صراحةً
+//       — بعض أندرويد WebView كانت ترفض POST خارج intent handler المسجّل.
+//    #3 manifest.webmanifest: launch_handler client_mode بدأ الآن بـ
+//       'focus-existing' بدل 'navigate-existing' — ويب الجوال كان يفتح
+//       نافذة جديدة كل مرة بدل إعادة استخدام SW القائم.
+//    #4 buildShareBridgeHtml: نُظِّف من كل inline styles وإضافة CSP meta محلياً
+//       — Bridge HTML كان يسقط تحت CSP الصارم قبل الوصول لـ landing.
+//    #5 nginx.conf: manifest.webmanifest يُقدَّم بـ no-cache — الجوال كان
+//       يحتفظ بالنسخة القديمة (max-age=3600) ويتجاهل التحديثات.
 // ✅ v89.16 ROOT FIX FINAL: 6 إصلاحات جذرية لنظام استقبال المشاركات على الجوال:
 //    #1 app-config.js: purgeRuntimeCaches انتقائي — يحمي SHARE_FALLBACK_CACHE و SW.
 //    #2 sw.js activate: يحمي SHARE_FALLBACK_CACHE من الحذف + GET /share-target يقرأ
@@ -39,7 +52,7 @@
 //    #5 ShareTargetLanding: watchdog زمني 12s + زر إعادة محاولة صريح +
 //       بطاقة تشخيص عند _empty بدل عرض أزرار الوجهات كأن كل شيء طبيعي.
 //    #6 sw-pwa-enhanced.js + sw-push.js: تحويلهما إلى kill-stubs لا يتنافسان مع sw.js.
-const VERSION = 'yamshat-v20260801-200000-v89.16-ROOT-FIX-6' + '2100000000001';
+const VERSION = 'yamshat-v20260801-230000-v89.18-BRIDGE-CSP-DISPLAY-MODE-FIX' + '2100000000003';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -307,6 +320,9 @@ function buildShareBridgeHtml(sharedOk) {
   //     2) inline <script> يستدعي location.replace بعد 150ms (CSP يسمح unsafe-inline)
   //     3) fallback ثانوي setTimeout(2500ms) لضمان التحويل عند فشل كل شيء
   //     4) زر <a> واضح مرئي منذ اللحظة الأولى — لا يرى المستخدم شاشة فارغة أبداً
+  // ✅ v89.17 ROOT FIX #4: Bridge HTML مع CSP meta محلي يسمح صراحةً بـ inline styles
+  //   والـ script — كان يسقط تحت CSP الصارم في بعض إعدادات أندرويد Chrome tab
+  //   (خارج PWA) قبل الوصول لأي landing.
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -314,6 +330,7 @@ function buildShareBridgeHtml(sharedOk) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#7C3AED">
   <title>يام شات — جارٍ استقبال المشاركة</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'self'">
   <meta http-equiv="refresh" content="0; url=${target}">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">

@@ -1111,10 +1111,14 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
     useAppStore.getState().setInstallPrompt(event);
+    // ✅ v89.18 ROOT FIX #7: خزّن event في window أيضاً
+    //   ليمكن لـ ShareTargetLanding قراءته حتّى إذا أطلق event قبل mount
+    try { window.__YAMSHAT_DEFERRED_INSTALL_PROMPT__ = event; } catch (_) { /* ignore */ }
   });
 
   window.addEventListener('appinstalled', () => {
     useAppStore.getState().clearInstallPrompt();
+    try { window.__YAMSHAT_DEFERRED_INSTALL_PROMPT__ = null; } catch (_) { /* ignore */ }
   });
 
   if ('serviceWorker' in navigator) {

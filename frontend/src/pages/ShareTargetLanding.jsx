@@ -120,6 +120,101 @@ export default function ShareTargetLanding() {
   const [waitTimedOut, setWaitTimedOut] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
 
+  // ✅ v89.18 ROOT FIX #7: كشف display-mode: browser (ويب الجوال العادي، ليس PWA)
+  //   السبب الجذري:
+  //     Web Share Target API لا يعمل على Chrome tab/متصفح الجوال العادي —
+  //     يعمل فقط بعد تثبيت التطبيق كـ PWA. لو المستخدم فتح /share-target
+  //     عبر رابط مباشر أو bookmark من متصفح جوال غير مثبّت، سيرى شاشة
+  //     "جارٍ استلام المحتوى..." إلى الأبد بلا رسالة تفسيرية.
+  //   الحل:
+  //     - نكشف display-mode: browser عبر matchMedia + navigator.standalone (iOS).
+  //     - إن كان browser وليس PWA + لا يوجد payload + مضى وقت كافٍ →
+  //       نعرض بطاقة توضيحية "ثبّت التطبيق أولاً" مع زر install (إن كان مدعوماً)
+  //       أو تعليمات يدوية للتثبيت من قائمة المتصفح.
+  //     - نُظهر install prompt عبر beforeinstallprompt event المخزّن.
+  const [isBrowserMode, setIsBrowserMode] = useState(false);
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    // كشف display-mode
+    const detectMode = () => {
+      try {
+        const isStandalone =
+          window.matchMedia?.('(display-mode: standalone)')?.matches ||
+          window.matchMedia?.('(display-mode: minimal-ui)')?.matches ||
+          window.matchMedia?.('(display-mode: fullscreen)')?.matches ||
+          // iOS Safari
+          window.navigator?.standalone === true;
+        setIsBrowserMode(!isStandalone);
+      } catch {
+        setIsBrowserMode(false);
+      }
+    };
+    detectMode();
+
+    // استمع لأي تغيير في display-mode (نادر، لكن ممكن)
+    let mql = null;
+    try {
+      mql = window.matchMedia('(display-mode: standalone)');
+      if (mql?.addEventListener) mql.addEventListener('change', detectMode);
+      else if (mql?.addListener) mql.addListener(detectMode);
+    } catch { /* ignore */ }
+
+    // التقاط beforeinstallprompt event للاستخدام لاحقاً
+    const onBeforeInstall = (e) => {
+      try {
+        e.preventDefault?.();
+        setInstallPromptEvent(e);
+      } catch { /* ignore */ }
+    };
+    try {
+      window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    } catch { /* ignore */ }
+
+    // إن كان hook مخزّن مسبقاً في main.jsx → استخدمه
+    try {
+      if (window.__YAMSHAT_DEFERRED_INSTALL_PROMPT__) {
+        setInstallPromptEvent(window.__YAMSHAT_DEFERRED_INSTALL_PROMPT__);
+      }
+    } catch { /* ignore */ }
+
+    return () => {
+      try {
+        if (mql?.removeEventListener) mql.removeEventListener('change', detectMode);
+        else if (mql?.removeListener) mql.removeListener(detectMode);
+      } catch { /* ignore */ }
+      try { window.removeEventListener('beforeinstallprompt', onBeforeInstall); } catch { /* ignore */ }
+    };
+  }, []);
+
+  // ✅ v89.18 ROOT FIX #7: fallback timer للـ non-PWA — إن كان browser mode
+  //   ولم يصل payload خلال 4s نعتبر أنّ Share Target API فشلت (متوقّع في browser)
+  //   ونعرض شاشة التثبيت مبكراً بدل انتظار الـ 12s watchdog.
+  const [browserFallbackShown, setBrowserFallbackShown] = useState(false);
+  useEffect(() => {
+    if (!isBrowserMode) return undefined;
+    if (!loading) return undefined;
+    if (payload) return undefined;
+    const timer = setTimeout(() => setBrowserFallbackShown(true), 4000);
+    return () => clearTimeout(timer);
+  }, [isBrowserMode, loading, payload, retryTick]);
+
+  const handleInstallPWA = useCallback(async () => {
+    if (!installPromptEvent) return;
+    try {
+      await installPromptEvent.prompt?.();
+      const choice = await installPromptEvent.userChoice;
+      if (choice?.outcome === 'accepted') {
+        // بعد التثبيت، أعِد تحميل الصفحة لبدء دورة SW جديدة
+        try { window.location.reload(); } catch { /* ignore */ }
+      }
+      setInstallPromptEvent(null);
+    } catch (err) {
+      console.warn('[share] install prompt failed:', err);
+    }
+  }, [installPromptEvent]);
+
   // ✅ v89.04 ROOT FIX #3: فحص تسجيل الدخول مع حماية من authHydrated=false الدائمة
   //   السبب الجذري (المشكلة #3):
   //     إذا لم يكتمل authHydrated (مثلاً: SW جديد تمّ install قبل التوفق مع
@@ -742,8 +837,39 @@ export default function ShareTargetLanding() {
               </div>
             ) : null}
 
+            {/* ✅ v89.18 ROOT FIX #7: بطاقة توجيه للتثبيت إذا المستخدم في browser mode ولم تصل حمولة
+                Web Share Target API لا يعمل في Chrome tab — يجب تثبيت PWA أولاً */}
+            {loading && isBrowserMode && browserFallbackShown && !payload ? (
+              <div className="share-empty-box" role="alert" style={{ borderColor: 'rgba(245, 158, 11, 0.4)', background: 'rgba(245, 158, 11, 0.06)' }}>
+                <strong>⚠️ يجب تثبيت التطبيق أولاً</strong>
+                <span>
+                  أنت تفتح يام شات من خلال متصفح الجوال العادي (Chrome tab).
+                  ميزة استقبال المشاركات من يوتيوب/تيك توك/تويتر مدعومة فقط
+                  بعد تثبيت التطبيق كـ <b>PWA</b> على الشاشة الرئيسية.
+                </span>
+                <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                  {installPromptEvent ? (
+                    <button type="button" className="share-primary" onClick={handleInstallPWA}>
+                      📥 تثبيت التطبيق الآن
+                    </button>
+                  ) : (
+                    <div style={{ padding: '10px 14px', background: 'rgba(0,0,0,0.2)', borderRadius: 12, fontSize: 13, color: '#e2e8f0', lineHeight: 1.7 }}>
+                      📌 <b>خطوات التثبيت اليدوية:</b><br/>
+                      1) افتح قائمة متصفح Chrome (⠇)<br/>
+                      2) اختر “إضافة إلى الشاشة الرئيسية”<br/>
+                      3) افتح يام شات من الأيقونة الجديدة
+                    </div>
+                  )}
+                  <button type="button" className="share-action" onClick={handleShareRetry}>
+                    🔄 تجاوز وإعادة المحاولة
+                  </button>
+                  <Link to="/" className="share-action">العودة للتطبيق</Link>
+                </div>
+              </div>
+            ) : null}
+
             {/* ✅ v89.16 ROOT FIX #5: watchdog زمني — إذا لم تصل حمولة خلال 12s */}
-            {loading && waitTimedOut ? (
+            {loading && waitTimedOut && !(isBrowserMode && browserFallbackShown) ? (
               <div className="share-empty-box" role="alert">
                 <strong>⚠️ تأخر استلام المحتوى المُشارَك</strong>
                 <span>

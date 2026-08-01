@@ -27,7 +27,10 @@
 //     #D) VERSION مرفوعة لإجبار تحديث SW القديم فوراً.
 // ✅ v89.13 ROOT FIX FINAL: رفع VERSION لإجبار تحديث SW القديم + إصلاح DB VersionError + fallback postMessage
 // ✅ v89.14 ROOT FIX FINAL: رفع VERSION لإجبار تحديث SW القديم + Cache Storage fallback + ready pong
-const VERSION = 'yamshat-v20260801-153000-v89.14-CACHE-FALLBACK' + '2100000000001';
+// ✅ v89.15 ROOT FIX FINAL: معالجة الأسباب الجذرية الأربعة — stashInMemoryPayload عالمي،
+//    منع _empty:true قبل استنفاد المصادر، broadcast fallback لـ event.source null،
+//    وإرفاق payload خفيفة في YAMSHAT_SHARE_RECEIVED مباشرة للـ landing.
+const VERSION = 'yamshat-v20260801-190000-v89.15-ROOT-FIX-4' + '2100000000001';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -466,30 +469,76 @@ async function handleShareTarget(request) {
 
     const cleanFiles = normalizedFiles.filter(Boolean);
 
-    // ✅ v89.07 ROOT FIX #3: نحفظ الحمولة دائماً — حتى لو كانت فارغة تماماً.
-    //   السبب: إذا لم نحفظها، ShareTargetLanding سيبقى في حالة loading انتظاراً
-    //   لإشارة من IndexedDB لن تأتي أبداً → شاشة "جاري التحضير..." لا نهائية.
-    //   الحل: نحفظ حتى الحمولة الفارغة — الواجهة ستكشفها وتعرض "لا يوجد محتوى".
-    await saveSharedPayload({
+    // ✅ v89.15 ROOT FIX #2: لا نحفظ payload _empty:true إذا كنّا نستطيع استخراج
+    //   ولو الحد الأدنى من الطلب. السبب الجذري:
+    //     في v89.14 كنّا نحفظ payload بـ _empty:true عند فشل قراءة formData حتى لو
+    //     كان الرابط موجوداً في request.referrer أو request.url (search params) →
+    //     ShareTargetLanding يعرض شاشة بيضاء "لا يوجد محتوى" بينما البيانات موجودة.
+    //   الحل:
+    //     1) قبل الحفظ نحاول انقاذ أي محتوى من request.url (query string) و referrer.
+    //     2) إذا كان كل شيء فارغاً حقاً → نُضيف _diag يشرح السبب (نافذة التشخيص
+    //        في الواجهة تعرضه بدل الشاشة البيضاء).
+    if (!title && !text && !url && cleanFiles.length === 0) {
+      try {
+        const reqUrl = new URL(request.url);
+        const qp = reqUrl.searchParams;
+        title = String(qp.get('title') || qp.get('subject') || '');
+        text = String(qp.get('text') || qp.get('body') || '');
+        url = String(qp.get('url') || qp.get('link') || '');
+      } catch (_) { /* ignore */ }
+      if (!url) {
+        try {
+          const ref = String(request.referrer || '');
+          if (ref && /^https?:\/\//i.test(ref) && !ref.includes(self.location.host)) {
+            url = ref;
+          }
+        } catch (_) { /* ignore */ }
+      }
+      if (!url) {
+        url = extractUrlFromText(text) || extractUrlFromText(title) || '';
+      }
+    }
+
+    const isTrulyEmpty = !(title || text || url || cleanFiles.length);
+    const finalPayload = {
       id: Date.now(),
       receivedAt: new Date().toISOString(),
       title,
       text,
       url,
       files: cleanFiles,
-      // marker يُميّز v89.07: مفيد للـ diagnostics
-      _v: 'v89.07',
-      _empty: !(title || text || url || cleanFiles.length),
-    });
+      // marker يُميّز v89.15
+      _v: 'v89.15',
+      _empty: isTrulyEmpty,
+      // ✅ v89.15: تشخيص واضح للواجهة عند الفراغ الحقيقي — يمنع الشاشة البيضاء
+      _diag: isTrulyEmpty ? {
+        reason: 'no-form-fields-and-no-files',
+        contentType: String(request.headers.get('content-type') || ''),
+        method: String(request.method || ''),
+        hasReferrer: Boolean(request.referrer),
+        at: new Date().toISOString(),
+      } : null,
+    };
 
-    // إعلام كل العملاء بأن حمولة جديدة وصلت
+    // ✅ v89.07 ROOT FIX #3: نحفظ الحمولة دائماً — حتى لو كانت فارغة تماماً.
+    //   السبب: إذا لم نحفظها، ShareTargetLanding سيبقى في حالة loading انتظاراً
+    //   لإشارة من IndexedDB لن تأتي أبداً → شاشة "جاري التحضير..." لا نهائية.
+    //   الحل: نحفظ حتى الحمولة الفارغة — الواجهة ستكشفها وتعرض "لا يوجد محتوى".
+    await saveSharedPayload(finalPayload);
+
+    // إعلام كل العملاء بأن حمولة جديدة وصلت + إرفاق payload خفيفة مباشرة
+    //   ✅ v89.15 ROOT FIX #2b: نُرفق payload خفيفة في YAMSHAT_SHARE_RECEIVED نفسها،
+    //   بحيث حتى لو فشلت IDB بشكل صامت لدى العميل، الـ landing يحصل على البيانات فوراً.
     try {
+      const lightForClients = buildLightPayload(finalPayload, null);
       const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
       clientsList.forEach((client) => client.postMessage({
         type: 'YAMSHAT_SHARE_RECEIVED',
         timestamp: Date.now(),
         hasFiles: cleanFiles.length > 0,
         hasUrl: Boolean(url),
+        payload: lightForClients,
+        _v: 'v89.15',
       }));
     } catch (_) { /* ignore */ }
 
@@ -753,17 +802,51 @@ self.addEventListener('message', (event) => {
   if (event.data?.type === 'YAMSHAT_SHARE_HELLO') {
     event.waitUntil((async () => {
       try {
+        // ✅ v89.15 ROOT FIX #3: event.source قد يكون null في Firefox/Samsung
+        //   Internet وفي بعض إصدارات Chrome القديمة — في هذه الحالة يفشل
+        //   إرسال الرد صامتاً → العميل لا يتلقّى الـ fallback أبداً.
+        //   الحل: broadcast إلى كل العملاء (الحمولة خفيفة ومفردة لا تتأذّى من التكرار).
+        //   الـ landing يتجاهل الحمولة إذا كانت أقدم ممّا لديه (مقارنة receivedAt).
         const cache = await caches.open(SHARE_FALLBACK_CACHE);
         const cached = await cache.match(SHARE_FALLBACK_URL);
         if (cached) {
           const lightPayload = await cached.json();
-          const source = event.source;
-          if (source && source.postMessage) {
-            source.postMessage({
-              type: 'YAMSHAT_SHARE_PAYLOAD_FALLBACK',
-              payload: lightPayload,
+          const message = {
+            type: 'YAMSHAT_SHARE_PAYLOAD_FALLBACK',
+            payload: lightPayload,
+          };
+          let deliveredToSource = false;
+          // 1) حاول أولاً إرسالها إلى event.source (الأسرع)
+          try {
+            const source = event.source;
+            if (source && typeof source.postMessage === 'function') {
+              source.postMessage(message);
+              deliveredToSource = true;
+            }
+          } catch (_) { /* fallthrough to broadcast */ }
+          // 2) fallback مطلق: broadcast إلى كل النوافذ المفتوحة — يمنع فقدان الرسالة
+          //   عندما event.source يكون null (Firefox/Samsung Internet).
+          try {
+            const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+            clientsList.forEach((client) => {
+              // لا تكرّر لـ source إذا وصلت له بالفعل (مقارنة بالـ id إن أمكن)
+              try {
+                if (deliveredToSource && event.source && client.id === event.source.id) return;
+                client.postMessage(message);
+              } catch (_) { /* ignore individual */ }
             });
-          }
+          } catch (_) { /* ignore */ }
+        } else {
+          // ✅ v89.15: حتى لو لم يوجد fallback، أرسل pong يؤكد أن SW حيّ (للتشخيص)
+          const pong = { type: 'YAMSHAT_SHARE_HELLO_PONG', hasFallback: false, at: Date.now() };
+          try {
+            const source = event.source;
+            if (source && typeof source.postMessage === 'function') source.postMessage(pong);
+            else {
+              const list = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+              list.forEach((c) => { try { c.postMessage(pong); } catch (_) {} });
+            }
+          } catch (_) { /* ignore */ }
         }
       } catch (_) { /* ignore */ }
     })());

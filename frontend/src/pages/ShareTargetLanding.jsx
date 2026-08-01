@@ -204,8 +204,21 @@ export default function ShareTargetLanding() {
       return true;
     }
 
-    // ✅ v89.13 ROOT FIX #E: قراءة موحّدة تحاول IDB أولاً ثم localStorage fallback
+    // ✅ v89.15 ROOT FIX #4: قراءة موحّدة مع أولوية لـ in-memory stash من main.jsx
+    //   الترتيب:
+    //     1) window.__YAMSHAT_STASHED_SHARE_PAYLOAD__ (أسرع مصدر — من postMessage قبل mount)
+    //     2) IndexedDB (المفضّل — يحمل Files كاملة)
+    //     3) localStorage yamshat.shareFallback (يصمد عبر reload)
     async function readAny() {
+      try {
+        if (typeof window !== 'undefined' && window.__YAMSHAT_STASHED_SHARE_PAYLOAD__) {
+          const stashed = window.__YAMSHAT_STASHED_SHARE_PAYLOAD__;
+          // تحقّق إن كان لديه محتوى أو وسم SW صالح
+          if (stashed && (stashed.url || stashed.text || stashed.title || stashed.files?.length || stashed._v || stashed.receivedAt)) {
+            return stashed;
+          }
+        }
+      } catch { /* ignore */ }
       try {
         const d = await readSharedPayload();
         if (d) return d;
@@ -250,6 +263,24 @@ export default function ShareTargetLanding() {
       swMessageHandler = async (event) => {
         const t = event?.data?.type;
         if (t === 'YAMSHAT_SHARE_RECEIVED') {
+          // ✅ v89.15 ROOT FIX #4b: إذا أرفق SW payload خفيفة مع الإشعار → استخدمها مباشرة
+          try {
+            const attached = event?.data?.payload;
+            if (attached && (attached.url || attached.text || attached.title || attached.filesCount || attached._v)) {
+              try { window.__YAMSHAT_STASHED_SHARE_PAYLOAD__ = attached; } catch (_) { /* ignore */ }
+              try { localStorage.setItem('yamshat.shareFallback', JSON.stringify(attached)); } catch (_) { /* ignore */ }
+              // لا زلنا نحاول IDB أولاً لأنها قد تكون تحوي Files كاملة
+              try {
+                const idbData = await readSharedPayload();
+                if (idbData && (idbData.files?.length || idbData.url || idbData.title || idbData.text)) {
+                  applyPayload(idbData);
+                  return;
+                }
+              } catch { /* ignore */ }
+              applyPayload(attached);
+              return;
+            }
+          } catch { /* fallthrough to readAny */ }
           try {
             const data = await readAny();
             applyPayload(data);
@@ -261,6 +292,7 @@ export default function ShareTargetLanding() {
           //   نسخة محلية في localStorage للتعافي من إعادة التحميل.
           try {
             const fb = event.data.payload || {};
+            try { window.__YAMSHAT_STASHED_SHARE_PAYLOAD__ = fb; } catch (_) { /* ignore */ }
             try { localStorage.setItem('yamshat.shareFallback', JSON.stringify(fb)); } catch (_) { /* ignore */ }
             applyPayload(fb);
           } catch { /* ignore */ }

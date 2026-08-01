@@ -956,6 +956,54 @@ async function killLegacyServiceWorkers() {
 }
 
 if (typeof window !== 'undefined') {
+  // ✅ v89.15 ROOT FIX #1 (المشكلة #4): stashInMemoryPayload عالمي فوراً — قبل أي شيء.
+  //   السبب الجذري:
+  //     في v89.14 كان postMessage YAMSHAT_SHARE_PAYLOAD_FALLBACK يصل إلى نافذة
+  //     ShareTargetLanding قبل أن يُركّب المستمع (عند فتح النافذة لأول مرة).
+  //     النتيجة: نفقد payload بالكامل → شاشة بيضاء بدون بيانات.
+  //   الحل:
+  //     نُركّب مستمع message على navigator.serviceWorker فوراً — قبل أي تحميل
+  //     لـ React أو تسجيل SW — ونخزّن أي payload وارد في:
+  //       (a) window.__YAMSHAT_STASHED_SHARE_PAYLOAD__  — للـ landing يقرأها مباشرة.
+  //       (b) localStorage.yamshat.shareFallback         — للصمود عبر reload.
+  //     ShareTargetLanding يفحص هذين المصدرين أولاً قبل IDB.
+  try {
+    if (!window.__YAMSHAT_SHARE_STASH_INSTALLED__) {
+      window.__YAMSHAT_SHARE_STASH_INSTALLED__ = true;
+      window.__YAMSHAT_STASHED_SHARE_PAYLOAD__ = null;
+      const stashInMemoryPayload = (payload) => {
+        try {
+          if (!payload || typeof payload !== 'object') return;
+          window.__YAMSHAT_STASHED_SHARE_PAYLOAD__ = payload;
+          try { localStorage.setItem('yamshat.shareFallback', JSON.stringify(payload)); } catch (_) { /* ignore */ }
+          // إشارة داخلية لأي مستمع لاحق يريد أن يعرف بوصول الحمولة
+          try {
+            window.dispatchEvent(new CustomEvent('yamshat:share-payload-stashed', { detail: payload }));
+          } catch (_) { /* ignore */ }
+        } catch (_) { /* ignore */ }
+      };
+      window.__YAMSHAT_STASH_SHARE_PAYLOAD__ = stashInMemoryPayload;
+      // نُركّب المستمع فوراً — يبقى حيّاً طوال عمر النافذة
+      try {
+        if (navigator && navigator.serviceWorker) {
+          navigator.serviceWorker.addEventListener('message', (event) => {
+            try {
+              const t = event?.data?.type;
+              if (t === 'YAMSHAT_SHARE_PAYLOAD_FALLBACK') {
+                stashInMemoryPayload(event.data.payload || null);
+              } else if (t === 'YAMSHAT_SHARE_RECEIVED') {
+                // إشارة "وصلت الحمولة إلى IDB" — نبقيها للـ landing
+                try {
+                  window.dispatchEvent(new CustomEvent('yamshat:share-received', { detail: event.data || {} }));
+                } catch (_) { /* ignore */ }
+              }
+            } catch (_) { /* ignore */ }
+          });
+        }
+      } catch (_) { /* ignore */ }
+    }
+  } catch (_) { /* ignore */ }
+
   // ✅ v89.10 ROOT FIX #5: killLegacyServiceWorkers قبل normalizeStandaloneDeepLink.
   //   السبب الجذري:
   //     في v89.09 كنّا نستدعي normalizeStandaloneDeepLink() أولاً وهي تفحص

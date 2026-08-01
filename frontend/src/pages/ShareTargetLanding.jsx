@@ -169,8 +169,16 @@ export default function ShareTargetLanding() {
 
     function applyPayload(data) {
       if (!mounted || stopFlag) return false;
-      const hasContent = data && (data.files?.length || data.url || data.title || data.text);
-      if (!hasContent) return false;
+      // ✅ v89.13 ROOT FIX #C: قبول الحمولة حتى لو كانت _empty:true
+      //   السبب الجذري السابق:
+      //     إذا حفظ SW حمولة _empty:true (مشاركة فارغة تماماً من
+      //     المتصفح)، كان hasContent=false → يرفضها → polling إلى الأبد.
+      //   الحل: أي حمولة موسومة من SW (_v أو receivedAt أو _empty أو _fallback)
+      //   تُقبل — الواجهة تعرف كيف تعرض حالة "مشاركة بلا محتوى".
+      if (!data) return false;
+      const hasContent = !!(data.files?.length || data.url || data.title || data.text);
+      const isMarkedFromSw = !!(data._empty || data._fallback || data._v || data.receivedAt);
+      if (!hasContent && !isMarkedFromSw) return false;
       setPayload(data);
       // نظّف URLs السابقة قبل إنشاء الجديدة
       previewUrlsRef.current.forEach((u) => {
@@ -196,11 +204,24 @@ export default function ShareTargetLanding() {
       return true;
     }
 
+    // ✅ v89.13 ROOT FIX #E: قراءة موحّدة تحاول IDB أولاً ثم localStorage fallback
+    async function readAny() {
+      try {
+        const d = await readSharedPayload();
+        if (d) return d;
+      } catch { /* ignore */ }
+      try {
+        const raw = localStorage.getItem('yamshat.shareFallback');
+        if (raw) return JSON.parse(raw);
+      } catch { /* ignore */ }
+      return null;
+    }
+
     async function loadPayloadWithRetry() {
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         if (stopFlag) return;
         try {
-          const data = await readSharedPayload();
+          const data = await readAny();
           if (applyPayload(data)) return;
         } catch { /* ignore and retry */ }
         await new Promise((r) => setTimeout(r, attemptDelay));
@@ -208,7 +229,7 @@ export default function ShareTargetLanding() {
       // محاولة أخيرة
       if (!stopFlag) {
         try {
-          const data = await readSharedPayload();
+          const data = await readAny();
           if (!applyPayload(data) && mounted) {
             setPayload(data || null);
             setLoading(false);
@@ -227,10 +248,21 @@ export default function ShareTargetLanding() {
     let swReadyPromise = null;
     if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
       swMessageHandler = async (event) => {
-        if (event?.data?.type === 'YAMSHAT_SHARE_RECEIVED') {
+        const t = event?.data?.type;
+        if (t === 'YAMSHAT_SHARE_RECEIVED') {
           try {
-            const data = await readSharedPayload();
+            const data = await readAny();
             applyPayload(data);
+          } catch { /* ignore */ }
+        } else if (t === 'YAMSHAT_SHARE_PAYLOAD_FALLBACK') {
+          // ✅ v89.13 ROOT FIX #D: تلقّي حمولة fallback من SW عند فشل IndexedDB
+          //   SW أرسل لنا payload خفيفة مباشرة لأن حفظها في IDB فشل
+          //   (VersionError أو private mode). نطبقها كما هي ونحاول حفظ
+          //   نسخة محلية في localStorage للتعافي من إعادة التحميل.
+          try {
+            const fb = event.data.payload || {};
+            try { localStorage.setItem('yamshat.shareFallback', JSON.stringify(fb)); } catch (_) { /* ignore */ }
+            applyPayload(fb);
           } catch { /* ignore */ }
         }
       };
@@ -243,7 +275,7 @@ export default function ShareTargetLanding() {
       //   قبل تثبيت SW ويجب أن نلتقط أول تحكّم دون انتظار polling.
       controllerChangeHandler = async () => {
         try {
-          const data = await readSharedPayload();
+          const data = await readAny();
           applyPayload(data);
         } catch { /* ignore */ }
       };
@@ -257,7 +289,7 @@ export default function ShareTargetLanding() {
           swReadyPromise = navigator.serviceWorker.ready.then(async () => {
             if (stopFlag) return;
             try {
-              const data = await readSharedPayload();
+              const data = await readAny();
               applyPayload(data);
             } catch { /* ignore */ }
           }).catch(() => null);
@@ -269,7 +301,7 @@ export default function ShareTargetLanding() {
     visibilityHandler = async () => {
       if (document.visibilityState === 'visible' && !stopFlag) {
         try {
-          const data = await readSharedPayload();
+          const data = await readAny();
           applyPayload(data);
         } catch { /* ignore */ }
       }

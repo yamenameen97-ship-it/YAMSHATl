@@ -25,7 +25,8 @@
 //     #C) handleShareTarget كانت ترمي عند contentType غير معروف.
 //         → أُصلح: try/catch شامل داخلي + دائماً نحفظ + دائماً نُرجع HTML.
 //     #D) VERSION مرفوعة لإجبار تحديث SW القديم فوراً.
-const VERSION = 'yamshat-v20260731-171347-1785518027599' + '1930000000002';
+// ✅ v89.13 ROOT FIX FINAL: رفع VERSION لإجبار تحديث SW القديم + إصلاح DB VersionError + fallback postMessage
+const VERSION = 'yamshat-v20260801-093600-v89.13-ROOT-DB-FIX' + '2000000000001';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -121,28 +122,100 @@ function emptyResponse(status = 503, statusText = 'Service Unavailable') {
   });
 }
 
+// ✅ v89.13 ROOT FIX #A: openShareDatabase بدون version ثابت + معالجة VersionError
+//   السبب الجذري السابق:
+//     كان sw.js يفتح 'yamshat-pwa-db' بإصدار ثابت = 1، بينما sharedIntake.js
+//     يستخدم فتح ديناميكي قد يرقّي الإصدار إلى 2+. عند وجود upgrade مسبق،
+//     يرمي sw.js VersionError → saveSharedPayload يفشل صامتاً → payload
+//     لا يُحفظ أبداً → ShareTargetLanding يقرأ null → "جارٍ التحضير" أبدياً.
+//   الحل:
+//     - نفتح DB بدون version أولاً لقراءة الإصدار الحالي.
+//     - إن لم يوجد الـ store، نُعيد الفتح بإصدار +1 وننشئه.
+//     - أي فشل مُلتقط ومعالج — لا يمرّ استثناء لخارج الدالة.
 function openShareDatabase() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(SHARE_DB_NAME, 1);
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
+    let request;
+    try {
+      request = indexedDB.open(SHARE_DB_NAME);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    request.onupgradeneeded = () => {
+      const db = request.result;
       if (!db.objectStoreNames.contains(SHARE_STORE_NAME)) {
-        db.createObjectStore(SHARE_STORE_NAME);
+        try { db.createObjectStore(SHARE_STORE_NAME); } catch (_) { /* ignore */ }
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      // إن لم يوجد store → أعِد الفتح بإصدار أعلى لإنشائه
+      if (!db.objectStoreNames.contains(SHARE_STORE_NAME)) {
+        const nextVersion = (db.version || 1) + 1;
+        db.close();
+        let upgradeReq;
+        try {
+          upgradeReq = indexedDB.open(SHARE_DB_NAME, nextVersion);
+        } catch (err) {
+          reject(err);
+          return;
+        }
+        upgradeReq.onupgradeneeded = () => {
+          const udb = upgradeReq.result;
+          if (!udb.objectStoreNames.contains(SHARE_STORE_NAME)) {
+            try { udb.createObjectStore(SHARE_STORE_NAME); } catch (_) { /* ignore */ }
+          }
+        };
+        upgradeReq.onsuccess = () => resolve(upgradeReq.result);
+        upgradeReq.onerror = () => reject(upgradeReq.error);
+        upgradeReq.onblocked = () => reject(new Error('IDB upgrade blocked'));
+      } else {
+        resolve(db);
+      }
+    };
     request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error('IDB open blocked'));
   });
 }
 
+// ✅ v89.13 ROOT FIX #B: saveSharedPayload لن يرمي أبداً — postMessage fallback
+//   إن فشل IndexedDB لأي سبب (VersionError, quota, private mode)، نُرسل الحمولة
+//   عبر postMessage للعملاء الذين سيحفظونها بأنفسهم (YAMSHAT_SHARE_PAYLOAD_FALLBACK).
 async function saveSharedPayload(payload) {
-  const db = await openShareDatabase();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(SHARE_STORE_NAME, 'readwrite');
-    tx.objectStore(SHARE_STORE_NAME).put(payload, SHARE_KEY);
-    tx.oncomplete = () => resolve(true);
-    tx.onerror = () => reject(tx.error || new Error('share tx failed'));
-  });
+  try {
+    const db = await openShareDatabase();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(SHARE_STORE_NAME, 'readwrite');
+      tx.objectStore(SHARE_STORE_NAME).put(payload, SHARE_KEY);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error || new Error('share tx failed'));
+      tx.onabort = () => reject(tx.error || new Error('share tx aborted'));
+    });
+    return true;
+  } catch (err) {
+    // fallback: أرسل الحمولة عبر postMessage للعميل الذي سيحفظها بنفسه
+    try {
+      const lightPayload = {
+        id: payload && payload.id,
+        receivedAt: payload && payload.receivedAt,
+        title: (payload && payload.title) || '',
+        text: (payload && payload.text) || '',
+        url: (payload && payload.url) || '',
+        // لا نرسل ملفات ثقيلة في postMessage — نرسل عدداً فقط
+        filesCount: Array.isArray(payload && payload.files) ? payload.files.length : 0,
+        v: payload && payload._v,
+        _empty: payload && payload._empty,
+        _fallback: 'postMessage',
+        _dbError: String((err && err.message) || err),
+      };
+      const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+      clientsList.forEach((client) => client.postMessage({
+        type: 'YAMSHAT_SHARE_PAYLOAD_FALLBACK',
+        payload: lightPayload,
+      }));
+    } catch (_) { /* ignore */ }
+    return false;
+  }
 }
 
 // ✅ v89.04 ROOT FIX #5: HTML bridge خالٍ نهائياً من أي inline <script>

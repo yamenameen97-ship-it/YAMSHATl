@@ -469,10 +469,10 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v89.19-SYNC-SHARE-REDIRECT';
+const BUILD_ID = 'yamshat-v89.20-SHARE-TARGET-UPDATE-LOOP-FIX';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 const LAST_RESET_KEY = 'yamshat_build_reset_ts';
-const BUILD_CURRENT_TAG = 'v89.19';
+const BUILD_CURRENT_TAG = 'v89.20';
 
 // ✅ v89.01: أداة موحّدة تحدّد ما إذا كنّا حالياً داخل مسار /share-target.
 //    نستخدمها لمنع أي reload/skipWaiting أثناء استقبال المشاركة الخارجية،

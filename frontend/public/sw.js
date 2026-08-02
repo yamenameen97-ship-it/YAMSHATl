@@ -52,7 +52,8 @@
 //    #5 ShareTargetLanding: watchdog زمني 12s + زر إعادة محاولة صريح +
 //       بطاقة تشخيص عند _empty بدل عرض أزرار الوجهات كأن كل شيء طبيعي.
 //    #6 sw-pwa-enhanced.js + sw-push.js: تحويلهما إلى kill-stubs لا يتنافسان مع sw.js.
-const VERSION = 'yamshat-v20260801-230000-v89.19-SYNC-REDIRECT-NO-INLINE-SCRIPT' + '2100000000004';
+// ✅ v89.20 ROOT FIX: رفع VERSION لإجبار تحديث SW القديم — إصلاح حلقة reload + رسالة تحديث وهمية + فقاعة التثبيت عند /share-target
+const VERSION = 'yamshat-v20260801-235900-v89.20-SHARE-TARGET-UPDATE-LOOP-FIX' + '2100000000005';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,

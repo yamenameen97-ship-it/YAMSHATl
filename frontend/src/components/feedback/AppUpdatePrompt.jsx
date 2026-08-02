@@ -138,6 +138,25 @@ export default function AppUpdatePrompt() {
   // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const handleReady = async (event) => {
+      // ✅ v89.20 ROOT FIX #1: منع ظهور نافذة التحديث أثناء مسار /share-target
+      //   السبب الجذري:
+      //     عند استقبال مشاركة خارجية من يوتيوب/تيك توك، قد يصل حدث
+      //     yamshat:update-ready إذا كان هناك waiting worker عالق. ظهور النافذة
+      //     هنا + controllerchange → reload → يُفقد الحمولة → صفحة بيضاء.
+      //   الحل: نتخطى معالجة الحدث بالكامل إذا كنا في مسار /share-target.
+      try {
+        const path = (window.location && window.location.pathname) || '';
+        const hash = (window.location && window.location.hash) || '';
+        const inShareTarget = path === '/share-target'
+          || path.startsWith('/share-target/')
+          || hash.startsWith('#/share-target')
+          || hash.includes('/share-target');
+        if (inShareTarget) {
+          console.log('[UpdatePrompt] handleReady skipped — inside /share-target flow');
+          return;
+        }
+      } catch (_) { /* ignore */ }
+
       const candidate = event.detail?.registration || null;
       let nextRegistration = candidate;
       if (!nextRegistration && 'serviceWorker' in navigator) {
@@ -153,14 +172,36 @@ export default function AppUpdatePrompt() {
         console.warn('[UpdatePrompt] حلقة تحديث مكتشفة — لن تُعرض النافذة.');
         return;
       }
+      // ✅ v89.20 ROOT FIX #2: تحقق إضافي أن waiting worker ليس عالقاً من نسخة قديمة
+      //   نفحص أن waiting worker لديه scriptURL يحوي BUILD_ID مختلف عن الحالي.
+      //   إذا كان نفس الإصدار → تجاهل (رسالة وهمية).
+      try {
+        const waitingURL = nextRegistration.waiting?.scriptURL || '';
+        const activeURL = nextRegistration.active?.scriptURL || '';
+        // إذا كان نفس scriptURL (نفس الملف) → ليس تحديثاً حقيقياً
+        if (waitingURL && activeURL && waitingURL === activeURL) {
+          console.log('[UpdatePrompt] waiting worker has same scriptURL as active — not a real update, skipping');
+          return;
+        }
+      } catch (_) { /* ignore */ }
       setRegistration(nextRegistration);
       setCollapsed(wasRecentlyDismissed());
       setVisible(true);
     };
 
     window.addEventListener('yamshat:update-ready', handleReady);
-    // A waiting worker can already exist before the event listener attaches.
-    handleReady({ detail: {} });
+    // ✅ v89.20 ROOT FIX #1+#2: تم إزالة handleReady({ detail: {} }) الفوري.
+    //   السبب الجذري:
+    //     استدعاء handleReady فوراً عند mount كان يفحص registration.waiting
+    //     في كل تحميل صفحة. إذا كان هناك waiting worker عالق من نسخة قديمة
+    //     (بسبب فشل skipWaiting سابق أو تحديث متوقف) → تظهر رسالة "تحديث متاح"
+    //     وهمية على كل صفحة، وعند /share-target يؤدي controllerchange إلى
+    //     حلقة إعادة تحميل لا نهائية.
+    //   الحل:
+    //     - لا نستدعي handleReady يدوياً أبداً — فقط عند وصول حدث
+    //       yamshat:update-ready حقيقي من pwaInitializer.handleUpdateFound()
+    //       الذي يُطلق فقط عند updatefound فعلي + statechange→installed.
+    //     - هذا يضمن أن النافذة تظهر فقط عند وجود تحديث حقيقي جديد.
     return () => window.removeEventListener('yamshat:update-ready', handleReady);
   }, []);
 
@@ -171,6 +212,20 @@ export default function AppUpdatePrompt() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return undefined;
     const onControllerChange = () => {
+      // ✅ v89.20 ROOT FIX #1: منع reload أثناء /share-target نهائياً
+      //   حتى لو وصل controllerchange أثناء استقبال مشاركة، لا نُعيد التحميل.
+      try {
+        const path = (window.location && window.location.pathname) || '';
+        const hash = (window.location && window.location.hash) || '';
+        const inShareTarget = path === '/share-target'
+          || path.startsWith('/share-target/')
+          || hash.startsWith('#/share-target')
+          || hash.includes('/share-target');
+        if (inShareTarget) {
+          console.log('[UpdatePrompt] controllerchange skipped — inside /share-target flow');
+          return;
+        }
+      } catch (_) { /* ignore */ }
       if (!isApplyingUpdate() || controllerChangedRef.current) return;
       controllerChangedRef.current = true;
       reloadAfterUpdate();

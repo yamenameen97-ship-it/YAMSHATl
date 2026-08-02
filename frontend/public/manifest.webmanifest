@@ -4,7 +4,7 @@
   "short_name": "Yamshat",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "/?pwa=1&v=89.19",
+  "start_url": "/?pwa=1&v=89.20",
   "scope": "/",
   "display": "standalone",
   "display_override": [

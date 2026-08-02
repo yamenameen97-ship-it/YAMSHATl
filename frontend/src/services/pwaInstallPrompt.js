@@ -36,12 +36,75 @@ export class PWAInstallPrompt {
 
   /**
    * تهيئة الخدمة
+   *
+   * ✅ v89.20 ROOT FIX #3: منع ظهور فقاعة التثبيت عند /share-target
+   *   السبب الجذري:
+   *     pwaInstallPrompt يلتقط beforeinstallprompt ويُ Timer 2s لعرض
+   *     رسالة "تثبيت يام شات". عند وصول المستخدم إلى /share-target (اختيار
+   *     وجهة المشاركة) تظهر الفقاعة البنفسجية السفلية فوق المحتوى وتُغطّي
+   *     أزرار الوجهات الخمس، مما يُربك المستخدم ويمنعه من اختيار الوجهة.
+   *   الحل:
+   *     - نتحقق من المسار قبل setupEventListeners: إذا كنا في /share-target
+   *       نؤجل التهيئة بالكامل حتى يغادر المستخدم المسار.
+   *     - نضيف حارس داخل showCustomInstallPrompt يمنع العرض عند /share-target.
    */
   init() {
+    // ✅ v89.20: إذا كنا في /share-target، لا نُهيّئ المستمعين أصلاً
+    if (this._isInShareTargetFlow()) {
+      console.log('[PWA Install] init deferred — inside /share-target flow');
+      // نُهيّئ بعد مغادرة /share-target عبر مراقبة hashchange
+      this._setupShareTargetWatcher();
+      return;
+    }
     this.detectInstalledState();
     this.setupEventListeners();
     this.checkStoredState();
     this.setupInteractionTracking();
+  }
+
+  /**
+   * ✅ v89.20: كشف ما إذا كنا في مسار /share-target
+   */
+  _isInShareTargetFlow() {
+    try {
+      if (typeof window === 'undefined') return false;
+      const path = window.location.pathname || '';
+      const hash = window.location.hash || '';
+      return path === '/share-target'
+        || path.startsWith('/share-target/')
+        || hash.startsWith('#/share-target')
+        || hash.includes('/share-target');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * ✅ v89.20: مراقبة مغادرة /share-target لتهيئة المستمعين بعدها
+   */
+  _setupShareTargetWatcher() {
+    const check = () => {
+      if (!this._isInShareTargetFlow()) {
+        console.log('[PWA Install] Left /share-target — initializing now');
+        this.detectInstalledState();
+        this.setupEventListeners();
+        this.checkStoredState();
+        this.setupInteractionTracking();
+        this._shareTargetWatcherInstalled = true;
+      }
+    };
+    try {
+      window.addEventListener('hashchange', check, { passive: true });
+      // fallback: فحص دوري كل 2s حتى يغادر المسار
+      const interval = setInterval(() => {
+        if (!this._isInShareTargetFlow()) {
+          clearInterval(interval);
+          check();
+        }
+      }, 2000);
+      // تنظيف بعد 60s لتجنب تسريب الذاكرة
+      setTimeout(() => clearInterval(interval), 60000);
+    } catch (_) { /* ignore */ }
   }
 
   /**
@@ -82,8 +145,15 @@ export class PWAInstallPrompt {
       // ❗ مهم: لا يمكن استدعاء prompt() تلقائياً بدون user gesture.
       // نعرض فقط رسالة مخصصة (UI) بعد تأخير، والـ prompt() الفعلي
       // يُستدعى لاحقاً داخل onClick في handleInstallClick (user gesture حقيقي).
+      // ✅ v89.20 ROOT FIX #3: منع عرض فقاعة التثبيت عند /share-target
+      if (this._isInShareTargetFlow()) {
+        console.log('[PWA Install] beforeinstallprompt captured but display suppressed — inside /share-target flow');
+        return;
+      }
       if (!this.state.isInstalled && !this.state.hasBeenDismissed) {
         setTimeout(() => {
+          // ✅ v89.20: تحقق إضافي داخل setTimeout (المسار قد تغيّر)
+          if (this._isInShareTargetFlow()) return;
           if (!this.state.isInstalled && !this.state.hasBeenDismissed) {
             this.showCustomInstallPrompt();
           }
@@ -225,6 +295,11 @@ export class PWAInstallPrompt {
    * عرض رسالة تثبيت مخصصة
    */
   showCustomInstallPrompt() {
+    // ✅ v89.20 ROOT FIX #3: منع ظهور الفقاعة عند /share-target
+    if (this._isInShareTargetFlow()) {
+      console.log('[PWA Install] showCustomInstallPrompt blocked — inside /share-target flow');
+      return;
+    }
     this.log('عرض رسالة التثبيت المخصصة');
     this.emit('show-custom-prompt');
     

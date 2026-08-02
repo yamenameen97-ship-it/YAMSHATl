@@ -166,10 +166,38 @@ export class PWAInitializer {
         this.handleUpdateFound(registration);
       });
 
-      // فحص التحديثات فوراً
-      registration.update().catch((error) => {
-        console.warn('[PWA] Update check error:', error);
-      });
+      // ✅ v89.20 ROOT FIX #1: منع registration.update() الفوري عند /share-target
+      //   السبب الجذري:
+      //     registration.update() يُجبر المتصفح على فحص نسخة SW من الخادم.
+      //     إذا وُجدت نسخة جديدة → updatefound → installing → installed →
+      //     controllerchange أثناء معالجة POST من يوتيوب → SW يفوّت الطلب →
+      //     صفحة بيضاء / حلقة reload.
+      //     حتى لو لم توجد نسخة جديدة، الاستدعاء الفوري يُضيف overhead
+      //     غير ضروري في لحظة استقبال المشاركة.
+      //   الحل:
+      //     - عند /share-target: نتخطى update() الفوري تماماً. التحديث سيُكتشف
+      //       لاحقاً عبر startUpdateCheck() الدورية (كل ساعة) أو عند reload عادي.
+      //     - خارج /share-target: نُبقي السلوك كما هو (فحص فوري طبيعي).
+      try {
+        const path = (window.location && window.location.pathname) || '';
+        const hash = (window.location && window.location.hash) || '';
+        const inShareTarget = path === '/share-target'
+          || path.startsWith('/share-target/')
+          || hash.startsWith('#/share-target')
+          || hash.includes('/share-target');
+        if (inShareTarget) {
+          console.log('[PWA v89.20] Skipping immediate registration.update() — inside /share-target flow');
+        } else {
+          registration.update().catch((error) => {
+            console.warn('[PWA] Update check error:', error);
+          });
+        }
+      } catch (_) {
+        // fallback: إذا فشل الفحص، نُجري update() (سلوك آمن خارج share-target)
+        registration.update().catch((error) => {
+          console.warn('[PWA] Update check error:', error);
+        });
+      }
 
       this.emit('sw-registered', registration);
     } catch (error) {
@@ -184,13 +212,51 @@ export class PWAInitializer {
    * v88.11: بدلاً من حقن HTML خام (بانر أخضر متصفح)،
    * نُطلق حدث window لكي يلتقطه مكوّن React الرسمي
    * <AppUpdatePrompt /> الذي يعرض النافذة بأسلوب النظام الأصلي.
+   *
+   * ✅ v89.20 ROOT FIX #1: منع إطلاق حدث التحديث أثناء /share-target
+   *   السبب الجذري:
+   *     حتى لو حدث updatefound أثناء استقبال مشاركة (مثلاً من update دوري)،
+   *     إطلاق yamshat:update-ready → AppUpdatePrompt يظهر → controllerchange
+   *     → reload → فقدان الحمولة → صفحة بيضاء.
+   *   الحل: نتخطى إطلاق الحدث بالكامل أثناء /share-target.
    */
   handleUpdateFound(registration) {
     const newWorker = registration.installing;
     if (!newWorker) return;
 
+    // ✅ v89.20: منع معالجة التحديث أثناء /share-target
+    let inShareTarget = false;
+    try {
+      const path = (window.location && window.location.pathname) || '';
+      const hash = (window.location && window.location.hash) || '';
+      inShareTarget = path === '/share-target'
+        || path.startsWith('/share-target/')
+        || hash.startsWith('#/share-target')
+        || hash.includes('/share-target');
+    } catch (_) { /* ignore */ }
+
+    if (inShareTarget) {
+      console.log('[PWA v89.20] updatefound ignored — inside /share-target flow');
+      return;
+    }
+
     newWorker.addEventListener('statechange', () => {
       if (newWorker.state === 'installed' && navigator.serviceWorker.controller && registration.waiting === newWorker) {
+        // ✅ v89.20: تحقق إضافي أثناء statechange (المسار قد تغيّر)
+        let stillInShareTarget = false;
+        try {
+          const p = (window.location && window.location.pathname) || '';
+          const h = (window.location && window.location.hash) || '';
+          stillInShareTarget = p === '/share-target'
+            || p.startsWith('/share-target/')
+            || h.startsWith('#/share-target')
+            || h.includes('/share-target');
+        } catch (_) { /* ignore */ }
+        if (stillInShareTarget) {
+          console.log('[PWA v89.20] update-ready suppressed — inside /share-target flow (statechange)');
+          return;
+        }
+
         // A real update is waiting for explicit user approval.
         this.state.updateAvailable = true;
         console.log('[PWA] Update available — dispatching yamshat:update-ready');
@@ -432,10 +498,25 @@ export class PWAInitializer {
 
   /**
    * بدء فحص التحديثات
+   *
+   * ✅ v89.20 ROOT FIX #1: تخطي فحص التحديث الدوري أثناء /share-target
+   *   نفس المنطق: لا نريد updatefound أثناء استقبال مشاركة.
    */
   startUpdateCheck() {
     setInterval(() => {
       if (this.state.swRegistration) {
+        // ✅ v89.20: تخطي update() أثناء /share-target
+        let inShareTarget = false;
+        try {
+          const path = (window.location && window.location.pathname) || '';
+          const hash = (window.location && window.location.hash) || '';
+          inShareTarget = path === '/share-target'
+            || path.startsWith('/share-target/')
+            || hash.startsWith('#/share-target')
+            || hash.includes('/share-target');
+        } catch (_) { /* ignore */ }
+        if (inShareTarget) return;
+
         this.state.swRegistration.update().catch((error) => {
           console.warn('[PWA] Update check error:', error);
         });

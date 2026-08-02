@@ -10,6 +10,9 @@ import {
   downloadPlatformThumbnail,
   enrichLinkCardFromOEmbed,
   detectSourcePlatform,
+  // ✅ v89.22 (2026)
+  downloadViaBackendProxy,
+  directPublishFromShare,
 } from '../services/share/sharedIntake.js';
 import { useAppStore } from '../store/appStore.js';
 
@@ -663,7 +666,8 @@ export default function ShareTargetLanding() {
     setEditableDescription(defaultDescriptionNoLink);
   }, [payload, selectedTarget, defaultDescriptionNoLink]);
 
-  // ✅ v89.21: بدء التنزيل الفعلي — مع fallback ذكي لـ thumbnail عند CORS
+  // ✅ v89.22 (2026): بدء التنزيل الفعلي — أولاً backend proxy (yt-dlp) للفيديو الحقيقي،
+  //    ثم fallback لـ thumbnail عند CORS/فشل yt-dlp.
   const startDownload = useCallback(async () => {
     if (!payload) return;
     setDownloadStage('downloading');
@@ -705,19 +709,27 @@ export default function ShareTargetLanding() {
         let fileType = 'application/octet-stream';
 
         if (isPlatformStream) {
-          // ✅ v89.21 ROOT FIX #1: نُنزّل thumbnail عالي الجودة من CDN المنصة
-          //    (مسموح CORS) بدل الفيديو المحمي.
-          const thumbRes = await downloadPlatformThumbnail(urlStr, (pct) => {
-            setDownloadProgress(pct);
-          });
-          if (!thumbRes?.blob) {
-            const e = new Error('تعذّر جلب معاينة المحتوى من ' + info.displayName);
-            e.code = 'THUMB_UNAVAILABLE';
-            throw e;
+          // ✅ v89.22 (2026) ROOT FIX: جرّب backend proxy (yt-dlp) أولاً —
+          //    يعيد الفيديو الحقيقي mp4/webm من نفس الأصل (لا CORS).
+          const proxyRes = await downloadViaBackendProxy(urlStr, (pct) => setDownloadProgress(pct));
+          if (proxyRes?.blob) {
+            blob = proxyRes.blob;
+            fileName = proxyRes.filename || `${info.platform}_${Date.now()}.mp4`;
+            fileType = proxyRes.mime || blob.type || 'video/mp4';
+          } else {
+            // fallback: thumbnail من CDN المنصة (السلوك القديم)
+            const thumbRes = await downloadPlatformThumbnail(urlStr, (pct) => {
+              setDownloadProgress(pct);
+            });
+            if (!thumbRes?.blob) {
+              const e = new Error('تعذّر جلب المحتوى من ' + info.displayName);
+              e.code = 'MEDIA_UNAVAILABLE';
+              throw e;
+            }
+            blob = thumbRes.blob;
+            fileName = `${info.platform}_${thumbRes.videoId || Date.now()}.jpg`;
+            fileType = blob.type || 'image/jpeg';
           }
-          blob = thumbRes.blob;
-          fileName = `${info.platform}_${thumbRes.videoId || Date.now()}.jpg`;
-          fileType = blob.type || 'image/jpeg';
         } else {
           // (ج) رابط مباشر لملف عام — fetch عادي
           try {
@@ -767,10 +779,52 @@ export default function ShareTargetLanding() {
     }
   }, [payload, firstFile]);
 
-  // ✅ v88.84: النشر بعد التنزيل — وصف قابل للتعديل بدون رابط
-  const handlePublishAfterDownload = useCallback(() => {
+  // ✅ v89.22 (2026) ROOT FIX: النشر المباشر من صفحة التنزيل —
+  //    للوجهة "المنشورات" نتجاوز PostComposer ونرفع/ننشر مباشرة
+  //    مع تحديد صحيح لنوع الوسائط (video/image) حتى لا يُعامل
+  //    الفيديو كصورة.
+  const handlePublishAfterDownload = useCallback(async () => {
     if (publishDisabled || !payload || !selectedTarget) return;
 
+    // التدفق المباشر لوجهة "المنشورات" فقط
+    if (selectedTarget.key === 'post' && downloadedFile) {
+      try {
+        setBusy(true);
+        // بناء linkCard من payload (إن وجد url)
+        let linkCard = null;
+        try {
+          if (payload?.url) {
+            linkCard = await enrichLinkCardFromOEmbed(payload.url).catch(() => null);
+          }
+        } catch { /* ignore */ }
+
+        await directPublishFromShare({
+          target: 'post',
+          blob: downloadedFile,
+          blobMeta: downloadedFileMeta,
+          description: editableDescription,
+          sourceUrl: payload?.url || '',
+          sourceTitle: payload?.title || '',
+          sourceText: payload?.text || '',
+          linkCard,
+          adminSource: null,
+          verifiedByYamshat: true,
+        });
+
+        // تنظيف الحمولة المشتركة
+        await clearSharedPayload().catch(() => null);
+
+        // انتقل للصفحة المحددة (المنشورات)
+        navigate('/');
+        return;
+      } catch (err) {
+        console.error('[share] direct publish failed, falling back to composer:', err);
+        setBusy(false);
+        // fallback للتدفق القديم
+      }
+    }
+
+    // fallback أو وجهة أخرى (reel/story/chat/groups): stage + navigate
     stagePendingShare(payload, selectedTarget.key, {
       mode: 'download',
       downloadedFile,

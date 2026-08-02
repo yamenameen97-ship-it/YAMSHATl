@@ -601,3 +601,217 @@ export function dataUrlToBlob(dataUrl) {
 }
 
 export const SHARE_INTAKE_INTERNAL = { _memoryRef: () => _memoryPending };
+
+// ================================================================
+// ✅ v89.22 (2026) — Backend Proxy Download + Direct Publish
+// ----------------------------------------------------------------
+// الدافع الجذري: روابط YouTube/TikTok/… لا تسمح fetch مباشرة للفيديو
+// من المتصفح (CORS). حلول v89.21 استعاضت عن ذلك بتنزيل thumbnail فقط،
+// فأصبح المحتوى يُنشر كصورة حتى لو كان فيديو. في v89.22 نمرّر
+// الرابط لـ backend proxy (yt-dlp) الذي يجلب الفيديو الحقيقي ويعيده
+// كـ stream من نفس الأصل (same-origin) فلا يوجد CORS.
+// ================================================================
+
+/**
+ * يطلب من الباكاند تنزيل الفيديو/الصورة الحقيقييين من رابط منصة.
+ * يرجع: { blob, mime, kind: 'video'|'image', filename } أو null عند الفشل.
+ */
+export async function downloadViaBackendProxy(url, onProgress) {
+  if (!url) return null;
+  try {
+    const { getAuthToken } = await import('../../utils/auth.js');
+    const { API_BASE } = await import('../../api/config.js');
+
+    const token = (typeof getAuthToken === 'function' ? getAuthToken() : null) || null;
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    if (onProgress) onProgress(3);
+
+    const resp = await fetch(`${API_BASE}/api/share/download-media`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ url }),
+    });
+    if (!resp.ok) {
+      console.warn('[share] backend proxy request failed', resp.status);
+      return null;
+    }
+    const meta = await resp.json();
+    if (!meta?.ok || !meta.file_url) {
+      console.info('[share] backend proxy declined:', meta?.reason || 'unknown');
+      return null;
+    }
+
+    if (onProgress) onProgress(20);
+
+    const fileResp = await fetch(`${API_BASE}${meta.file_url}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!fileResp.ok) {
+      console.warn('[share] backend proxy file fetch failed', fileResp.status);
+      return null;
+    }
+
+    // stream reader مع تقدّم
+    const total = Number(fileResp.headers.get('content-length') || meta.size || 0);
+    const reader = fileResp.body?.getReader();
+    if (!reader) {
+      const blob = await fileResp.blob();
+      if (onProgress) onProgress(100);
+      return {
+        blob,
+        mime: meta.mime || blob.type || 'video/mp4',
+        kind: meta.kind || 'video',
+        filename: meta.filename || 'shared.mp4',
+        size: blob.size,
+      };
+    }
+    const chunks = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (onProgress) {
+        if (total > 0) {
+          const pct = 20 + Math.min(79, Math.round((received / total) * 79));
+          onProgress(Math.min(99, pct));
+        } else {
+          const est = 20 + Math.min(75, Math.round((received / (5 * 1024 * 1024)) * 75));
+          onProgress(Math.min(99, est));
+        }
+      }
+    }
+    const blob = new Blob(chunks, { type: meta.mime || 'video/mp4' });
+    if (onProgress) onProgress(100);
+    return {
+      blob,
+      mime: meta.mime || 'video/mp4',
+      kind: meta.kind || 'video',
+      filename: meta.filename || 'shared.mp4',
+      size: blob.size,
+    };
+  } catch (err) {
+    console.warn('[share] downloadViaBackendProxy failed:', err);
+    return null;
+  }
+}
+
+/**
+ * يرفع الملف إلى /api/upload ويعيد media URL.
+ */
+export async function uploadBlobToServer(blob, filename, mime) {
+  if (!blob) throw new Error('blob مفقود');
+  const { getAuthToken } = await import('../../utils/auth.js');
+  const { API_BASE } = await import('../../api/config.js');
+
+  const token = (typeof getAuthToken === 'function' ? getAuthToken() : null) || null;
+  const fd = new FormData();
+  fd.append('file', new File([blob], filename || 'shared.bin', { type: mime || blob.type || 'application/octet-stream' }));
+
+  const resp = await fetch(`${API_BASE}/api/upload`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd,
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`فشل الرفع: ${resp.status} ${text}`);
+  }
+  return await resp.json();
+}
+
+/**
+ * ينشر منشور مباشرة عبر /api/posts مع تحديد صحيح لنوع الوسائط.
+ * يحدد صيغة المحتوى (فيديو/صورة) قبل الإرسال.
+ */
+export async function publishPostDirectly({ description, mediaUrl, mediaMime, mediaKind, linkCard, adminSource, verifiedByYamshat }) {
+  const { getAuthToken } = await import('../../utils/auth.js');
+  const { API_BASE } = await import('../../api/config.js');
+
+  const token = (typeof getAuthToken === 'function' ? getAuthToken() : null) || null;
+
+  const isVideo = mediaKind === 'video' || String(mediaMime || '').startsWith('video/');
+  const isImage = mediaKind === 'image' || String(mediaMime || '').startsWith('image/');
+
+  // media_urls مع النوع الصريح لإجبار الباكاند على معاملته
+  // كفيديو (وليس صورة) إذا كان المحتوى فيديو.
+  const media_urls = mediaUrl ? [{
+    url: mediaUrl,
+    type: isVideo ? 'video' : (isImage ? 'image' : 'file'),
+    mime: mediaMime || (isVideo ? 'video/mp4' : (isImage ? 'image/jpeg' : 'application/octet-stream')),
+  }] : [];
+
+  const body = {
+    content: description || '',
+    // إذا كان فيديو: لا نملأ image_url حتى لا يُعامل كصورة غلطاً.
+    image_url: (isImage && !isVideo) ? mediaUrl : null,
+    media_urls,
+    link_card: linkCard || null,
+    admin_source: adminSource || null,
+    verified_by_yamshat: !!verifiedByYamshat,
+  };
+
+  const resp = await fetch(`${API_BASE}/api/posts`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`فشل النشر: ${resp.status} ${text}`);
+  }
+  return await resp.json();
+}
+
+/**
+ * تدفق كامل للنشر المباشر من صفحة التنزيل (يتجاوز PostComposer).
+ * target = 'post' حالياً؛ يمكن توسيعه لاحقاً (reel/story/chat/groups).
+ */
+export async function directPublishFromShare({
+  target, blob, blobMeta, description, sourceUrl, sourceTitle, sourceText,
+  linkCard, adminSource, verifiedByYamshat,
+}) {
+  if (!blob) throw new Error('لا يوجد محتوى للنشر');
+
+  // 1) ارفع الملف
+  const uploadRes = await uploadBlobToServer(
+    blob,
+    blobMeta?.name || 'shared',
+    blobMeta?.type || blob.type,
+  );
+  const mediaUrl = uploadRes?.url || uploadRes?.media_url || uploadRes?.file_url || uploadRes?.location || null;
+  if (!mediaUrl) throw new Error('تعذّر الحصول على رابط الملف بعد الرفع');
+
+  const mediaMime = uploadRes?.mime || uploadRes?.content_type || blobMeta?.type || blob.type || '';
+  const mediaKind = String(mediaMime).startsWith('video/') ? 'video'
+                  : String(mediaMime).startsWith('image/') ? 'image'
+                  : (blobMeta?.type?.startsWith('video/') ? 'video' : 'image');
+
+  // 2) انشر حسب الوجهة
+  if (target === 'post') {
+    return await publishPostDirectly({
+      description,
+      mediaUrl,
+      mediaMime,
+      mediaKind,
+      linkCard,
+      adminSource,
+      verifiedByYamshat,
+    });
+  }
+  // الوجهات الأخرى: fallback إلى التدفق القديم (stage + navigate)
+  const err = new Error('DIRECT_PUBLISH_NOT_SUPPORTED_FOR_TARGET');
+  err.code = 'FALLBACK_TO_COMPOSER';
+  throw err;
+}

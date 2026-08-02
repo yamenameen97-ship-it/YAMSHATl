@@ -1,16 +1,17 @@
-// services/share/sharedIntake.js — v88.85
+// services/share/sharedIntake.js — v89.21 ROOT FIXES
 // ---------------------------------------------------------------
 // جسر (Bridge) بين Service Worker (share_target) والمكوّنات في الواجهة.
 //
-// ✅ v88.85 — التحديثات:
-// 1) عند اختيار "تنزيل ومشاركة": بعد اكتمال التنزيل يُعامَل المحتوى على أنه
-//    "موثق لدى Yamshat" (verified_by_yamshat). البيانات الأصلية للمصدر
-//    (source_platform, source_url, source_author…) لا تُعرض في الفيد؛
-//    تُقيَّد فقط في حقول admin_source_* التي يقرأها لوحة الأدمن.
-// 2) عند اختيار "مشاركة كرابط": يظهر بست الوصف قابل للتعديل ثم زر نشر.
-//    تُحفظ بيانات كارت الرابط (link_card) في المنشور: عنوان، وصف،
-//    thumbnail، اسم المصدر، شعار، وعدد المشتركين/المشاهدات إن توفرت.
-//    وذلك ليعرضها الفيد ككارت غني مع زر "فتح المصدر" الذكي.
+// ✅ v89.21 — إصلاحان جذريان:
+// 1) فشل التنزيل (CORS): روابط YouTube/TikTok/… لا تسمح بـ fetch مباشر
+//    للفيديو من المتصفح. الحل الجديد: نستخرج thumbnail حقيقي من CDN
+//    عام (i.ytimg.com لليوتيوب) وهو مسموح CORS، ونستخدمه كـ "المحتوى
+//    الجاهز" مع بيانات المصدر التي جلبناها من oEmbed.
+// 2) عدم ظهور الكارت الغني: عند "مشاركة كرابط" نستدعي oEmbed (YouTube
+//    الرسمي + noembed كـ fallback) لجلب: العنوان، الوصف، thumbnail
+//    عالي الجودة، اسم القناة (author_name)، صورة القناة (author_url).
+//    ثم نبني linkCard مكتمل يعرضه ExternalSourceCard كبطاقة غنية
+//    مطابقة للصورة المرجعية.
 // ---------------------------------------------------------------
 
 const DB_NAME = 'yamshat-pwa-db';
@@ -23,18 +24,6 @@ export const SHARE_TARGETS = ['reel', 'post', 'story', 'chat', 'groups'];
 let _memoryPending = null;
 
 // ---------- IndexedDB helpers ----------
-// ✅ v89.10 ROOT FIX #4: معالجة VersionError عندما يكون هناك DB أعلى إصداراً
-//   السبب الجذري السابق:
-//     كنا نفتح indexedDB.open(DB_NAME, 1) ثابتاً على الإصدار 1. إذا كان لدى
-//     المتصفح نسخة أقدم من التطبيق أنشأت DB بإصدار أعلى (مثلاً بعد ترقية عالقة
-//     لم تكتمل)، فتحه بإصدار 1 يفشل بـ VersionError → openDatabase يرمي →
-//     readSharedPayload يعيد null → ShareTargetLanding يظل "جارٍ التحضير..."
-//     إلى الأبد → شاشة بيضاء فعلياً.
-//   الحل:
-//     - نفتح DB بدون تحديد إصدار (open(name)) لقراءة الإصدار الحالي.
-//     - إن لم يوجد ObjectStore المطلوب → نُغلق ونُعيد الفتح بإصدار +1
-//       لإنشاء الـ store عبر onupgradeneeded.
-//     - أي فشل حاسم يُلتقط ولا يمنع باقي التدفق.
 function openDatabase() {
   return new Promise((resolve, reject) => {
     let request;
@@ -52,7 +41,6 @@ function openDatabase() {
     };
     request.onsuccess = () => {
       const db = request.result;
-      // إذا لم يوجد store → أعِد الفتح بإصدار أعلى لإنشائه
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const nextVersion = (db.version || 1) + 1;
         db.close();
@@ -148,11 +136,177 @@ export async function captureVideoThumbnail(fileOrBlob) {
   }
 }
 
-// ---------- تنزيل ملف من رابط مع شريط تقدم ----------
+// ---------- ✅ v89.21: كشف منصة المصدر من URL ----------
+export function detectSourcePlatform(url = '') {
+  const u = String(url || '').toLowerCase();
+  if (!u) return { platform: 'unknown', displayName: 'مصدر خارجي', supportsBrowser: false };
+
+  if (/youtube\.com|youtu\.be/.test(u))     return { platform: 'youtube',    displayName: 'YouTube',      supportsBrowser: true,  scheme: 'vnd.youtube:',  androidPackage: 'com.google.android.youtube',  iosScheme: 'youtube://' };
+  if (/tiktok\.com/.test(u))                return { platform: 'tiktok',     displayName: 'TikTok',       supportsBrowser: true,  scheme: 'snssdk1233://', androidPackage: 'com.zhiliaoapp.musically',    iosScheme: 'snssdk1233://' };
+  if (/twitter\.com|x\.com/.test(u))        return { platform: 'twitter',    displayName: 'X (Twitter)',  supportsBrowser: true,  scheme: 'twitter://',    androidPackage: 'com.twitter.android',         iosScheme: 'twitter://' };
+  if (/instagram\.com/.test(u))             return { platform: 'instagram',  displayName: 'Instagram',    supportsBrowser: true,  scheme: 'instagram://',  androidPackage: 'com.instagram.android',       iosScheme: 'instagram://' };
+  if (/facebook\.com|fb\.watch/.test(u))    return { platform: 'facebook',   displayName: 'Facebook',     supportsBrowser: true,  scheme: 'fb://',         androidPackage: 'com.facebook.katana',         iosScheme: 'fb://' };
+  if (/snapchat\.com/.test(u))              return { platform: 'snapchat',   displayName: 'Snapchat',     supportsBrowser: true,  scheme: 'snapchat://',   androidPackage: 'com.snapchat.android',        iosScheme: 'snapchat://' };
+  if (/reddit\.com/.test(u))                return { platform: 'reddit',     displayName: 'Reddit',       supportsBrowser: true,  scheme: 'reddit://',     androidPackage: 'com.reddit.frontpage',        iosScheme: 'reddit://' };
+  if (/whatsapp\.com|wa\.me/.test(u))       return { platform: 'whatsapp',   displayName: 'WhatsApp',     supportsBrowser: false, scheme: 'whatsapp://',   androidPackage: 'com.whatsapp',                iosScheme: 'whatsapp://' };
+  if (/telegram\.me|t\.me|telegram\.org/.test(u))return { platform: 'telegram', displayName: 'Telegram',  supportsBrowser: true,  scheme: 'tg://',         androidPackage: 'org.telegram.messenger',      iosScheme: 'tg://' };
+
+  return { platform: 'web', displayName: 'موقع ويب', supportsBrowser: true, scheme: null, androidPackage: null, iosScheme: null };
+}
+
+// ---------- ✅ v89.21 ROOT FIX #1: استخراج YouTube video ID ----------
+export function extractYouTubeId(url = '') {
+  const u = String(url || '');
+  if (!u) return null;
+  try {
+    // youtu.be/<id>
+    let m = u.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/i);
+    if (m) return m[1];
+    // /watch?v=<id>
+    m = u.match(/[?&]v=([A-Za-z0-9_-]{6,})/i);
+    if (m) return m[1];
+    // /shorts/<id>
+    m = u.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/i);
+    if (m) return m[1];
+    // /embed/<id>
+    m = u.match(/youtube\.com\/embed\/([A-Za-z0-9_-]{6,})/i);
+    if (m) return m[1];
+    // /live/<id>
+    m = u.match(/youtube\.com\/live\/([A-Za-z0-9_-]{6,})/i);
+    if (m) return m[1];
+  } catch { /* ignore */ }
+  return null;
+}
+
+// ---------- ✅ v89.21 ROOT FIX #1: بناء رابط thumbnail من YouTube CDN ----------
+// i.ytimg.com يسمح CORS ولا يحتاج مفاتيح، نجرّب أعلى جودة أولاً.
+export function buildYouTubeThumbnailUrl(videoId, quality = 'maxres') {
+  if (!videoId) return null;
+  const map = {
+    maxres:  'maxresdefault.jpg',
+    hq:      'hqdefault.jpg',
+    mq:      'mqdefault.jpg',
+    sd:      'sddefault.jpg',
+    default: 'default.jpg',
+  };
+  const file = map[quality] || map.hq;
+  return `https://i.ytimg.com/vi/${videoId}/${file}`;
+}
+
+// ---------- ✅ v89.21 ROOT FIX #2: جلب oEmbed metadata ----------
+// نستخدم YouTube oEmbed الرسمي أولاً (يدعم CORS)، ثم noembed.com كـ fallback
+// لبقية المنصات (TikTok، Twitter، Reddit، Instagram…).
+export async function fetchOEmbedMetadata(url) {
+  if (!url) return null;
+  const info = detectSourcePlatform(url);
+
+  // 1) YouTube: oEmbed الرسمي
+  if (info.platform === 'youtube') {
+    try {
+      const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+      const res = await fetch(oembedUrl, { mode: 'cors' });
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          title:        data.title || null,
+          description: null,
+          thumbnail:    data.thumbnail_url || null,
+          authorName:   data.author_name || null,
+          authorUrl:    data.author_url || null,
+          providerName: data.provider_name || 'YouTube',
+          html:         data.html || null,
+          width:        data.width || null,
+          height:       data.height || null,
+        };
+      }
+    } catch (err) {
+      console.warn('[sharedIntake] YouTube oEmbed failed:', err);
+    }
+  }
+
+  // 2) noembed.com — يدعم TikTok/Twitter/Reddit/Instagram/… ويسمح CORS
+  try {
+    const noembedUrl = `https://noembed.com/embed?url=${encodeURIComponent(url)}`;
+    const res = await fetch(noembedUrl, { mode: 'cors' });
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.error) {
+        return {
+          title:        data.title || null,
+          description: null,
+          thumbnail:    data.thumbnail_url || null,
+          authorName:   data.author_name || null,
+          authorUrl:    data.author_url || null,
+          providerName: data.provider_name || info.displayName,
+          html:         data.html || null,
+          width:        data.width || null,
+          height:       data.height || null,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[sharedIntake] noembed failed:', err);
+  }
+
+  return null;
+}
+
+// ---------- ✅ v89.21 ROOT FIX #2: بناء linkCard غني بعد إثراء oEmbed ----------
+export async function enrichLinkCardFromOEmbed({ url, fallbackTitle, fallbackText, capturedThumbnail }) {
+  const info = detectSourcePlatform(url);
+  const meta = await fetchOEmbedMetadata(url).catch(() => null);
+
+  // تحديد thumbnail الأنسب:
+  // 1) capturedThumbnail (لقطة من الفيديو المحلي)
+  // 2) thumbnail من oEmbed
+  // 3) YouTube CDN مباشر (maxres)
+  let thumbnail = capturedThumbnail || meta?.thumbnail || null;
+  if (!thumbnail && info.platform === 'youtube') {
+    const vid = extractYouTubeId(url);
+    if (vid) thumbnail = buildYouTubeThumbnailUrl(vid, 'maxres');
+  }
+
+  return {
+    title:            meta?.title || fallbackTitle || 'رابط خارجي',
+    description:      fallbackText || '',
+    thumbnail,
+    sourceName:       meta?.providerName || info.displayName,
+    sourceLogo:       info.platform,
+    sourceUrl:        url,
+    platform:         info.platform,
+    supportsBrowser:  info.supportsBrowser,
+    // ✅ v89.21: بيانات المؤلف/القناة
+    authorName:       meta?.authorName || null,
+    authorUrl:        meta?.authorUrl || null,
+    authorAvatar:     null, // youtube oEmbed لا يعطي صورة القناة، نتركها null
+    publishedAt:      null,
+    viewsCount:       null,
+    subscribersCount: null,
+    duration:         null,
+  };
+}
+
+// ---------- ✅ v89.21 ROOT FIX #1: تنزيل ملف مع معالجة CORS ----------
+// يحاول fetch عادي أولاً؛ إن فشل بسبب CORS نرمي خطأً واضحاً للمستدعي كي
+// يعيد التوجيه لـ downloadPlatformThumbnail بدلاً من الفيديو الأصلي.
 export async function downloadSharedFile(url, onProgress) {
   if (!url) throw new Error('لا يوجد رابط للتنزيل');
-  const response = await fetch(url, { mode: 'cors' });
-  if (!response.ok) throw new Error(`فشل التنزيل: ${response.status}`);
+
+  let response;
+  try {
+    response = await fetch(url, { mode: 'cors' });
+  } catch (err) {
+    // فشل شبكة أو CORS
+    const e = new Error('CORS_BLOCKED');
+    e.code = 'CORS_BLOCKED';
+    e.original = err;
+    throw e;
+  }
+  if (!response.ok) {
+    const e = new Error(`فشل التنزيل: ${response.status}`);
+    e.code = 'HTTP_' + response.status;
+    throw e;
+  }
 
   const total = Number(response.headers.get('content-length') || 0);
   const reader = response.body?.getReader();
@@ -182,22 +336,43 @@ export async function downloadSharedFile(url, onProgress) {
   return new Blob(chunks, { type: mimeType });
 }
 
-// ---------- ✅ v88.85: كشف منصة المصدر من URL ----------
-export function detectSourcePlatform(url = '') {
-  const u = String(url || '').toLowerCase();
-  if (!u) return { platform: 'unknown', displayName: 'مصدر خارجي', supportsBrowser: false };
+// ---------- ✅ v89.21 ROOT FIX #1: تنزيل thumbnail المنصة كـ fallback ----------
+// عندما يفشل تنزيل الفيديو الأصلي (CORS)، نُنزّل thumbnail عالي الجودة من CDN
+// المنصة (مسموح CORS) ونعتبره "المحتوى الجاهز للنشر". هكذا لا يفشل التدفق
+// وينشر المستخدم بطاقة صورة مع بيانات المصدر بدلاً من رسالة الخطأ.
+export async function downloadPlatformThumbnail(url, onProgress) {
+  const info = detectSourcePlatform(url);
 
-  if (/youtube\.com|youtu\.be/.test(u))     return { platform: 'youtube',    displayName: 'YouTube',      supportsBrowser: true,  scheme: 'vnd.youtube:',  androidPackage: 'com.google.android.youtube',  iosScheme: 'youtube://' };
-  if (/tiktok\.com/.test(u))                return { platform: 'tiktok',     displayName: 'TikTok',       supportsBrowser: true,  scheme: 'snssdk1233://', androidPackage: 'com.zhiliaoapp.musically',    iosScheme: 'snssdk1233://' };
-  if (/twitter\.com|x\.com/.test(u))        return { platform: 'twitter',    displayName: 'X (Twitter)',  supportsBrowser: true,  scheme: 'twitter://',    androidPackage: 'com.twitter.android',         iosScheme: 'twitter://' };
-  if (/instagram\.com/.test(u))             return { platform: 'instagram',  displayName: 'Instagram',    supportsBrowser: true,  scheme: 'instagram://',  androidPackage: 'com.instagram.android',       iosScheme: 'instagram://' };
-  if (/facebook\.com|fb\.watch/.test(u))    return { platform: 'facebook',   displayName: 'Facebook',     supportsBrowser: true,  scheme: 'fb://',         androidPackage: 'com.facebook.katana',         iosScheme: 'fb://' };
-  if (/snapchat\.com/.test(u))              return { platform: 'snapchat',   displayName: 'Snapchat',     supportsBrowser: true,  scheme: 'snapchat://',   androidPackage: 'com.snapchat.android',        iosScheme: 'snapchat://' };
-  if (/reddit\.com/.test(u))                return { platform: 'reddit',     displayName: 'Reddit',       supportsBrowser: true,  scheme: 'reddit://',     androidPackage: 'com.reddit.frontpage',        iosScheme: 'reddit://' };
-  if (/whatsapp\.com|wa\.me/.test(u))       return { platform: 'whatsapp',   displayName: 'WhatsApp',     supportsBrowser: false, scheme: 'whatsapp://',   androidPackage: 'com.whatsapp',                iosScheme: 'whatsapp://' };
-  if (/telegram\.me|t\.me|telegram\.org/.test(u))return { platform: 'telegram', displayName: 'Telegram',  supportsBrowser: true,  scheme: 'tg://',         androidPackage: 'org.telegram.messenger',      iosScheme: 'tg://' };
+  // 1) YouTube: جرّب maxres ثم hq ثم sd (i.ytimg.com يدعم CORS)
+  if (info.platform === 'youtube') {
+    const vid = extractYouTubeId(url);
+    if (vid) {
+      const qualities = ['maxres', 'sd', 'hq', 'mq'];
+      for (const q of qualities) {
+        const thumbUrl = buildYouTubeThumbnailUrl(vid, q);
+        try {
+          const blob = await downloadSharedFile(thumbUrl, onProgress);
+          // maxresdefault قد يعود 120x90 لو غير موجود؛ اقبل >5KB
+          if (blob && blob.size > 5 * 1024) {
+            return { blob, thumbUrl, quality: q, videoId: vid };
+          }
+        } catch (_) { /* جرّب الجودة التالية */ }
+      }
+    }
+  }
 
-  return { platform: 'web', displayName: 'موقع ويب', supportsBrowser: true, scheme: null, androidPackage: null, iosScheme: null };
+  // 2) بقية المنصات: نحاول جلب thumbnail من oEmbed ثم تنزيله (قد ينجح CORS من CDN المنصة)
+  const meta = await fetchOEmbedMetadata(url).catch(() => null);
+  if (meta?.thumbnail) {
+    try {
+      const blob = await downloadSharedFile(meta.thumbnail, onProgress);
+      if (blob && blob.size > 3 * 1024) {
+        return { blob, thumbUrl: meta.thumbnail, quality: 'oembed', videoId: null };
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  return null;
 }
 
 // ---------- التصنيف الذكي ----------
@@ -229,15 +404,7 @@ export function recommendTarget(payload) {
   return { target: 'post', reason: 'generic' };
 }
 
-// ---------- ✅ v88.85: تجهيز حمولة الاستهلاك مع دعم mode + بيانات المصدر ----------
-// options: {
-//   mode: 'link'|'download',
-//   thumbnailDataUrl, downloadedFile, downloadedFileMeta, customDescription,
-//   linkCard: { title, description, thumbnail, sourceName, sourceLogo, sourceUrl,
-//               publishedAt, viewsCount, subscribersCount, duration, platform }
-//   adminSource: { platform, source_url, source_title, source_author, source_channel,
-//                  captured_at, download_size, download_mime }
-// }
+// ---------- ✅ v89.21: تجهيز حمولة الاستهلاك ----------
 export function stagePendingShare(payload, chosenTarget, options = {}) {
   if (!payload) {
     _memoryPending = null;
@@ -253,8 +420,6 @@ export function stagePendingShare(payload, chosenTarget, options = {}) {
   const text = String(payload.text || '').trim();
   const title = String(payload.title || '').trim();
 
-  // ✅ v88.85: في وضع التنزيل — الوصف لا يشمل الرابط (المحتوى محلي "موثق لدى Yamshat")
-  //            في وضع الرابط — الوصف قد يشمل الرابط اختيارياً (لكن الرابط سيظهر ككارت غني)
   const description = options.customDescription != null
     ? options.customDescription.trim()
     : buildDescription({ title, text, url, includeUrl: false });
@@ -275,13 +440,12 @@ export function stagePendingShare(payload, chosenTarget, options = {}) {
         size: Number(firstFile.size || 0),
       } : null);
 
-  // ✅ v88.85: بيانات كارت الرابط لعرضها في الفيد
+  // ✅ v89.21: إن لم يُمرَّر linkCard صراحةً، نبني افتراضياً (بدون oEmbed).
+  //            المستحسن أن يمرّره ShareTargetLanding بعد await enrichLinkCardFromOEmbed
   const linkCard = mode === 'link'
     ? (options.linkCard || buildDefaultLinkCard({ title, text, url, thumbnailDataUrl: options.thumbnailDataUrl }))
     : null;
 
-  // ✅ v88.85: بيانات المصدر الأصلية — لا تُعرض للمستخدم إلا في حالة الرابط،
-  //            وتُقيَّد في لوحة الأدمن فقط عند التنزيل.
   const adminSource = options.adminSource || buildAdminSource({ url, title, text, mode, fileMeta: usedFileMeta });
 
   _memoryPending = {
@@ -290,17 +454,16 @@ export function stagePendingShare(payload, chosenTarget, options = {}) {
     file: usedFile,
     fileMeta: usedFileMeta,
     description,
-    sourceUrl: url,                 // مرجع داخلي فقط — لا يُعرض في وضع التنزيل
+    sourceUrl: url,
     sourceTitle: title,
     sourceText: text,
     thumbnailDataUrl: options.thumbnailDataUrl || null,
-    linkCard,                       // ✅ v88.85: يُستهلك في وضع الرابط
-    adminSource,                    // ✅ v88.85: يُرسل للسيرفر ليُخزّن في حقول admin_source_*
-    verifiedByYamshat: mode === 'download', // ✅ v88.85: علامة "موثق لدى Yamshat"
+    linkCard,
+    adminSource,
+    verifiedByYamshat: mode === 'download',
     receivedAt: payload.receivedAt || new Date().toISOString(),
   };
 
-  // نسخة قابلة للتسلسل
   try {
     sessionStorage.setItem(PENDING_KEY, JSON.stringify({
       target,
@@ -380,18 +543,26 @@ function buildDescription({ title, text, url, includeUrl = true }) {
   return parts.join('\n').trim();
 }
 
-// ✅ v88.85: بناء كارت الرابط الافتراضي (يمكن تعزيزه لاحقاً بجلب oEmbed من الباكيند)
 function buildDefaultLinkCard({ title, text, url, thumbnailDataUrl }) {
   const info = detectSourcePlatform(url);
+  // ✅ v89.21: حتى في حالة الـ fallback نحاول thumbnail من YouTube CDN
+  let thumbnail = thumbnailDataUrl || null;
+  if (!thumbnail && info.platform === 'youtube') {
+    const vid = extractYouTubeId(url);
+    if (vid) thumbnail = buildYouTubeThumbnailUrl(vid, 'hq');
+  }
   return {
     title: title || 'رابط خارجي',
     description: text || '',
-    thumbnail: thumbnailDataUrl || null,
+    thumbnail,
     sourceName: info.displayName,
-    sourceLogo: info.platform,   // مفتاح — الشعار يُرسم من الأمام
+    sourceLogo: info.platform,
     sourceUrl: url,
     platform: info.platform,
     supportsBrowser: info.supportsBrowser,
+    authorName: null,
+    authorUrl: null,
+    authorAvatar: null,
     publishedAt: null,
     viewsCount: null,
     subscribersCount: null,
@@ -399,7 +570,6 @@ function buildDefaultLinkCard({ title, text, url, thumbnailDataUrl }) {
   };
 }
 
-// ✅ v88.85: بناء سجل المصدر للأدمن (يُرسل للـ backend مع كل منشور)
 function buildAdminSource({ url, title, text, mode, fileMeta }) {
   const info = detectSourcePlatform(url);
   return {
@@ -411,10 +581,10 @@ function buildAdminSource({ url, title, text, mode, fileMeta }) {
     source_author: null,
     source_channel: null,
     captured_at: new Date().toISOString(),
-    share_mode: mode,                                    // 'link' | 'download'
+    share_mode: mode,
     download_size: mode === 'download' ? Number(fileMeta?.size || 0) : null,
     download_mime: mode === 'download' ? (fileMeta?.type || null) : null,
-    verified_by_yamshat: mode === 'download',            // ✅ الطابع الرسمي
+    verified_by_yamshat: mode === 'download',
   };
 }
 

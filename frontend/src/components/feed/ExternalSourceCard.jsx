@@ -101,15 +101,27 @@ export default function ExternalSourceCard({ linkCard }) {
             <p className="ym-ext-card-desc">{linkCard.description}</p>
           ) : null}
 
-          {/* اسم الناشر + مشتركين */}
-          {(linkCard.sourceName || subsText) ? (
+          {/* ✅ v89.21: اسم الناشر + مشتركين + أفاتار القناة */}
+          {(linkCard.authorName || linkCard.sourceName || subsText) ? (
             <div className="ym-ext-card-author">
-              <span className="ym-ext-card-author-logo" style={{ background: logo.bg, color: logo.color }}>
-                {logo.icon}
-              </span>
+              {linkCard.authorAvatar ? (
+                <img
+                  className="ym-ext-card-author-avatar"
+                  src={linkCard.authorAvatar}
+                  alt={linkCard.authorName || linkCard.sourceName || ''}
+                  loading="lazy"
+                />
+              ) : (
+                <span className="ym-ext-card-author-logo" style={{ background: logo.bg, color: logo.color }}>
+                  {logo.icon}
+                </span>
+              )}
               <div className="ym-ext-card-author-meta">
-                <strong>{linkCard.sourceName || logo.label}</strong>
-                {subsText ? <span>{subsText} مشترك</span> : null}
+                <strong>{linkCard.authorName || linkCard.sourceName || logo.label}</strong>
+                {subsText ? <span>{subsText} مشترك</span>
+                  : (linkCard.authorName && linkCard.sourceName && linkCard.authorName !== linkCard.sourceName)
+                    ? <span>{linkCard.sourceName}</span>
+                    : null}
               </div>
             </div>
           ) : null}
@@ -231,6 +243,11 @@ export default function ExternalSourceCard({ linkCard }) {
           display: grid; place-items: center;
           font-size: 0.9rem; font-weight: 900;
           flex-shrink: 0;
+        }
+        .ym-ext-card-author-avatar {
+          width: 30px; height: 30px; border-radius: 50%;
+          object-fit: cover; flex-shrink: 0;
+          background: rgba(255,255,255,0.05);
         }
         .ym-ext-card-author-meta {
           display: flex; flex-direction: column; gap: 1px;

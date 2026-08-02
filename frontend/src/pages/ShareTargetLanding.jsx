@@ -7,6 +7,9 @@ import {
   stagePendingShare,
   captureVideoThumbnail,
   downloadSharedFile,
+  downloadPlatformThumbnail,
+  enrichLinkCardFromOEmbed,
+  detectSourcePlatform,
 } from '../services/share/sharedIntake.js';
 import { useAppStore } from '../store/appStore.js';
 
@@ -594,7 +597,7 @@ export default function ShareTargetLanding() {
     setShowModeSheet(true);
   }, [busy]);
 
-  // ✅ v88.84: "مشاركة كرابط" — يلتقط لقطة من الفيديو + الوصف + الرابط → ينشر
+  // ✅ v89.21: "مشاركة كرابط" — يجلب بيانات غنية من oEmbed + thumbnail حقيقي من CDN المنصة
   const handleShareAsLink = useCallback(async () => {
     if (!payload || !selectedTarget || linkPublishing) return;
     setLinkPublishing(true);
@@ -602,17 +605,31 @@ export default function ShareTargetLanding() {
     try {
       let thumbnailDataUrl = null;
 
-      // إن كان فيديو → التقط لقطة صورة
+      // إن كان فيديو محلي → التقط لقطة صورة من المقطع نفسه
       if (contentType === 'video' && firstFile?.blob) {
         setCapturingThumb(true);
-        thumbnailDataUrl = await captureVideoThumbnail(firstFile.blob);
+        thumbnailDataUrl = await captureVideoThumbnail(firstFile.blob).catch(() => null);
         setCapturingThumb(false);
       }
 
-      // جهّز الحمولة بوضع 'link'
+      // ✅ v89.21 ROOT FIX #2: إثراء linkCard عبر oEmbed لجلب:
+      //   عنوان حقيقي، thumbnail عالي الجودة، اسم القناة، …
+      const urlStr = String(payload.url || '').trim();
+      let linkCard = null;
+      if (urlStr) {
+        linkCard = await enrichLinkCardFromOEmbed({
+          url: urlStr,
+          fallbackTitle: payload.title || '',
+          fallbackText:  payload.text  || '',
+          capturedThumbnail: thumbnailDataUrl,
+        }).catch(() => null);
+      }
+
+      // جهّز الحمولة بوضع 'link' مع linkCard الغني
       stagePendingShare(payload, selectedTarget.key, {
         mode: 'link',
         thumbnailDataUrl,
+        linkCard: linkCard || undefined,
       });
 
       // انتقل إلى الوجهة
@@ -621,7 +638,6 @@ export default function ShareTargetLanding() {
     } catch (err) {
       console.error('[share] link mode failed:', err);
       setCapturingThumb(false);
-      // في حال الفشل، نشر بدون لقطة
       stagePendingShare(payload, selectedTarget.key, {
         mode: 'link',
         thumbnailDataUrl: null,
@@ -647,17 +663,15 @@ export default function ShareTargetLanding() {
     setEditableDescription(defaultDescriptionNoLink);
   }, [payload, selectedTarget, defaultDescriptionNoLink]);
 
-  // ✅ v88.84: بدء التنزيل الفعلي
+  // ✅ v89.21: بدء التنزيل الفعلي — مع fallback ذكي لـ thumbnail عند CORS
   const startDownload = useCallback(async () => {
     if (!payload) return;
     setDownloadStage('downloading');
     setDownloadProgress(1);
 
     try {
-      // إن كان لدينا ملف محلي بالفعل (مُشارك كملف وليس كرابط)
-      // نعامله كأنه "منزّل" مباشرة — لا حاجة للتنزيل
+      // (أ) ملف محلي متاح فعلاً — نعامله كأنه "منزّل"
       if (firstFile?.blob) {
-        // محاكاة تقدم سريع للملف المحلي
         const totalSize = Number(firstFile.size || 0);
         const startTime = Date.now();
         const estimatedMs = Math.min(1500, 300 + Math.round(totalSize / (1024 * 1024 * 2)));
@@ -679,27 +693,59 @@ export default function ShareTargetLanding() {
           size: Number(firstFile.size || 0),
         });
       } else if (payload.url) {
-        // تنزيل من الرابط
-        const blob = await downloadSharedFile(payload.url, (pct) => {
-          setDownloadProgress(pct);
-        });
-
-        // استخراج اسم الملف ونوعه من الرابط أو من رؤوس الاستجابة
         const urlStr = String(payload.url || '');
+        const info = detectSourcePlatform(urlStr);
+
+        // (ب) روابط منصات معروفة (YouTube/TikTok/…): الفيديو الأصلي محمي CORS.
+        //     لا نحاول fetch مباشر عليه أصلاً؛ نذهب مباشرة لـ thumbnail من CDN المنصة.
+        const isPlatformStream = ['youtube', 'tiktok', 'instagram', 'facebook', 'twitter', 'snapchat', 'reddit'].includes(info.platform);
+
+        let blob = null;
         let fileName = 'shared';
         let fileType = 'application/octet-stream';
-        try {
-          const urlPath = new URL(urlStr).pathname;
-          const basename = urlPath.split('/').pop() || '';
-          if (basename) fileName = basename;
-        } catch { /* ignore */ }
-        // تخمين النوع من الامتداد
-        if (/\.mp4(\?|$)/i.test(urlStr)) fileType = 'video/mp4';
-        else if (/\.webm(\?|$)/i.test(urlStr)) fileType = 'video/webm';
-        else if (/\.mov(\?|$)/i.test(urlStr)) fileType = 'video/quicktime';
-        else if (/\.jpg|\.jpeg(\?|$)/i.test(urlStr)) fileType = 'image/jpeg';
-        else if (/\.png(\?|$)/i.test(urlStr)) fileType = 'image/png';
-        else if (blob.type) fileType = blob.type;
+
+        if (isPlatformStream) {
+          // ✅ v89.21 ROOT FIX #1: نُنزّل thumbnail عالي الجودة من CDN المنصة
+          //    (مسموح CORS) بدل الفيديو المحمي.
+          const thumbRes = await downloadPlatformThumbnail(urlStr, (pct) => {
+            setDownloadProgress(pct);
+          });
+          if (!thumbRes?.blob) {
+            const e = new Error('تعذّر جلب معاينة المحتوى من ' + info.displayName);
+            e.code = 'THUMB_UNAVAILABLE';
+            throw e;
+          }
+          blob = thumbRes.blob;
+          fileName = `${info.platform}_${thumbRes.videoId || Date.now()}.jpg`;
+          fileType = blob.type || 'image/jpeg';
+        } else {
+          // (ج) رابط مباشر لملف عام — fetch عادي
+          try {
+            blob = await downloadSharedFile(urlStr, (pct) => setDownloadProgress(pct));
+          } catch (err) {
+            if (err?.code === 'CORS_BLOCKED') {
+              // كخطة أخيرة، جرّب thumbnail من oEmbed
+              const thumbRes = await downloadPlatformThumbnail(urlStr, (pct) => setDownloadProgress(pct));
+              if (!thumbRes?.blob) throw err;
+              blob = thumbRes.blob;
+              fileName = `preview_${Date.now()}.jpg`;
+              fileType = blob.type || 'image/jpeg';
+            } else {
+              throw err;
+            }
+          }
+          try {
+            const urlPath = new URL(urlStr).pathname;
+            const basename = urlPath.split('/').pop() || '';
+            if (basename) fileName = basename;
+          } catch { /* ignore */ }
+          if (/\.mp4(\?|$)/i.test(urlStr)) fileType = 'video/mp4';
+          else if (/\.webm(\?|$)/i.test(urlStr)) fileType = 'video/webm';
+          else if (/\.mov(\?|$)/i.test(urlStr)) fileType = 'video/quicktime';
+          else if (/\.(jpg|jpeg)(\?|$)/i.test(urlStr)) fileType = 'image/jpeg';
+          else if (/\.png(\?|$)/i.test(urlStr)) fileType = 'image/png';
+          else if (blob.type) fileType = blob.type;
+        }
 
         setDownloadedFile(blob);
         setDownloadedFileMeta({
@@ -1183,10 +1229,15 @@ export default function ShareTargetLanding() {
               </div>
             ) : null}
 
-            {/* رسالة خطأ */}
+            {/* رسالة خطأ — ✅ v89.21: أوضح للمستخدم أن بعض المنصات لا تسمح بتنزيل الفيديو */}
             {downloadStage === 'error' ? (
               <div className="ym-download-error-msg">
-                تعذّر تنزيل المحتوى. تأكد من اتصالك بالإنترنت وحاول مرة أخرى.
+                <strong>❌ تعذّر تنزيل المحتوى</strong>
+                <span style={{ display: 'block', marginTop: 6, fontSize: '.82rem', lineHeight: 1.7, opacity: .85 }}>
+                  بعض المنصات (يوتيوب/تيك توك…) لا تسمح بتنزيل الفيديو مباشرة من المتصفح.
+                  يمكنك بدلاً من ذلك اختيار <strong>«مشاركة كرابط»</strong> — ستظهر بطاقة غنية مع صورة
+                  ومعلومات المصدر وزر لفتح المصدر الأصلي.
+                </span>
               </div>
             ) : null}
 

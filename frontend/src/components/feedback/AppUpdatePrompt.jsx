@@ -28,9 +28,50 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 
 const DISMISS_STORAGE_KEY = 'yamshat_update_dismissed_at';
 const APPLYING_STORAGE_KEY = 'yamshat_update_applying';
+// ✅ v89.19 ROOT FIX #1: منع حلقة التحديث الأبدية
+//   السبب الجذري: بعد إعادة التحميل بسبب SKIP_WAITING، controllerchange يحدث
+//   وقد تبقى علامة APPLYING_STORAGE_KEY فترة قبل مسحها، فتتحقق شروط الظهور
+//   من جديد على reload بعد reload.
+const RELOAD_COUNT_KEY = 'yamshat_update_reload_count';
+const RELOAD_WINDOW_MS = 60 * 1000; // نافذة 60s
+const MAX_RELOADS_IN_WINDOW = 2;
 // v88.11: قلّصنا مدة الهدوء من 6 ساعات إلى 30 دقيقة فقط
 // حتى نضمن أن المستخدم يرى التحديث الجديد بشكل شبه فوري
 const DISMISS_COOLDOWN_MS = 30 * 60 * 1000;
+
+/**
+ * ✅ v89.19 ROOT FIX #1: كشف حلقة إعادة التحميل
+ * إذا حصل reload>=MAX_RELOADS_IN_WINDOW مرات خلال RELOAD_WINDOW_MS، نعتبرها حلقة
+ * ونمنع أي إعادة تحميل جديدة حتى تنقضي النافذة.
+ */
+function isInReloadLoop() {
+  try {
+    const raw = localStorage.getItem(RELOAD_COUNT_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.times)) return false;
+    const now = Date.now();
+    const recent = data.times.filter((t) => now - t < RELOAD_WINDOW_MS);
+    return recent.length >= MAX_RELOADS_IN_WINDOW;
+  } catch {
+    return false;
+  }
+}
+
+function trackReload() {
+  try {
+    const raw = localStorage.getItem(RELOAD_COUNT_KEY);
+    const now = Date.now();
+    let times = [];
+    try {
+      const data = raw ? JSON.parse(raw) : null;
+      if (data && Array.isArray(data.times)) times = data.times;
+    } catch { /* ignore */ }
+    times = times.filter((t) => now - t < RELOAD_WINDOW_MS);
+    times.push(now);
+    localStorage.setItem(RELOAD_COUNT_KEY, JSON.stringify({ times }));
+  } catch { /* noop */ }
+}
 
 function wasRecentlyDismissed() {
   try {
@@ -47,6 +88,13 @@ function wasRecentlyDismissed() {
  * owns its versioned caches; deleting them from the page races its activation.
  */
 function reloadAfterUpdate() {
+  // ✅ v89.19 ROOT FIX #1: منع الحلقة اللانهائية
+  if (isInReloadLoop()) {
+    console.warn('[UpdatePrompt] كُشِفت حلقة إعادة تحميل — تم إيقاف reload التلقائي.');
+    try { sessionStorage.removeItem(APPLYING_STORAGE_KEY); } catch { /* noop */ }
+    return;
+  }
+  trackReload();
   try {
     sessionStorage.setItem(APPLYING_STORAGE_KEY, '1');
   } catch {
@@ -95,7 +143,16 @@ export default function AppUpdatePrompt() {
       if (!nextRegistration && 'serviceWorker' in navigator) {
         nextRegistration = await navigator.serviceWorker.getRegistration();
       }
-      if (!nextRegistration?.waiting || isApplyingUpdate()) return;
+      // ✅ v89.19 ROOT FIX #1: تحقق صارم من وجود waiting worker + عدم في حلقة
+      //   waiting !== active يعني هناك نسخة جديدة فعلاً بانتظار التنشيط.
+      //   بدون هذا الفحص، أي broadcast يعرض النافذة على كل تحميل.
+      if (!nextRegistration?.waiting) return;
+      if (nextRegistration.waiting === nextRegistration.active) return;
+      if (isApplyingUpdate()) return;
+      if (isInReloadLoop()) {
+        console.warn('[UpdatePrompt] حلقة تحديث مكتشفة — لن تُعرض النافذة.');
+        return;
+      }
       setRegistration(nextRegistration);
       setCollapsed(wasRecentlyDismissed());
       setVisible(true);

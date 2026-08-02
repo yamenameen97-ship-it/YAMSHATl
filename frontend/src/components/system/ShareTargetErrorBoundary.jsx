@@ -63,6 +63,19 @@ export default class ShareTargetErrorBoundary extends React.Component {
   }
 
   handleRetry = () => {
+    // ✅ v89.19 ROOT FIX #4: تتبّع عدد محاولات الإعادة لمنع حلقة لانهائية
+    //   إذا تكرّر الخطأ أكثر من 3 مرات خلال الجلسة، نأخذ مساراً مختلفاً
+    try {
+      const raw = sessionStorage.getItem('yamshat_share_error_retries');
+      const n = raw ? parseInt(raw, 10) || 0 : 0;
+      if (n >= 3) {
+        // تجاوز 3 محاولات → انتقل للجذر بدل حلقة error متكرّرة
+        try { sessionStorage.removeItem('yamshat_share_error_retries'); } catch (_) { /* ignore */ }
+        this.handleGoHome();
+        return;
+      }
+      sessionStorage.setItem('yamshat_share_error_retries', String(n + 1));
+    } catch (_) { /* ignore */ }
     // إعادة render فقط — قد يكون chunk قد تم تنزيله في هذه اللحظة
     this.setState({ hasError: false, error: null, isChunk: false });
   };

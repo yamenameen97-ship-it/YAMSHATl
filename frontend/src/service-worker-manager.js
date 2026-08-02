@@ -52,12 +52,33 @@ function setupUpdateListener() {
     if (type === 'yamshat:update-available') {
       console.log('[SWM] تحديث جديد متاح:', version);
 
-      // v88.11: نُطلق حدثين معاً:
-      //   - update-available (توافق رجعي)
-      //   - update-ready     (حدث موحد يلتقطه <AppUpdatePrompt />)
+      // ✅ v89.19 ROOT FIX #1: تحقق من وجود waiting worker حقيقي قبل إطلاق
+      //   update-ready. السبب الجذري السابق: SW كان يبثّ update-available عند
+      //   كل تحميل صفحة (حتى بدون waiting worker جديد) — فتظهر نافذة
+      //   "تحديث جديد متاح" باستمرار بلا مبرّر ولا يمكن للمستخدم تجاوزها.
+      //
+      //   الحل:
+      //     - update-available (توافق رجعي) يُطلق كما هو (مسموع للتشخيص فقط)
+      //     - update-ready يُطلق فقط إذا وُجد waiting worker فعلي
+      //       (هذا الحدث هو ما يعرض النافذة عبر <AppUpdatePrompt />)
       const detail = { registration: swRegistration, version, message };
       window.dispatchEvent(new CustomEvent('yamshat:update-available', { detail }));
-      window.dispatchEvent(new CustomEvent('yamshat:update-ready', { detail }));
+
+      // فحص فعلي لوجود waiting worker قبل إطلاق update-ready
+      const hasWaitingWorker = !!(swRegistration?.waiting);
+      if (hasWaitingWorker) {
+        window.dispatchEvent(new CustomEvent('yamshat:update-ready', { detail }));
+      } else {
+        // انتظار قصير ثم إعادة الفحص — قد يكون SW في مرحلة installing
+        // ولم يصبح waiting بعد.
+        setTimeout(() => {
+          if (swRegistration?.waiting) {
+            window.dispatchEvent(new CustomEvent('yamshat:update-ready', { detail: { ...detail, registration: swRegistration } }));
+          } else {
+            console.log('[SWM] update-available وصل لكن لا يوجد waiting worker — تجاهل لتفادي حلقة إظهار');
+          }
+        }, 800);
+      }
 
       // ✅ لم نعد نستخدم showUpdateNotification (حقن HTML) —
       // مكوّن <AppUpdatePrompt /> React يتولّى العرض بأسلوب النظام.

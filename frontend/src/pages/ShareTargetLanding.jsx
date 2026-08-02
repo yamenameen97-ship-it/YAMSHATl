@@ -211,15 +211,19 @@ export default function ShareTargetLanding() {
   }, [isBrowserMode, loading, payload, retryTick]);
 
   // ✅ v89.19 ROOT FIX #6: مؤقّت إجمالي 15s — ضمان مطلق لعرض شيء ما
+  //   ✅ v89.19 ROOT FIX #2: isAuthChecking كان يُقرأ قبل إعلانه (Temporal Dead Zone)
+  //   مما يرمي ReferenceError في كل render → ErrorBoundary يلتقطه ويعرض
+  //   "حدث خطأ أثناء استقبال المشاركة". الحل: الاعتماد فقط على loading
+  //   (المُعلَن أعلى الملف).
   useEffect(() => {
-    if (!loading && !isAuthChecking) return undefined;
+    if (!loading) return undefined;
     const timer = setTimeout(() => {
       setTotalRenderTimeout(true);
       // فرض إنهاء loading إن كان لا يزال true
       try { setLoading(false); } catch (_) { /* ignore */ }
     }, 15000);
     return () => clearTimeout(timer);
-  }, [loading, isAuthChecking, retryTick]);
+  }, [loading, retryTick]);
 
   const handleInstallPWA = useCallback(async () => {
     if (!installPromptEvent) return;
@@ -911,13 +915,13 @@ export default function ShareTargetLanding() {
 
             {/* ✅ v89.16 ROOT FIX #5: payload._empty → بطاقة تشخيص مفصّلة
                 بدل إظهار أزرار الوجهات الخمس كأن كل شيء طبيعي. */}
-            {!loading && payload && payload._empty ? (
+            {!loading && payload && payload._empty && !(payload.url || payload.text || payload.title) ? (
               <div className="share-empty-box" role="alert">
-                <strong>📭 المشاركة وصلت فارغة</strong>
+                <strong>⚠️ وصلت إشارة المشاركة جزئية</strong>
                 <span>
-                  تمّ استلام إشارة المشاركة من التطبيق المصدر، لكن لم يُرفق معها أي رابط
-                  أو نص أو ملف. هذا يحدث أحياناً مع يوتيوب/إنستجرام عندما يفشل التطبيق
-                  في تمرير حقل الرابط.
+                  تمّ استلام إشارة المشاركة من التطبيق المصدر لكن دون حمولة كاملة.
+                  يمكنك متابعة اختيار وجهة النشر أدناه (سيُفتح المُنشئ فارغاً ويمكنك لصق
+                  الرابط يدوياً) أو إعادة المحاولة.
                 </span>
                 {payload._diag ? (
                   <details style={{ marginTop: 10, textAlign: 'right', direction: 'rtl' }}>
@@ -953,7 +957,7 @@ export default function ShareTargetLanding() {
               </div>
             ) : null}
 
-            {!loading && payload && !payload._empty ? (
+            {!loading && payload ? (
               <>
                 <div className="share-choose-hint">
                   <div className="share-choose-hint-icon" aria-hidden="true">💡</div>

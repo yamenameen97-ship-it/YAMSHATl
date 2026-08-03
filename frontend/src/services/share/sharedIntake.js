@@ -715,7 +715,23 @@ export async function downloadViaBackendProxy(url, onProgress) {
     });
     if (!fileResp.ok) {
       console.warn('[share] backend proxy file fetch failed', fileResp.status);
-      return null;
+      return { proxyFailed: true, canFallback: true, reason: `FILE_HTTP_${fileResp.status}` };
+    }
+
+    // ✅ v89.24 ROOT FIX #1: تحقّق مبكّر أن Content-Type الفعلي = فيديو حقيقي.
+    //   السبب الجذري السابق:
+    //     كان الكود يثق بـ meta.mime المُعلَن من الباك‑إند ويلفّه في Blob('video/mp4')
+    //     حتى لو كان الجسم فعلياً JPEG (yt-dlp يعيد thumbnail كـ fallback داخلي
+    //     في بعض حالات الفشل الجزئي) → الواجهة تعتقد أنها حصلت على فيديو
+    //     بينما ما لديها هو صورة، والأخطر: return null الصامت عند فشل file fetch
+    //     كان يجعل startDownload يمرّ لسقوط thumbnail بدون علم المستخدم.
+    //   الحل: نقرأ Content-Type من الاستجابة الفعلية + نفحص magic bytes للجسم،
+    //     ونرفض النتيجة صراحةً إن كانت صورة بينما المُعلَن فيديو.
+    const actualCT = String(fileResp.headers.get('content-type') || '').toLowerCase();
+    const declaredKind = String(meta.kind || 'video').toLowerCase();
+    if (declaredKind === 'video' && actualCT && !actualCT.startsWith('video/') && !actualCT.includes('octet-stream') && !actualCT.includes('mp4')) {
+      console.warn('[share] backend proxy returned non-video content-type:', actualCT);
+      return { proxyFailed: true, canFallback: true, reason: `WRONG_CT_${actualCT.slice(0, 32)}` };
     }
 
     // stream reader مع تقدّم
@@ -724,10 +740,15 @@ export async function downloadViaBackendProxy(url, onProgress) {
     if (!reader) {
       const blob = await fileResp.blob();
       if (onProgress) onProgress(100);
+      if (declaredKind === 'video' && blob.size > 0 && blob.size < 32 * 1024) {
+        return { proxyFailed: true, canFallback: true, reason: `TOO_SMALL_${blob.size}` };
+      }
+      const finalMime = (actualCT && actualCT.startsWith('video/')) ? actualCT : (meta.mime || blob.type || 'video/mp4');
       return {
+        ok: true,
         blob,
-        mime: meta.mime || blob.type || 'video/mp4',
-        kind: meta.kind || 'video',
+        mime: finalMime,
+        kind: finalMime.startsWith('video/') ? 'video' : (finalMime.startsWith('image/') ? 'image' : (meta.kind || 'video')),
         filename: meta.filename || 'shared.mp4',
         size: blob.size,
       };
@@ -749,14 +770,38 @@ export async function downloadViaBackendProxy(url, onProgress) {
         }
       }
     }
-    const blob = new Blob(chunks, { type: meta.mime || 'video/mp4' });
+    // ✅ v89.24: فحص التوقيع الثنائي (magic bytes) لأول بايتات — أدق ضمانة
+    //   ضد إعادة صورة jpeg مع Content-Type: video/mp4 مغلوط.
+    let sniffedKind = null;
+    try {
+      if (chunks.length && chunks[0].length >= 12) {
+        const h = chunks[0];
+        if (h[0] === 0xFF && h[1] === 0xD8 && h[2] === 0xFF) sniffedKind = 'image/jpeg';
+        else if (h[0] === 0x89 && h[1] === 0x50 && h[2] === 0x4E && h[3] === 0x47) sniffedKind = 'image/png';
+        else if (h[0] === 0x47 && h[1] === 0x49 && h[2] === 0x46 && h[3] === 0x38) sniffedKind = 'image/gif';
+        else if (h[0] === 0x52 && h[1] === 0x49 && h[2] === 0x46 && h[3] === 0x46 && h[8] === 0x57 && h[9] === 0x45 && h[10] === 0x42 && h[11] === 0x50) sniffedKind = 'image/webp';
+        else if (h[4] === 0x66 && h[5] === 0x74 && h[6] === 0x79 && h[7] === 0x70) sniffedKind = 'video/mp4';
+        else if (h[0] === 0x1A && h[1] === 0x45 && h[2] === 0xDF && h[3] === 0xA3) sniffedKind = 'video/webm';
+      }
+    } catch (_) { /* ignore */ }
+
+    if (declaredKind === 'video' && sniffedKind && sniffedKind.startsWith('image/')) {
+      console.warn('[share] backend proxy body is actually an image, refusing silent thumbnail:', sniffedKind);
+      return { proxyFailed: true, canFallback: true, reason: `SNIFF_IMAGE_${sniffedKind.replace('/', '_')}` };
+    }
+
+    const finalMime = sniffedKind || ((actualCT && (actualCT.startsWith('video/') || actualCT.startsWith('image/'))) ? actualCT : (meta.mime || 'video/mp4'));
+    const blob = new Blob(chunks, { type: finalMime });
+    if (declaredKind === 'video' && blob.size > 0 && blob.size < 32 * 1024 && !finalMime.startsWith('image/')) {
+      return { proxyFailed: true, canFallback: true, reason: `TOO_SMALL_${blob.size}` };
+    }
     if (onProgress) onProgress(100);
     return {
       ok: true,
       blob,
-      mime: meta.mime || 'video/mp4',
-      kind: meta.kind || 'video',
-      filename: meta.filename || 'shared.mp4',
+      mime: finalMime,
+      kind: finalMime.startsWith('video/') ? 'video' : (finalMime.startsWith('image/') ? 'image' : (meta.kind || 'video')),
+      filename: meta.filename || (finalMime.startsWith('video/') ? 'shared.mp4' : 'shared.jpg'),
       size: blob.size,
     };
   } catch (err) {

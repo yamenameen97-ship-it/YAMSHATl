@@ -117,7 +117,21 @@ export default function ShareTargetLanding() {
   const [publishDisabled, setPublishDisabled] = useState(true);
   const [capturingThumb, setCapturingThumb] = useState(false);
   const [linkPublishing, setLinkPublishing] = useState(false);
+  // ✅ v89.24 ROOT FIX #1: إشعار انحدار جودة — عندما yt-dlp يفشل ونسقط لـ thumbnail
+  //   نُعلِم المستخدم صراحة أن النتيجة صورة وليس فيديو أصلي.
+  const [degradedNotice, setDegradedNotice] = useState(null);
   const previewUrlsRef = useRef([]);
+  // ✅ v89.24 ROOT FIX #2: حارس داخلي ضد حلقة إعادة التحميل
+  //   السبب الجذري:
+  //     applyPayload يُستدعى من أربعة مصادر متوازية (readAny + swMessageHandler +
+  //     controllerChangeHandler + visibilityHandler + swReadyPromise). الحمولة تبقى
+  //     في Cache Storage حتى بعد أول تطبيق ناجح، ووسم window.__YAMSHAT_SHARE_CONSUMED__
+  //     لا يُضبط إلّا بعد النشر، فأي HELLO_PONG/controllerchange/visibility جديد
+  //     بين الاستلام والنشر يُعيد setPayload → render → حلقة.
+  //   الحل: ref يحفظ بصمة (fingerprint) لأول حمولة طُبّقت، وأي حمولة لاحقة
+  //     بنفس البصمة تُتجاهل في نفس دورة الصفحة. وفي أول تطبيق نبلّغ SW ليمسح
+  //     Cache Storage فوراً بدل الانتظار حتى ما بعد النشر.
+  const appliedFingerprintRef = useRef(null);
 
   // ✅ v89.16 ROOT FIX #5: watchdog زمني + محاولة إعادة صريحة
   //   السبب الجذري: عند payload._empty كان يُعرض أزرار الوجهات الخمس كأن كل
@@ -309,6 +323,22 @@ export default function ShareTargetLanding() {
     let swMessageHandler = null;
     let visibilityHandler = null;
 
+    // ✅ v89.24 ROOT FIX #2: بصمة خفيفة للحمولة — تميّز نفس المشاركة عبر المصادر المختلفة.
+    function fingerprintOf(data) {
+      if (!data) return '';
+      const parts = [
+        data._v || '',
+        data.receivedAt || '',
+        String(data.url || '').slice(0, 200),
+        String(data.title || '').slice(0, 80),
+        String(data.text || '').slice(0, 80),
+        Array.isArray(data.files) ? data.files.length : 0,
+        data._empty ? '1' : '0',
+        data._fallback ? '1' : '0',
+      ];
+      return parts.join('|');
+    }
+
     function applyPayload(data) {
       if (!mounted || stopFlag) return false;
       // ✅ v89.23 ROOT FIX #3: منع حلقة إعادة التحميل — إذا تم استهلاك الحمولة في
@@ -318,16 +348,33 @@ export default function ShareTargetLanding() {
           return false;
         }
       } catch { /* ignore */ }
-      // ✅ v89.13 ROOT FIX #C: قبول الحمولة حتى لو كانت _empty:true
-      //   السبب الجذري السابق:
-      //     إذا حفظ SW حمولة _empty:true (مشاركة فارغة تماماً من
-      //     المتصفح)، كان hasContent=false → يرفضها → polling إلى الأبد.
-      //   الحل: أي حمولة موسومة من SW (_v أو receivedAt أو _empty أو _fallback)
-      //   تُقبل — الواجهة تعرف كيف تعرض حالة "مشاركة بلا محتوى".
       if (!data) return false;
       const hasContent = !!(data.files?.length || data.url || data.title || data.text);
       const isMarkedFromSw = !!(data._empty || data._fallback || data._v || data.receivedAt);
       if (!hasContent && !isMarkedFromSw) return false;
+
+      // ✅ v89.24 ROOT FIX #2: حارس البصمة — لا نُعيد تطبيق نفس الحمولة إذا
+      //   وصلت مرة ثانية من مصدر آخر (message + controllerchange + visibility …)
+      //   هذا يوقف حلقة: setPayload → re-render → useEffect → HELLO → SW يرد → حلقة.
+      const fp = fingerprintOf(data);
+      if (fp && appliedFingerprintRef.current === fp) {
+        stopFlag = true; // أوقف polling أيضاً
+        return true;
+      }
+      appliedFingerprintRef.current = fp;
+
+      // ✅ v89.24 ROOT FIX #2: فور أول تطبيق ناجح → أخبر SW ليمسح Cache Storage.
+      //   لا ننتظر حتى ما بعد النشر (قد يترك المستخدم الصفحة دون نشر) — مجرد
+      //   وصول الحمولة للواجهة يكفي لاعتبارها "مُستلمة" وحذفها من الإعادة المتكررة.
+      try {
+        if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_RECEIVED_ACK', fingerprint: fp, at: Date.now() });
+        }
+        // نظّف stashes الخفيفة محلياً أيضاً حتى يُرفض أي إعادة قراءة
+        try { window.__YAMSHAT_STASHED_SHARE_PAYLOAD__ = null; } catch (_) { /* ignore */ }
+        try { localStorage.removeItem('yamshat.shareFallback'); } catch (_) { /* ignore */ }
+      } catch (_) { /* ignore */ }
+
       setPayload(data);
       // نظّف URLs السابقة قبل إنشاء الجديدة
       previewUrlsRef.current.forEach((u) => {
@@ -692,6 +739,7 @@ export default function ShareTargetLanding() {
     if (!payload) return;
     setDownloadStage('downloading');
     setDownloadProgress(1);
+    setDegradedNotice(null); // ✅ v89.24: إعادة ضبط إشعار الانحدار عند كل محاولة جديدة
 
     try {
       // (أ) ملف محلي متاح فعلاً — نعامله كأنه "منزّل"
@@ -729,27 +777,39 @@ export default function ShareTargetLanding() {
         let fileType = 'application/octet-stream';
 
         if (isPlatformStream) {
-          // ✅ v89.23 (2026) ROOT FIX #1: التفريق بين أسباب الفشل — لا نسقط لـ thumbnail بصمت
+          // ✅ v89.24 (2026) ROOT FIX #1: التفريق بين أسباب الفشل + كشف الجسم الفعلي
+          //   قبل الإصلاح: كان proxyRes ينجح بـ ok:true حتى لو كان الجسم صورة
+          //   (Content-Type مغلوط من yt-dlp، أو fallback داخلي)، ومسار fileResp
+          //   كان يعيد null بصمت عند فشل file fetch → startDownload يمرّ لسقوط
+          //   thumbnail دون إعلام المستخدم أن ما يحصل عليه صورة وليس فيديو.
+          //   الآن sharedIntake.js يفحص Content-Type و magic bytes للجسم
+          //   ويعيد proxyFailed مع reason صريح إن كان الجسم صورة أو أصغر من 32KB.
           const proxyRes = await downloadViaBackendProxy(urlStr, (pct) => setDownloadProgress(pct));
-          if (proxyRes?.ok && proxyRes.blob) {
-            // نجح yt-dlp → فيديو حقيقي
+          if (proxyRes?.ok && proxyRes.blob && String(proxyRes.mime || '').startsWith('video/')) {
+            // نجح yt-dlp + فحص المحتوى الفعلي = فيديو حقيقي
             blob = proxyRes.blob;
             fileName = proxyRes.filename || `${info.platform}_${Date.now()}.mp4`;
             fileType = proxyRes.mime || blob.type || 'video/mp4';
+            try { window.__YAMSHAT_MEDIA_DEGRADED__ = null; } catch (_) { /* ignore */ }
           } else if (proxyRes?.authRequired) {
-            // مصادقة مطلوبة → لا نسقط لصورة
             const e = new Error('يرجى تسجيل الدخول لتنزيل الفيديو');
             e.code = 'AUTH_REQUIRED';
             throw e;
           } else {
-            // proxy فشل (yt-dlp غير متوفر / endpoint غير مسجل / حظر)
-            // → نسقط لـ thumbnail فقط إن كان مسموحاً — ونُعلِم المستخدم أن النتيجة صورة وليس فيديو.
+            // proxy فشل صراحةً أو الجسم صورة — نُعلِم المستخدم صراحة عبر state
+            //   بأن النتيجة صورة (thumbnail) وليس فيديو أصلي.
+            const degradeReason = proxyRes?.reason || 'PROXY_UNAVAILABLE';
             try {
-              window.__YAMSHAT_MEDIA_DEGRADED__ = { reason: proxyRes?.reason || 'PROXY_UNAVAILABLE', to: 'image' };
+              window.__YAMSHAT_MEDIA_DEGRADED__ = { reason: degradeReason, to: 'image' };
             } catch (_) { /* ignore */ }
+            setDegradedNotice({
+              reason: degradeReason,
+              platform: info.displayName || info.platform,
+              at: Date.now(),
+            });
             const thumbRes = await downloadPlatformThumbnail(urlStr, (pct) => setDownloadProgress(pct));
             if (!thumbRes?.blob) {
-              const e = new Error('تعذّر جلب الفيديو من ' + info.displayName + ' (yt-dlp غير متوفر في الخادم)');
+              const e = new Error('تعذّر جلب الفيديو من ' + info.displayName + ' (' + degradeReason + ')');
               e.code = 'MEDIA_UNAVAILABLE';
               throw e;
             }
@@ -805,6 +865,7 @@ export default function ShareTargetLanding() {
       setDownloadProgress(0);
     }
   }, [payload, firstFile]);
+
 
   // ✅ v89.23 (2026) ROOT FIX #2: النشر المباشر لكل الوجهات —
   //    post/reel/story تنشر مباشرة بدون المرور عبر PostComposer.
@@ -906,6 +967,7 @@ export default function ShareTargetLanding() {
     setDownloadedFileMeta(null);
     setPublishDisabled(true);
     setSelectedTarget(null);
+    setDegradedNotice(null); // ✅ v89.24 ROOT FIX #1: تنظيف إشعار الانحدار
   }, [downloadStage]);
 
   const openFeed = async () => {
@@ -1317,6 +1379,27 @@ export default function ShareTargetLanding() {
               <div className="ym-download-file-info">
                 <strong>📄 {downloadedFileMeta.name}</strong>
                 <span>{Math.max(1, Math.round((downloadedFileMeta.size || 0) / 1024))} KB — جاهز للنشر</span>
+              </div>
+            ) : null}
+
+            {/* ✅ v89.24 ROOT FIX #1: إشعار انحدار الجودة — نُعلِم المستخدم صراحة
+                أن ما تم تنزيله صورة (thumbnail) وليس الفيديو الأصلي */}
+            {downloadStage === 'done' && degradedNotice && downloadedFileMeta?.type?.startsWith('image/') ? (
+              <div className="ym-download-degraded-notice" style={{
+                marginTop: 10,
+                padding: '10px 12px',
+                borderRadius: 10,
+                background: 'rgba(251, 191, 36, .12)',
+                border: '1px solid rgba(251, 191, 36, .35)',
+                color: '#92400e',
+                fontSize: '.82rem',
+                lineHeight: 1.7,
+              }}>
+                <strong>⚠️ تنبيه:</strong> تعذّر جلب الفيديو الأصلي من {degradedNotice.platform}
+                {' '}(<code style={{ fontSize: '.72rem', opacity: .7 }}>{degradedNotice.reason}</code>).
+                <br />
+                ما تم تنزيله هو <strong>صورة معاينة (thumbnail)</strong> وليس الفيديو الأصلي.
+                {' '}يمكنك المتابعة بالنشر كصورة، أو الرجوع واختيار <strong>«مشاركة كرابط»</strong> بدلاً من ذلك.
               </div>
             ) : null}
 

@@ -835,6 +835,23 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
     return;
   }
+  // ✅ v89.24 ROOT FIX #2: الواجهة استلمت الحمولة فعلياً (ACK) — نحذف الحمولة فوراً من
+  //   Cache Storage دون انتظار حتى ما بعد النشر. هذا يقطع حلقة إعادة التحميل
+  //   جذرياً: أي HELLO جديد لاحقاً لن يجد حمولة ليرسلها → لا setPayload متكرر.
+  if (event.data?.type === 'YAMSHAT_SHARE_RECEIVED_ACK') {
+    event.waitUntil((async () => {
+      try {
+        const cache = await caches.open(SHARE_FALLBACK_CACHE);
+        await cache.delete(SHARE_FALLBACK_URL).catch(() => null);
+      } catch (_) { /* ignore */ }
+      // تخزين البصمة في self — منع الحفظ الجديد لنفس الحمولة خلال دورة SW هذه
+      try {
+        self.__yamshatConsumedFingerprints = self.__yamshatConsumedFingerprints || new Set();
+        if (event.data?.fingerprint) self.__yamshatConsumedFingerprints.add(event.data.fingerprint);
+      } catch (_) { /* ignore */ }
+    })());
+    return;
+  }
   // ✅ v89.23 ROOT FIX #3: العميل استهلك الحمولة ونشرها — حذف SHARE_FALLBACK_CACHE فوراً
   //   ليمنع SW من إعادة بثها في أي HELLO لاحق (لا حلقة إعادة تحميل بعد الآن).
   if (event.data?.type === 'YAMSHAT_SHARE_CLEAR') {

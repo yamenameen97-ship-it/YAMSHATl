@@ -311,6 +311,13 @@ export default function ShareTargetLanding() {
 
     function applyPayload(data) {
       if (!mounted || stopFlag) return false;
+      // ✅ v89.23 ROOT FIX #3: منع حلقة إعادة التحميل — إذا تم استهلاك الحمولة في
+      //   هذه الجلسة، ارفض أي رسالة جديدة لنفس الحمولة من SW.
+      try {
+        if (typeof window !== 'undefined' && window.__YAMSHAT_SHARE_CONSUMED__) {
+          return false;
+        }
+      } catch { /* ignore */ }
       // ✅ v89.13 ROOT FIX #C: قبول الحمولة حتى لو كانت _empty:true
       //   السبب الجذري السابق:
       //     إذا حفظ SW حمولة _empty:true (مشاركة فارغة تماماً من
@@ -427,6 +434,14 @@ export default function ShareTargetLanding() {
             const data = await readAny();
             applyPayload(data);
           } catch { /* ignore */ }
+        } else if (t === 'YAMSHAT_SHARE_CONSUMED') {
+          // ✅ v89.23 ROOT FIX #3: SW يؤكد حذف الحمولة — أوقف أي تطبيق لاحق لنفس الحمولة
+          try {
+            window.__YAMSHAT_SHARE_CONSUMED__ = true;
+            window.__YAMSHAT_STASHED_SHARE_PAYLOAD__ = null;
+          } catch (_) { /* ignore */ }
+          stopFlag = true;
+          return;
         } else if (t === 'YAMSHAT_SHARE_PAYLOAD_FALLBACK') {
           // ✅ v89.13 ROOT FIX #D: تلقّي حمولة fallback من SW عند فشل IndexedDB
           //   SW أرسل لنا payload خفيفة مباشرة لأن حفظها في IDB فشل
@@ -449,7 +464,9 @@ export default function ShareTargetLanding() {
       const sendHello = () => {
         try {
           if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_HELLO' });
+            // ✅ v89.23 ROOT FIX #3: مرر consumed=true لـ SW لو كانت الحمولة قد استُهلكت
+            const consumed = !!(typeof window !== 'undefined' && window.__YAMSHAT_SHARE_CONSUMED__);
+            navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_HELLO', consumed });
           }
         } catch { /* ignore */ }
       };
@@ -460,9 +477,12 @@ export default function ShareTargetLanding() {
       //   قبل تثبيت SW ويجب أن نلتقط أول تحكّم دون انتظار polling.
       controllerChangeHandler = async () => {
         try {
-          // ✅ v89.14: فور تحكّم SW أرسل hello أيضاً (قد يكون مخزناً fallback من POST سابق)
+          // ✅ v89.23: تجنّب حلقة إعادة التحميل — لا تطلب حمولة إذا استُهلكت
+          if (typeof window !== 'undefined' && window.__YAMSHAT_SHARE_CONSUMED__) return;
           if (navigator.serviceWorker.controller) {
-            try { navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_HELLO' }); } catch (_) { /* ignore */ }
+            try {
+              navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_HELLO', consumed: false });
+            } catch (_) { /* ignore */ }
           }
           const data = await readAny();
           applyPayload(data);
@@ -477,10 +497,10 @@ export default function ShareTargetLanding() {
         try {
           swReadyPromise = navigator.serviceWorker.ready.then(async () => {
             if (stopFlag) return;
+            if (typeof window !== 'undefined' && window.__YAMSHAT_SHARE_CONSUMED__) return;
             try {
-              // ✅ v89.14: أرسل hello بمجرد جاهزية SW (يحل حالة first-install)
               if (navigator.serviceWorker.controller) {
-                try { navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_HELLO' }); } catch (_) { /* ignore */ }
+                try { navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_HELLO', consumed: false }); } catch (_) { /* ignore */ }
               }
               const data = await readAny();
               applyPayload(data);
@@ -709,20 +729,27 @@ export default function ShareTargetLanding() {
         let fileType = 'application/octet-stream';
 
         if (isPlatformStream) {
-          // ✅ v89.22 (2026) ROOT FIX: جرّب backend proxy (yt-dlp) أولاً —
-          //    يعيد الفيديو الحقيقي mp4/webm من نفس الأصل (لا CORS).
+          // ✅ v89.23 (2026) ROOT FIX #1: التفريق بين أسباب الفشل — لا نسقط لـ thumbnail بصمت
           const proxyRes = await downloadViaBackendProxy(urlStr, (pct) => setDownloadProgress(pct));
-          if (proxyRes?.blob) {
+          if (proxyRes?.ok && proxyRes.blob) {
+            // نجح yt-dlp → فيديو حقيقي
             blob = proxyRes.blob;
             fileName = proxyRes.filename || `${info.platform}_${Date.now()}.mp4`;
             fileType = proxyRes.mime || blob.type || 'video/mp4';
+          } else if (proxyRes?.authRequired) {
+            // مصادقة مطلوبة → لا نسقط لصورة
+            const e = new Error('يرجى تسجيل الدخول لتنزيل الفيديو');
+            e.code = 'AUTH_REQUIRED';
+            throw e;
           } else {
-            // fallback: thumbnail من CDN المنصة (السلوك القديم)
-            const thumbRes = await downloadPlatformThumbnail(urlStr, (pct) => {
-              setDownloadProgress(pct);
-            });
+            // proxy فشل (yt-dlp غير متوفر / endpoint غير مسجل / حظر)
+            // → نسقط لـ thumbnail فقط إن كان مسموحاً — ونُعلِم المستخدم أن النتيجة صورة وليس فيديو.
+            try {
+              window.__YAMSHAT_MEDIA_DEGRADED__ = { reason: proxyRes?.reason || 'PROXY_UNAVAILABLE', to: 'image' };
+            } catch (_) { /* ignore */ }
+            const thumbRes = await downloadPlatformThumbnail(urlStr, (pct) => setDownloadProgress(pct));
             if (!thumbRes?.blob) {
-              const e = new Error('تعذّر جلب المحتوى من ' + info.displayName);
+              const e = new Error('تعذّر جلب الفيديو من ' + info.displayName + ' (yt-dlp غير متوفر في الخادم)');
               e.code = 'MEDIA_UNAVAILABLE';
               throw e;
             }
@@ -779,15 +806,16 @@ export default function ShareTargetLanding() {
     }
   }, [payload, firstFile]);
 
-  // ✅ v89.22 (2026) ROOT FIX: النشر المباشر من صفحة التنزيل —
-  //    للوجهة "المنشورات" نتجاوز PostComposer ونرفع/ننشر مباشرة
-  //    مع تحديد صحيح لنوع الوسائط (video/image) حتى لا يُعامل
-  //    الفيديو كصورة.
+  // ✅ v89.23 (2026) ROOT FIX #2: النشر المباشر لكل الوجهات —
+  //    post/reel/story تنشر مباشرة بدون المرور عبر PostComposer.
+  //    chat/groups ترفع الملف أولاً ثم تجتاز PostComposer إلى اختيار المستقبِل
+  //    فقط (مع تمرير media URL جاهز وميم/نوع صحيحين).
   const handlePublishAfterDownload = useCallback(async () => {
     if (publishDisabled || !payload || !selectedTarget) return;
+    const targetKey = selectedTarget.key;
 
-    // التدفق المباشر لوجهة "المنشورات" فقط
-    if (selectedTarget.key === 'post' && downloadedFile) {
+    // التدفق المباشر — يحرّر الفيديو/الصورة بحسب mime الفعلي
+    if (downloadedFile && (targetKey === 'post' || targetKey === 'reel' || targetKey === 'story' || targetKey === 'chat' || targetKey === 'groups')) {
       try {
         setBusy(true);
         // بناء linkCard من payload (إن وجد url)
@@ -798,8 +826,8 @@ export default function ShareTargetLanding() {
           }
         } catch { /* ignore */ }
 
-        await directPublishFromShare({
-          target: 'post',
+        const result = await directPublishFromShare({
+          target: targetKey,
           blob: downloadedFile,
           blobMeta: downloadedFileMeta,
           description: editableDescription,
@@ -811,20 +839,46 @@ export default function ShareTargetLanding() {
           verifiedByYamshat: true,
         });
 
-        // تنظيف الحمولة المشتركة
+        // تنظيف الحمولة المشتركة (يمسح IDB + Cache Storage + يخبر SW)
+        try { window.__YAMSHAT_SHARE_CONSUMED__ = true; } catch (_) { /* ignore */ }
         await clearSharedPayload().catch(() => null);
 
-        // انتقل للصفحة المحددة (المنشورات)
-        navigate('/');
-        return;
+        // توجيه حسب الوجهة
+        if (targetKey === 'post') {
+          navigate('/');
+          return;
+        }
+        if (targetKey === 'reel') {
+          navigate('/reels');
+          return;
+        }
+        if (targetKey === 'story') {
+          navigate('/');
+          return;
+        }
+        if (targetKey === 'chat' || targetKey === 'groups') {
+          // مرّر ميديا المرفوعة لشاشة اختيار المستقبِل (ليس PostComposer)
+          try {
+            sessionStorage.setItem('yamshat.shareDirectMedia', JSON.stringify({
+              mediaUrl: result?.mediaUrl || '',
+              mediaMime: result?.mediaMime || '',
+              mediaKind: result?.mediaKind || '',
+              description: result?.description || editableDescription || '',
+              linkCard: result?.linkCard || null,
+              at: Date.now(),
+            }));
+          } catch (_) { /* ignore */ }
+          navigate(targetKey === 'chat' ? '/chat?share=1' : '/groups?share=1');
+          return;
+        }
       } catch (err) {
         console.error('[share] direct publish failed, falling back to composer:', err);
         setBusy(false);
-        // fallback للتدفق القديم
+        // fallback للتدفق القديم فقط عند خطأ حقيقي
       }
     }
 
-    // fallback أو وجهة أخرى (reel/story/chat/groups): stage + navigate
+    // fallback: stage + navigate (قلّما يُستخدم الآن)
     stagePendingShare(payload, selectedTarget.key, {
       mode: 'download',
       downloadedFile,

@@ -1,4 +1,4 @@
-// services/share/sharedIntake.js — v89.21 ROOT FIXES
+// services/share/sharedIntake.js — v89.23 ROOT FIXES (2026)
 // ---------------------------------------------------------------
 // جسر (Bridge) بين Service Worker (share_target) والمكوّنات في الواجهة.
 //
@@ -83,7 +83,11 @@ export async function readSharedPayload() {
   }
 }
 
+// ✅ v89.23 ROOT FIX #3: مسح Cache Storage fallback + رسالة إلى SW
+//   لحذف SHARE_FALLBACK_CACHE، لكي لا يعيد SW بث نفس الحمولة القديمة
+//   على كل controllerchange / HELLO → يمنع حلقة إعادة التحميل.
 export async function clearSharedPayload() {
+  // 1) IndexedDB
   try {
     const db = await openDatabase();
     await new Promise((resolve, reject) => {
@@ -91,11 +95,41 @@ export async function clearSharedPayload() {
       tx.objectStore(STORE_NAME).delete(SHARE_KEY);
       tx.oncomplete = () => resolve(true);
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
     });
-    return true;
-  } catch {
-    return false;
-  }
+  } catch { /* ignore */ }
+
+  // 2) في-الذاكرة (main.jsx stash + memory pending)
+  try {
+    if (typeof window !== 'undefined') {
+      try { window.__YAMSHAT_STASHED_SHARE_PAYLOAD__ = null; } catch (_) { /* ignore */ }
+      try { window.__YAMSHAT_SHARE_CONSUMED__ = true; } catch (_) { /* ignore */ }
+    }
+    _memoryPending = null;
+  } catch { /* ignore */ }
+
+  // 3) localStorage fallback
+  try {
+    localStorage.removeItem('yamshat.shareFallback');
+    localStorage.removeItem(PENDING_KEY);
+  } catch { /* ignore */ }
+
+  // 4) Cache Storage fallback (يعيشه SW عبر SHARE_FALLBACK_CACHE)
+  try {
+    if (typeof caches !== 'undefined' && caches?.open) {
+      const cache = await caches.open('yamshat-share-fallback-v1');
+      await cache.delete('/__yamshat_share_fallback__').catch(() => null);
+    }
+  } catch { /* ignore */ }
+
+  // 5) أخبِر SW صراحةً بحذف الحمولة (يعالج حالة SW نشط في نافذة أخرى)
+  try {
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_SHARE_CLEAR' });
+    }
+  } catch { /* ignore */ }
+
+  return true;
 }
 
 // ---------- التقاط لقطة صورة من فيديو ----------
@@ -616,8 +650,17 @@ export const SHARE_INTAKE_INTERNAL = { _memoryRef: () => _memoryPending };
  * يطلب من الباكاند تنزيل الفيديو/الصورة الحقيقييين من رابط منصة.
  * يرجع: { blob, mime, kind: 'video'|'image', filename } أو null عند الفشل.
  */
+// ✅ v89.23 ROOT FIX #1: تمييز صريح لأسباب الفشل بدلاً من return null الصامت.
+//   القاعدة الجديدة:
+//     - ok:true + file_url → نُعيد { blob, mime, kind, ... }.
+//     - ok:false + reason=PLATFORM_UNSUPPORTED → { unsupported:true } (لا رابط منصة).
+//     - ok:false + reason=YTDLP_UNAVAILABLE_OR_BLOCKED → { proxyFailed:true, canFallback:true }.
+//     - HTTP 404 (endpoint غير مسجّل في الإنتاج) → { proxyFailed:true, canFallback:true }.
+//     - HTTP 401/403 → { authRequired:true } (نرمي للأعلى، لا نسقط لصورة).
+//     - خطأ شبكة → { proxyFailed:true, canFallback:true }.
+//   الواجهة تقرر: للفيديو نُفضّل الفشل الصريح على تنزيل thumbnail بصمت.
 export async function downloadViaBackendProxy(url, onProgress) {
-  if (!url) return null;
+  if (!url) return { proxyFailed: true, canFallback: true, reason: 'NO_URL' };
   try {
     const { getAuthToken } = await import('../../utils/auth.js');
     const { API_BASE } = await import('../../api/config.js');
@@ -628,20 +671,39 @@ export async function downloadViaBackendProxy(url, onProgress) {
 
     if (onProgress) onProgress(3);
 
-    const resp = await fetch(`${API_BASE}/api/share/download-media`, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify({ url }),
-    });
+    let resp;
+    try {
+      resp = await fetch(`${API_BASE}/api/share/download-media`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ url }),
+      });
+    } catch (netErr) {
+      console.warn('[share] backend proxy network error:', netErr);
+      return { proxyFailed: true, canFallback: true, reason: 'NETWORK_ERROR' };
+    }
+    if (resp.status === 401 || resp.status === 403) {
+      return { authRequired: true, proxyFailed: true, canFallback: false, reason: 'AUTH_REQUIRED' };
+    }
+    if (resp.status === 404) {
+      // Endpoint غير مسجّل في الإنتاج (نسخة قديمة من الباكاند)
+      return { proxyFailed: true, canFallback: true, reason: 'ENDPOINT_NOT_FOUND' };
+    }
     if (!resp.ok) {
       console.warn('[share] backend proxy request failed', resp.status);
-      return null;
+      return { proxyFailed: true, canFallback: true, reason: `HTTP_${resp.status}` };
     }
-    const meta = await resp.json();
+    let meta;
+    try { meta = await resp.json(); }
+    catch { return { proxyFailed: true, canFallback: true, reason: 'BAD_JSON' }; }
     if (!meta?.ok || !meta.file_url) {
-      console.info('[share] backend proxy declined:', meta?.reason || 'unknown');
-      return null;
+      const reason = meta?.reason || 'unknown';
+      console.info('[share] backend proxy declined:', reason);
+      if (reason === 'PLATFORM_UNSUPPORTED') {
+        return { unsupported: true, proxyFailed: true, canFallback: true, reason };
+      }
+      return { proxyFailed: true, canFallback: true, reason };
     }
 
     if (onProgress) onProgress(20);
@@ -690,6 +752,7 @@ export async function downloadViaBackendProxy(url, onProgress) {
     const blob = new Blob(chunks, { type: meta.mime || 'video/mp4' });
     if (onProgress) onProgress(100);
     return {
+      ok: true,
       blob,
       mime: meta.mime || 'video/mp4',
       kind: meta.kind || 'video',
@@ -698,7 +761,7 @@ export async function downloadViaBackendProxy(url, onProgress) {
     };
   } catch (err) {
     console.warn('[share] downloadViaBackendProxy failed:', err);
-    return null;
+    return { proxyFailed: true, canFallback: true, reason: 'EXCEPTION' };
   }
 }
 
@@ -799,6 +862,10 @@ export async function directPublishFromShare({
                   : (blobMeta?.type?.startsWith('video/') ? 'video' : 'image');
 
   // 2) انشر حسب الوجهة
+  //    ✅ v89.23 ROOT FIX #2: كل الوجهات تنشر مباشرة الآن — لا يمر أي شيء عبر PostComposer.
+  const isVideo = mediaKind === 'video' || String(mediaMime || '').startsWith('video/');
+  const isImage = mediaKind === 'image' || String(mediaMime || '').startsWith('image/');
+
   if (target === 'post') {
     return await publishPostDirectly({
       description,
@@ -810,8 +877,101 @@ export async function directPublishFromShare({
       verifiedByYamshat,
     });
   }
-  // الوجهات الأخرى: fallback إلى التدفق القديم (stage + navigate)
+
+  if (target === 'reel') {
+    return await publishReelDirectly({
+      description, mediaUrl, mediaMime, mediaKind,
+      linkCard, sourceUrl, sourceTitle, verifiedByYamshat,
+    });
+  }
+
+  if (target === 'story') {
+    return await publishStoryDirectly({
+      description, mediaUrl, mediaMime, mediaKind, verifiedByYamshat,
+    });
+  }
+
+  if (target === 'chat' || target === 'groups') {
+    // للتحادث/المجموعات ليس هناك نشر بلا مستقبِل محدَّد → نعيد ميتاداتا الرفع
+    // ليختار المستخدم المستقبِل في الشاشة التالية، بدون المرور بـ PostComposer.
+    return {
+      ok: true,
+      routed: target,
+      mediaUrl,
+      mediaMime,
+      mediaKind,
+      isVideo,
+      isImage,
+      description,
+      linkCard,
+    };
+  }
+
   const err = new Error('DIRECT_PUBLISH_NOT_SUPPORTED_FOR_TARGET');
   err.code = 'FALLBACK_TO_COMPOSER';
   throw err;
+}
+
+// ✅ v89.23: نشر ريلز مباشرة عبر /api/reels (احترام mime الفعلي)
+export async function publishReelDirectly({ description, mediaUrl, mediaMime, mediaKind, linkCard, sourceUrl, sourceTitle, verifiedByYamshat }) {
+  const { getAuthToken } = await import('../../utils/auth.js');
+  const { API_BASE } = await import('../../api/config.js');
+
+  const token = (typeof getAuthToken === 'function' ? getAuthToken() : null) || null;
+  const isVideo = mediaKind === 'video' || String(mediaMime || '').startsWith('video/');
+  const body = {
+    caption: description || '',
+    video_url: isVideo ? mediaUrl : null,
+    thumbnail_url: isVideo ? null : mediaUrl,
+    mime: mediaMime || (isVideo ? 'video/mp4' : 'image/jpeg'),
+    type: isVideo ? 'video' : 'image',
+    link_card: linkCard || null,
+    source_url: sourceUrl || null,
+    source_title: sourceTitle || null,
+    verified_by_yamshat: !!verifiedByYamshat,
+  };
+  const resp = await fetch(`${API_BASE}/api/reels`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`فشل نشر الريل: ${resp.status} ${text}`);
+  }
+  return await resp.json();
+}
+
+// ✅ v89.23: نشر ستوري مباشرة عبر /api/stories
+export async function publishStoryDirectly({ description, mediaUrl, mediaMime, mediaKind, verifiedByYamshat }) {
+  const { getAuthToken } = await import('../../utils/auth.js');
+  const { API_BASE } = await import('../../api/config.js');
+
+  const token = (typeof getAuthToken === 'function' ? getAuthToken() : null) || null;
+  const isVideo = mediaKind === 'video' || String(mediaMime || '').startsWith('video/');
+  const body = {
+    caption: description || '',
+    media_url: mediaUrl,
+    media_type: isVideo ? 'video' : 'image',
+    mime: mediaMime || (isVideo ? 'video/mp4' : 'image/jpeg'),
+    verified_by_yamshat: !!verifiedByYamshat,
+  };
+  const resp = await fetch(`${API_BASE}/api/stories`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`فشل نشر الستوري: ${resp.status} ${text}`);
+  }
+  return await resp.json();
 }

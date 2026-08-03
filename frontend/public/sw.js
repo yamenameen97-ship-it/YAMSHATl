@@ -53,7 +53,10 @@
 //       بطاقة تشخيص عند _empty بدل عرض أزرار الوجهات كأن كل شيء طبيعي.
 //    #6 sw-pwa-enhanced.js + sw-push.js: تحويلهما إلى kill-stubs لا يتنافسان مع sw.js.
 // ✅ v89.20 ROOT FIX: رفع VERSION لإجبار تحديث SW القديم — إصلاح حلقة reload + رسالة تحديث وهمية + فقاعة التثبيت عند /share-target
-const VERSION = 'yamshat-v20260801-235900-v89.20-SHARE-TARGET-UPDATE-LOOP-FIX' + '2100000000005';
+// ✅ v89.23 ROOT FIX (2026): استقبال YAMSHAT_SHARE_CLEAR من العميل لحذف SHARE_FALLBACK_CACHE
+//   يمنع حلقة إعادة التحميل: SW لم يعد يبث نفس الحمولة القديمة مع كل controllerchange/HELLO.
+//   كما أضفنا وسم _consumed داخل Cache Storage لتجنّب إعادة بث حمولة استهلكها العميل فعلاً.
+const VERSION = 'yamshat-v20260802-000000-v89.23-SHARE-DIRECT-PUBLISH-ROOT-FIX' + '2100000000006';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -832,16 +835,40 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
     return;
   }
+  // ✅ v89.23 ROOT FIX #3: العميل استهلك الحمولة ونشرها — حذف SHARE_FALLBACK_CACHE فوراً
+  //   ليمنع SW من إعادة بثها في أي HELLO لاحق (لا حلقة إعادة تحميل بعد الآن).
+  if (event.data?.type === 'YAMSHAT_SHARE_CLEAR') {
+    event.waitUntil((async () => {
+      try {
+        const cache = await caches.open(SHARE_FALLBACK_CACHE);
+        await cache.delete(SHARE_FALLBACK_URL).catch(() => null);
+      } catch (_) { /* ignore */ }
+      // أعلم النوافذ الأخرى أن الحمولة استُهلكت (تجنّب تطبيق مكرر)
+      try {
+        const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+        clientsList.forEach((client) => {
+          try { client.postMessage({ type: 'YAMSHAT_SHARE_CONSUMED', at: Date.now() }); } catch (_) { /* ignore */ }
+        });
+      } catch (_) { /* ignore */ }
+    })());
+    return;
+  }
   // ✅ v89.14 ROOT FIX #C: عند فتح ShareTargetLanding يُرسل hello —
   //   نرد له بـ fallback payload من Cache Storage إن وجد (يعالج السباق الزمني).
   if (event.data?.type === 'YAMSHAT_SHARE_HELLO') {
     event.waitUntil((async () => {
       try {
+        // ✅ v89.23 ROOT FIX #3: إذا حمل العميل وسم consumed مع hello → احذف الحمولة فوراً ولا ترد.
+        //   يمنع حلقة إعادة تحميل عند فتح نافذة جديدة بعد النشر.
+        if (event.data?.consumed === true) {
+          try {
+            const cache = await caches.open(SHARE_FALLBACK_CACHE);
+            await cache.delete(SHARE_FALLBACK_URL).catch(() => null);
+          } catch (_) { /* ignore */ }
+          return;
+        }
         // ✅ v89.15 ROOT FIX #3: event.source قد يكون null في Firefox/Samsung
-        //   Internet وفي بعض إصدارات Chrome القديمة — في هذه الحالة يفشل
-        //   إرسال الرد صامتاً → العميل لا يتلقّى الـ fallback أبداً.
-        //   الحل: broadcast إلى كل العملاء (الحمولة خفيفة ومفردة لا تتأذّى من التكرار).
-        //   الـ landing يتجاهل الحمولة إذا كانت أقدم ممّا لديه (مقارنة receivedAt).
+        //   Internet — broadcast إلى كل العملاء.
         const cache = await caches.open(SHARE_FALLBACK_CACHE);
         const cached = await cache.match(SHARE_FALLBACK_URL);
         if (cached) {

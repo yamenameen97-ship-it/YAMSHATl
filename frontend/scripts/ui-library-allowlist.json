@@ -175,6 +175,8 @@
         "src/components/profile/ProfileReelsGrid.jsx",
         "src/components/feed/ExternalSourceCard.jsx",
         "src/components/feed/FeedReelsPair.jsx",
+        "src/components/feedback/ExploreSkeleton.jsx",
+        "src/components/feedback/GroupsSkeleton.jsx",
         "src/components/yamshat/YamshatIcon.jsx"
     ]
 }

@@ -17,3 +17,6 @@ export { default as AdminGroups } from '../../pages/admin/AdminGroups.jsx';
 // نُبقي اسم AdminLive كـ alias لتوافق أي راوت قديم يشير إلى /admin/live.
 export { default as AdminTrending } from '../../pages/admin/AdminTrending.jsx';
 export { default as AdminLive } from '../../pages/admin/AdminTrending.jsx';
+
+// 🔥 v89.34 — لوحة التحليلات التفاعلية مع تصدير PDF/CSV
+export { default as AdminAnalytics } from '../../pages/admin/AdminAnalytics.jsx';

@@ -22,6 +22,7 @@ const routeMeta = {
   '/admin/rbac': { title: 'الأدوار والصلاحيات', breadcrumb: ['الإدارة', 'الصلاحيات'] },
   '/admin/notifications': { title: 'الإشعارات', breadcrumb: ['الإدارة', 'الإشعارات'] },
   '/admin/reports': { title: 'مركز البلاغات والإشراف', breadcrumb: ['الإدارة', 'مركز البلاغات'] },
+  '/admin/analytics': { title: 'التقارير التفاعلية', subtitle: 'رسوم بيانية متقدمة وتصدير PDF/CSV', breadcrumb: ['الإدارة', 'التحليلات'] },
   '/admin/audit': { title: 'سجل نشاط الأدمن', breadcrumb: ['الإدارة', 'سجل الأدمن'] },
   '/admin/settings': { title: 'الإعدادات العامة', breadcrumb: ['الإدارة', 'الإعدادات'] },
 };

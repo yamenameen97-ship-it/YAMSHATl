@@ -43,6 +43,8 @@ const AdminGroups = lazy(() => import('./features/admin/index.js').then((mod) =>
 // 🔥 v88.51 — استبدال AdminLive بـ AdminTrending، مع إبقاء alias توافقي للروابط القديمة
 const AdminTrending = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminTrending })));
 const AdminLive = AdminTrending;
+// 🔥 v89.34 — لوحة التحليلات التفاعلية مع تصدير PDF/CSV
+const AdminAnalytics = lazy(() => import('./features/admin/index.js').then((mod) => ({ default: mod.AdminAnalytics })));
 const Login = lazy(() => import('./pages/Login.jsx'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin.jsx'));
 const Register = lazy(() => import('./pages/Register.jsx'));
@@ -325,6 +327,8 @@ export default function App() {
             {/* 🔥 v88.51 — صفحة التريندات + إعادة توجيه الرابط القديم /admin/live */}
             <Route path="/admin/trending" element={<ProtectedRoute><AdminTrending /></ProtectedRoute>} />
             <Route path="/admin/live" element={<Navigate to="/admin/trending" replace />} />
+            {/* 🔥 v89.34 — راوت لوحة التحليلات التفاعلية مع تصدير PDF/CSV */}
+            <Route path="/admin/analytics" element={<ProtectedRoute requiredPermission="dashboard.view"><AdminAnalytics /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

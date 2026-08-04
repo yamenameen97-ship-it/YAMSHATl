@@ -23,6 +23,8 @@ import { useAppStore } from '../store/appStore.js';
 import { timeAgoAr as fmtTimeAgoAr, formatLocalDateTimeAr } from '../utils/timeFormat.js';
 // ✅ v88.89: حفظ آخر 10 منشورات في IndexedDB للتصفح بدون إنترنت
 import offlineCache from '../offline/offlineSessionCache.js';
+// ✅ v89.32: تسخين الصور المصغّرة والفيديوهات داخل كاش SW ليكون التصفح دون إنترنت سلساً
+import { queueItemsForWarmup } from '../offline/mediaWarmup.js';
 
 /**
  * FeedMobile — صفحة الخلاصة للموبايل (مطابقة للتصميم المرجعي)
@@ -217,10 +219,13 @@ function FeedMobile() {
   }, []);
 
   // ✅ v88.89: عند وصول منشورات جديدة من الشبكة، احفظ أحدث 10 في IndexedDB
+  // ✅ v89.32: بالإضافة إلى الميتاداتا، سخّن ملفات الوسائط داخل كاش SW
   useEffect(() => {
     if (Array.isArray(rawPosts) && rawPosts.length) {
       const latest10 = rawPosts.slice(0, 10);
       offlineCache.cacheFeedPosts?.(latest10).catch(() => {});
+      // تسخين الوسائط: صور المنشورات وأفاتار الأصحاب داخل MEDIA cache
+      try { queueItemsForWarmup(latest10); } catch { /* ignore */ }
     }
   }, [rawPosts]);
 

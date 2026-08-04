@@ -28,6 +28,12 @@ from app.services.device_service import (
     mark_device_failed,
 )
 from app.services.realtime_hub import realtime_hub
+# ✅ v89.30 — نظام تجميع الإشعارات الذكي (Batching)
+from app.services.notification_batcher import (
+    try_batch_into_existing,
+    stamp_new_notification_bucket,
+    BATCHABLE_TYPES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -191,17 +197,74 @@ async def dispatch_notification(
     if action_url:
         data.setdefault("action_url", action_url)
 
-    # 1) حفظ في DB
-    notification = Notification(
-        user_id=user_id,
-        type=notif_type,
-        title=title,
-        body=body,
-        data=data,
-    )
-    db.add(notification)
-    db.commit()
-    db.refresh(notification)
+    # ==========================================================
+    # ✅ v89.30 — محاولة دمج الإشعار في إشعار قائم (Batching)
+    # ----------------------------------------------------------
+    # إذا وجدنا إشعاراً مماثلاً غير مقروء لنفس المنشور/القصة/التعليق
+    # خلال نافذة الوقت المسموحة، ندمج الفاعل الجديد فيها بدل إنشاء
+    # إشعار مستقل — تماماً كما تفعل Instagram/Facebook.
+    # ==========================================================
+    batched: Optional[Notification] = None
+    if notif_type in BATCHABLE_TYPES:
+        try:
+            batched = try_batch_into_existing(
+                db,
+                user_id=user_id,
+                notif_type=notif_type,
+                actor_id=(actor.id if actor is not None else data.get("actor_id")),
+                actor_username=(
+                    getattr(actor, "username", None) if actor is not None else data.get("actor_username")
+                ),
+                target_id=target_id,
+                target_type=target_type,
+                extra_data=data,
+            )
+        except Exception as exc:
+            logger.warning("notification_batching_failed user_id=%s type=%s err=%s", user_id, notif_type, exc)
+            batched = None
+
+    if batched is not None:
+        notification = batched
+        # العنوان/النص تمت إعادة تركيبهما في batcher بأسلوب "أحمد و3 آخرون أعجبوا بمنشورك"
+        title = notification.title
+        body = notification.body
+        data = dict(notification.data or {})
+        logger.info(
+            "notification_merged_into_existing user_id=%s type=%s notification_id=%s batch_count=%s",
+            user_id, notif_type, notification.id, data.get("batch_count"),
+        )
+    else:
+        # 1) حفظ إشعار جديد في DB مع بذرة تجميع (حتى يتمكّن الإشعار التالي من الدمج معه)
+        notification = Notification(
+            user_id=user_id,
+            type=notif_type,
+            title=title,
+            body=body,
+            data=data,
+        )
+        db.add(notification)
+        db.commit()
+        db.refresh(notification)
+
+        if notif_type in BATCHABLE_TYPES:
+            try:
+                seeded = stamp_new_notification_bucket(
+                    notification,
+                    notif_type=notif_type,
+                    actor_id=(actor.id if actor is not None else data.get("actor_id")),
+                    actor_username=(
+                        getattr(actor, "username", None) if actor is not None else data.get("actor_username")
+                    ),
+                    target_id=target_id,
+                    target_type=target_type,
+                )
+                notification.data = seeded
+                db.add(notification)
+                db.commit()
+                db.refresh(notification)
+                data = seeded
+            except Exception as exc:
+                logger.warning("notification_seed_failed user_id=%s err=%s", user_id, exc)
 
     payload: Dict[str, Any] = {
         "id": notification.id,

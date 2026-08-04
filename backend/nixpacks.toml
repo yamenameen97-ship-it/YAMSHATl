@@ -1,5 +1,6 @@
 [phases.setup]
-nixPkgs = ["python311", "gcc"]
+# v89.28 ROOT FIX: نضيف ffmpeg للـ transcoding ladder + HLS
+nixPkgs = ["python311", "gcc", "ffmpeg-full"]
 
 [phases.install]
 cmds = [

@@ -9,6 +9,8 @@ export const ADMIN_NAV_GROUPS = [
     title: 'لوحة التحكم',
     items: [
       { to: '/admin/dashboard', label: 'لوحة التحكم', icon: '⌂', permission: 'dashboard.view', exact: true },
+      // 🔥 v89.34 — لوحة التحليلات التفاعلية مع تصدير PDF/CSV
+      { to: '/admin/analytics', label: 'التقارير التفاعلية', icon: '📊', permission: 'dashboard.view', badge: 'NEW' },
     ],
   },
   {

@@ -3,11 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout.jsx';
 import { getGroups, searchGroups, createGroupPost, sendGroupMessage } from '../api/groups.js';
 import '../styles/groups-list.css';
+// ✅ v89.31 — Skeleton هيكلي مطابق لبطاقات المجموعات أثناء تحميل بيانات API
+import GroupsSkeleton from '../components/feedback/GroupsSkeleton.jsx';
 // ✅ v88.82 — استهلاك المشاركة الخارجية الموجّهة للمجموعات + رفع الملف
 import { consumePendingShare, dataUrlToBlob } from '../services/share/sharedIntake.js';
 import mediaUploadService from '../services/media/mediaUploadService.js';
 // ✅ v88.89: حفظ المجموعات المفتوحة سابقاً للتصفح بدون إنترنت
 import offlineCache from '../offline/offlineSessionCache.js';
+// ✅ v89.32: تسخين صور المجموعات داخل كاش SW
+import { queueItemsForWarmup } from '../offline/mediaWarmup.js';
 
 /**
  * GroupsHome — v2 مُصلحة
@@ -67,8 +71,10 @@ const GroupsHome = () => {
         baseGroupsRef.current = groupsData;
         setGroups(groupsData);
         // ✅ v88.89: خزّن القائمة المحدّثة للتصفح بدون إنترنت
+        // ✅ v89.32: وسخّن صور/أيقونات المجموعات داخل كاش SW MEDIA
         if (Array.isArray(groupsData) && groupsData.length) {
           offlineCache.cacheGroupsList?.(groupsData).catch(() => {});
+          try { queueItemsForWarmup(groupsData.slice(0, 30)); } catch { /* ignore */ }
         }
       } catch (err) {
         if (cancelled) return;
@@ -629,7 +635,9 @@ const GroupsHome = () => {
         {/* قائمة المجموعات */}
         <section className="yam-groups-list">
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>جاري التحميل...</div>
+            /* ✅ v89.31 — بديل هيكلي (Skeleton) بدل نص "جاري التحميل..."
+               لمنع ارتداد التخطيط (CLS) وتوحيد التجربة مع Instagram/Facebook */
+            <GroupsSkeleton count={6} />
           ) : error ? (
             <div style={{ textAlign: 'center', padding: '40px', color: '#ef4444' }}>{error}</div>
           ) : filteredGroups.length === 0 ? (

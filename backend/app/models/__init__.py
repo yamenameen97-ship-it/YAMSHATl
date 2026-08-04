@@ -18,7 +18,7 @@ from app.models.post_poll_vote import PostPollVote  # noqa: F401
 from app.models.post_save import PostSave  # noqa: F401
 from app.models.post_share import PostShare  # noqa: F401
 from app.models.post_preference import PostPreference, CommentReaction  # noqa: F401
-from app.models.shop_ad import ShopAd, ShopAdOrder  # noqa: F401
+from app.models.shop_ad import ShopAd, ShopAdOrder, ShopPaymentEvent  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.user_block import UserBlock  # noqa: F401
 from app.models.user_mute import UserMute  # noqa: F401

@@ -8,6 +8,8 @@ import API from '../api/axios.js';
 import { resolveMediaUrl } from '../config/mediaConfig.js';
 import { getReelsCache, saveReelsCache } from '../services/reelsEngine.js';
 import { markReelWatched } from '../services/reelsLocalCache.js';
+// ✅ v89.32: تسخين ملفات الريلز (mp4 + poster) داخل كاش SW
+import { queueItemsForWarmup } from '../offline/mediaWarmup.js';
 import { getCurrentUsername } from '../utils/auth.js';
 // ✅ v88.43: بث القلوب الطائرة لصاحب الريل عبر Socket.IO ليراها لحظياً
 import socket from '../api/socket.js';
@@ -652,14 +654,31 @@ export default function Reels() {
   }, []);
 
   // v88.41 — تسجيل مُشاهدة الريل الحالي في IndexedDB (فقط إذا بقي أكثر من 1.5 ثانية).
+  // ✅ v89.32: تسخين ملف الفيديو + الـ poster للريل الحالي والريلات المجاورة داخل كاش SW
   useEffect(() => {
     const current = reels[activeIndex];
     if (!current || !current.id) return;
     const t = window.setTimeout(() => {
       markReelWatched(current).catch(() => {});
     }, 1500);
+    // نافذة تسخين: الريل الحالي + التالي + السابق (لتمرير سلس بلا إنترنت)
+    try {
+      const window3 = [
+        reels[activeIndex],
+        reels[activeIndex + 1],
+        reels[activeIndex - 1],
+      ].filter(Boolean);
+      queueItemsForWarmup(window3);
+    } catch { /* ignore */ }
     return () => window.clearTimeout(t);
   }, [activeIndex, reels]);
+
+  // ✅ v89.32: عند وصول قائمة ريلز جديدة، سخّن أول 5 posters فوراً لعرض الشبكة السريع
+  useEffect(() => {
+    if (Array.isArray(reels) && reels.length) {
+      try { queueItemsForWarmup(reels.slice(0, 5)); } catch { /* ignore */ }
+    }
+  }, [reels]);
 
   useEffect(() => {
     const handleReelsUpdated = () => {

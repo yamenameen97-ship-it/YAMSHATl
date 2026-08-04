@@ -296,6 +296,9 @@ _include("app.api.routes.trending.router", prefix="/api/trending")
 _include("app.api.routes.upload.router", prefix="/api/upload")
 # ✅ v89.22 — Share Download Proxy (yt-dlp) لجلب الفيديو الحقيقي من روابط المنصات
 _include("app.api.routes.share_download.router", prefix="/api/share")
+# ✅ v89.27 ROOT FIX: prefix بديل للطوارئ — لو واجهة قديمة تنادي
+# /api/v1/share/... (توافق مع إصدارات سابقة) تصل لنفس المعالج.
+_include("app.api.routes.share_download.router", prefix="/api/v1/share")
 _include("app.api.routes.admin.router", prefix="/api/admin")
 # v88.53: نظام القيود الإدارية الموحّد (comment_mute / post_ban / reels_ban / groups_join_ban / story_ban / dm_strangers_ban)
 _include("app.api.routes.restrictions.router", prefix="/api")

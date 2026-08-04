@@ -22,6 +22,8 @@ from app.models.notification import Notification
 from app.models.user import User
 from app.models.user_block import UserBlock
 from app.services.chat_realtime import mark_messages_delivered, mark_messages_seen_for_sender, serialize_message
+# ✅ v89.30 — إعادة مطابقة مؤشرات القراءة أثناء الاتصال المتقطع
+from app.services.read_receipts_reconciler import reconcile_read_receipts, reconcile_bulk
 from app.services.encryption_service import encrypt_message, decrypt_message
 from app.services.media_service import scan_media_for_malware
 from app.services.chat_features import (
@@ -419,6 +421,15 @@ async def send_message(payload: dict, db: Session = Depends(get_db), current_use
 
 @router.post('/message_seen')
 async def mark_messages_seen(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # ==========================================================
+    # ✅ v89.30 — Read Receipts دقيقة أثناء الاتصال المتقطع
+    # ----------------------------------------------------------
+    # الحقول الجديدة المدعومة في payload:
+    #   sender: اسم مستخدم المُرسِل (مطلوب)
+    #   last_read_message_id: أحدث معرّف رسالة رآها المستقبل — نقطة مرجعية
+    #   message_ids: قائمة صريحة (اختياري) لسيناريو تحديد رسائل بعينها
+    #   client_timestamp: زمن القراءة على جهاز المستقبل (ISO أو epoch)
+    # ==========================================================
     sender_username = str(payload.get('sender') or '').strip()
     sender = _find_active_user_by_username(db, sender_username)
     if sender is None:
@@ -428,14 +439,88 @@ async def mark_messages_seen(payload: dict, db: Session = Depends(get_db), curre
         return {'message_ids': []}
 
     await _emit_delivered_receipts(db, current_user, peer_user_id=sender.id)
-    message_ids = mark_messages_seen_for_sender(db, current_user, sender)
+
+    last_read_message_id = payload.get('last_read_message_id')
+    client_message_ids = payload.get('message_ids') or None
+    client_timestamp = payload.get('client_timestamp')
+
+    # لو أرسل العميل نقاطاً مرجعية (offline replay) نستخدم المُوفِّق الجديد
+    if last_read_message_id is not None or client_message_ids:
+        outcome = reconcile_read_receipts(
+            db,
+            viewer=current_user,
+            sender=sender,
+            last_read_message_id=last_read_message_id,
+            message_ids=client_message_ids,
+            client_timestamp=client_timestamp,
+        )
+        message_ids = outcome['message_ids']
+        seen_at = outcome['seen_at']
+    else:
+        # السلوك التقليدي (كل غير المقروء يصبح مقروءاً)
+        message_ids = mark_messages_seen_for_sender(db, current_user, sender)
+        seen_at = datetime.utcnow().isoformat() if message_ids else None
+
     if message_ids:
         await sio.emit(
             'messages_seen',
-            {'sender': sender.username, 'viewer': current_user.username, 'message_ids': message_ids},
+            {
+                'sender': sender.username,
+                'viewer': current_user.username,
+                'message_ids': message_ids,
+                'seen_at': seen_at,
+            },
             room=f'username:{sender.username}',
         )
-    return {'message_ids': message_ids}
+    return {'message_ids': message_ids, 'seen_at': seen_at}
+
+
+@router.post('/message_seen/reconcile')
+async def reconcile_seen_bulk(payload: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    ✅ v89.30 — نقطة نهاية دفعية لإعادة مطابقة مؤشرات القراءة عند رجوع
+    الاتصال بعد انقطاع الشبكة. يستقبل قائمة من عدة محادثات دفعة واحدة:
+
+        {
+          "batches": [
+            {
+              "sender_username": "ahmed",
+              "last_read_message_id": 12345,
+              "client_timestamp": "2026-08-03T10:20:30Z"
+            },
+            {
+              "sender_username": "mohamed",
+              "message_ids": [981, 982, 983],
+              "client_timestamp": 1754212830
+            }
+          ]
+        }
+
+    ويُعيد لكل محادثة قائمة الرسائل التي انتقلت للتو إلى "مقروءة".
+    كل عملية idempotent، أي إن كررها العميل لن تُغيّر النتيجة.
+    """
+    batches = payload.get('batches') or []
+    if not isinstance(batches, list) or not batches:
+        return {'results': []}
+
+    results = reconcile_bulk(db, viewer=current_user, batches=batches)
+
+    # نبثّ الحدث لكل مُرسِل تأثّر (bulk broadcast)
+    for entry in results:
+        if entry.get('message_ids'):
+            await sio.emit(
+                'messages_seen',
+                {
+                    'sender': entry.get('sender_username'),
+                    'viewer': current_user.username,
+                    'message_ids': entry.get('message_ids'),
+                    'seen_at': entry.get('seen_at'),
+                    'reconciled': True,
+                },
+                room=f'username:{entry.get("sender_username")}',
+            )
+
+    return {'results': results}
 
 
 @router.get('/chat_block_status/{username}')

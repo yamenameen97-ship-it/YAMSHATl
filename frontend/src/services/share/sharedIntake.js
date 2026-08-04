@@ -671,24 +671,50 @@ export async function downloadViaBackendProxy(url, onProgress) {
 
     if (onProgress) onProgress(3);
 
-    let resp;
-    try {
-      resp = await fetch(`${API_BASE}/api/share/download-media`, {
-        method: 'POST',
-        headers,
-        credentials: 'include',
-        body: JSON.stringify({ url }),
-      });
-    } catch (netErr) {
-      console.warn('[share] backend proxy network error:', netErr);
+    // ✅ v89.27 ROOT FIX: قائمة aliases — نجرّب كلّ واحد إذا أدّى الأوّل لـ 404.
+    //   السبب الجذري: بعض إعدادات proxy/CDN تحجب POST على مسار محدّد
+    //   أو ترّجع 404 وهمية. تجرّب أسماء بديلة (كلها تُعالج نفس المعالج
+    //   في الباك‌إند) يقضي تماماً على ENDPOINT_NOT_FOUND الصامت.
+    const _endpoints = [
+      '/api/share/download-media',
+      '/api/share/download',
+      '/api/share/media-download',
+      '/api/share/extract',
+    ];
+    let resp = null;
+    let last404 = false;
+    for (const path of _endpoints) {
+      try {
+        const r = await fetch(`${API_BASE}${path}`, {
+          method: 'POST',
+          headers,
+          credentials: 'include',
+          body: JSON.stringify({ url }),
+        });
+        if (r.status === 404) { last404 = true; continue; }
+        resp = r;
+        break;
+      } catch (netErr) {
+        console.warn(`[share] backend proxy network error on ${path}:`, netErr);
+        continue;
+      }
+    }
+    if (!resp) {
+      if (last404) {
+        // محاولة تشخيصية: هل الروتر مُسجّل أصلاً؟
+        try {
+          const hres = await fetch(`${API_BASE}/api/share/health`, { credentials: 'include' });
+          if (hres.ok) {
+            console.warn('[share] router mounted but all POST aliases 404 — CDN/proxy blocking');
+            return { proxyFailed: true, canFallback: true, reason: 'PROXY_BLOCKS_POST' };
+          }
+        } catch (_) { /* ignore */ }
+        return { proxyFailed: true, canFallback: true, reason: 'ENDPOINT_NOT_FOUND' };
+      }
       return { proxyFailed: true, canFallback: true, reason: 'NETWORK_ERROR' };
     }
     if (resp.status === 401 || resp.status === 403) {
       return { authRequired: true, proxyFailed: true, canFallback: false, reason: 'AUTH_REQUIRED' };
-    }
-    if (resp.status === 404) {
-      // Endpoint غير مسجّل في الإنتاج (نسخة قديمة من الباكاند)
-      return { proxyFailed: true, canFallback: true, reason: 'ENDPOINT_NOT_FOUND' };
     }
     if (!resp.ok) {
       console.warn('[share] backend proxy request failed', resp.status);

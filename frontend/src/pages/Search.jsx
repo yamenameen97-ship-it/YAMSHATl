@@ -7,6 +7,8 @@ import Input from '../components/ui/Input.jsx';
 import EmptyState from '../components/feedback/EmptyState.jsx';
 import ErrorState from '../components/feedback/ErrorState.jsx';
 import { ListSkeleton } from '../components/feedback/Skeleton.jsx';
+// ✅ v89.31 — Skeleton هيكلي مطابق لتخطيط داشبورد الاستكشاف
+import ExploreSkeleton from '../components/feedback/ExploreSkeleton.jsx';
 import useDebounce from '../hooks/useDebounce';
 import { getPosts } from '../api/posts.js';
 import { getUsers } from '../api/users.js';
@@ -379,7 +381,10 @@ export default function Search() {
         </Card>
 
         <div style={{ flex: 1 }}>
-          {loading ? <ListSkeleton count={6} /> : null}
+          {/* ✅ v89.31 — Skeleton مطابق لتخطيط الاستكشاف (3 أعمدة) أثناء تحميل API */}
+          {loading ? (
+            !debouncedQuery ? <ExploreSkeleton /> : <ListSkeleton count={6} />
+          ) : null}
           {!loading && error ? <ErrorState title="تعذر فتح البحث الذكي" description={error} onRetry={hydrateCollections} /> : null}
 
           {!loading && !error && !debouncedQuery ? (

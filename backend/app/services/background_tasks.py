@@ -26,6 +26,9 @@ _SWEEP_INTERVAL_SECONDS = 60
 # v84.0 — القصص المنتهية تُنظَّف كل 5 دقائق (أخف على DB من كل 60s)
 _STORIES_PURGE_INTERVAL_SECONDS = 300
 _LAST_STORIES_PURGE_TS = 0.0
+# v89.29 — تحرير حجوزات المتجر المنتهية كل دقيقتين
+_SHOP_RESERVATIONS_INTERVAL_SECONDS = 120
+_LAST_SHOP_SWEEP_TS = 0.0
 
 
 def _utcnow_naive() -> datetime:
@@ -113,8 +116,26 @@ def purge_expired_stories_once() -> int:
         db.close()
 
 
+def _sweep_shop_reservations_once() -> int:
+    """v89.29 — يحرّر حجوزات إعلانات المتجر المنتهية (لم يكتمل الدفع خلال TTL)."""
+    try:
+        from app.db.session import SessionLocal  # local import to avoid cycles
+        from app.services import payment_service
+    except Exception as exc:  # pragma: no cover
+        logger.debug('shop sweep imports failed: %s', exc)
+        return 0
+    db = SessionLocal()
+    try:
+        return payment_service.sweep_expired_reservations(db)
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
 def _scheduler_loop() -> None:
-    global _LAST_STORIES_PURGE_TS
+    global _LAST_STORIES_PURGE_TS, _LAST_SHOP_SWEEP_TS
     while True:
         try:
             publish_due_posts_once()
@@ -127,6 +148,14 @@ def _scheduler_loop() -> None:
                 _LAST_STORIES_PURGE_TS = now_ts
         except Exception as exc:
             logger.exception("Stories purge loop error: %s", exc)
+        # v89.29 — تحرير حجوزات المتجر المنتهية
+        try:
+            now_ts = time.time()
+            if now_ts - _LAST_SHOP_SWEEP_TS >= _SHOP_RESERVATIONS_INTERVAL_SECONDS:
+                _sweep_shop_reservations_once()
+                _LAST_SHOP_SWEEP_TS = now_ts
+        except Exception as exc:
+            logger.exception("Shop reservations sweep error: %s", exc)
         time.sleep(_SWEEP_INTERVAL_SECONDS)
 
 

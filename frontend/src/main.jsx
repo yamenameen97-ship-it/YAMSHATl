@@ -13,6 +13,8 @@ import RealtimeProvider from './realtime/RealtimeProvider.jsx';
 import { initializePerformanceToolkit } from './utils/performance.js';
 import { initializeRuntimeErrorCapture } from './utils/runtimeErrors.js';
 import { installBrokenMediaSuppressor } from './utils/brokenMediaSuppressor.js';
+// ✅ v89.32: تسخين كاش الوسائط (Thumbnails + Reels) داخل Service Worker
+import { initMediaWarmup } from './offline/mediaWarmup.js';
 import notificationService from './services/notificationService.js';
 import audioService from './services/audio/audioService.js';
 import { activateMediaEventBridge } from './services/audio/mediaEventBridge.js';
@@ -966,6 +968,8 @@ if (typeof window !== 'undefined') {
   initializeRuntimeErrorCapture();
   // v59.12: كتم أخطاء 404 للوسائط التالفة (/uploads/*) واستبدالها بـ placeholder محلي
   installBrokenMediaSuppressor();
+  // ✅ v89.32: تفعيل استماع تسخين الوسائط عند رجوع الاتصال + جاهزية SW
+  initMediaWarmup();
   initializeViewportTracker();
 
   // ✅ v89.01 ROOT FIX #2 (pwaInitializer.init() كان مؤجّلاً داخل requestIdleCallback):

@@ -27,6 +27,8 @@ import ScrollToTopFab from '../components/feed/ScrollToTopFab.jsx';
 import { timeAgoAr as fmtTimeAgoAr, formatLocalDateTimeAr } from '../utils/timeFormat.js';
 // ✅ v88.89: حفظ آخر 10 منشورات في IndexedDB للتصفح بدون إنترنت
 import offlineCache from '../offline/offlineSessionCache.js';
+// ✅ v89.32: تسخين الوسائط داخل كاش SW
+import { queueItemsForWarmup } from '../offline/mediaWarmup.js';
 import {
   likePost as apiLikePost,
   savePost as apiSavePost,
@@ -1114,9 +1116,12 @@ function FeedDesktopInner() {
   }, []);
 
   // ✅ v88.89: حفظ آخر 10 منشورات فور وصولها من الشبكة
+  // ✅ v89.32: تسخين الصور والفيديوهات داخل كاش Service Worker
   useEffect(() => {
     if (Array.isArray(posts) && posts.length) {
-      offlineCache.cacheFeedPosts?.(posts.slice(0, 10)).catch(() => {});
+      const top10 = posts.slice(0, 10);
+      offlineCache.cacheFeedPosts?.(top10).catch(() => {});
+      try { queueItemsForWarmup(top10); } catch { /* ignore */ }
     }
   }, [posts]);
 

@@ -2,9 +2,24 @@ import { create } from 'zustand';
 import { normalizeNotification } from '../utils/notificationCenter.js';
 
 const STORAGE_KEY = 'yamshat_notifications';
-const BATCH_DELAY_MS = 300;
+// ✅ v89.33 (State Management sync fix): كان التأخير 300ms كافياً لجعل جرس Navbar
+//    يتأخر عن صفحة الإشعارات بشكل مرئي. خفّضناه إلى 60ms + flushBatch فوري
+//    عند فتح الإشعار / markRead — كي يبقى الاشتراكان (Navbar + الصفحة) على نفس
+//    مصدر الحقيقة في نفس الـ tick.
+const BATCH_DELAY_MS = 60;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_STORED_NOTIFICATIONS = 500;
+
+// ✅ v89.33: ناقل حدث خفيف لإجبار مستهلكي React Query (شارة Topbar) على
+//    إبطال الكاش فوراً عند أي تغيير في المتجر الرسمي — يضمن التزامن اللحظي.
+function broadcastNotificationsChanged(reason = 'store-update') {
+  if (typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new CustomEvent('yamshat:notifications-changed', {
+      detail: { reason, at: Date.now() },
+    }));
+  } catch { /* noop */ }
+}
 
 /**
  * Sorts notifications by creation date (newest first)
@@ -86,13 +101,18 @@ export const useNotificationStore = create((set, get) => {
    * Processes batched notifications
    */
   const processBatch = () => {
+    if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
     if (pendingBatch.length === 0) return;
 
+    // نلتقط الدفعة الحالية محلياً لتفادي أي سباق مع upserts متتالية
+    const drained = pendingBatch;
+    pendingBatch = [];
+
     set((state) => {
-      const allItems = [...state.items, ...pendingBatch];
+      const allItems = [...state.items, ...drained];
       const deduplicated = deduplicateNotifications(allItems);
       const sorted = sortNotifications(deduplicated);
-      
+
       // Save to storage for persistence
       saveToStorage(sorted);
 
@@ -103,7 +123,8 @@ export const useNotificationStore = create((set, get) => {
       };
     });
 
-    pendingBatch = [];
+    // ✅ v89.33: بثّ حدث تغيير حتى تتزامن الشارة (React Query) مع المتجر
+    broadcastNotificationsChanged('batch-flush');
   };
 
   /**
@@ -134,31 +155,36 @@ export const useNotificationStore = create((set, get) => {
     /**
      * Hydrates notifications from API with deduplication and persistence
      */
-    hydrateNotifications: (items = [], options = {}) => set((state) => {
-      const replace = options.replace !== false;
-      let allItems = [];
+    hydrateNotifications: (items = [], options = {}) => {
+      // ✅ v89.33: نُفرغ أي دفعة مؤجّلة قبل الاستبدال حتى لا تتسرّب upserts قديمة
+      //   بعد hydrate → مصدر واحد للحقيقة في نفس اللحظة.
+      if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
+      pendingBatch = [];
 
-      if (!replace) {
-        // Merge with existing items
-        allItems = [...state.items, ...items];
-      } else {
-        // Replace all items
-        allItems = items;
-      }
+      set((state) => {
+        const replace = options.replace !== false;
+        let allItems = [];
 
-      const deduplicated = deduplicateNotifications(allItems);
-      const sorted = sortNotifications(deduplicated);
+        if (!replace) {
+          allItems = [...state.items, ...items];
+        } else {
+          allItems = items;
+        }
 
-      // Save to storage for persistence
-      saveToStorage(sorted);
+        const deduplicated = deduplicateNotifications(allItems);
+        const sorted = sortNotifications(deduplicated);
 
-      return {
-        items: sorted,
-        initialized: true,
-        error: '',
-        cacheTimestamp: Date.now(),
-      };
-    }),
+        saveToStorage(sorted);
+
+        return {
+          items: sorted,
+          initialized: true,
+          error: '',
+          cacheTimestamp: Date.now(),
+        };
+      });
+      broadcastNotificationsChanged('hydrate');
+    },
 
     /**
      * Adds a single notification with batching
@@ -177,45 +203,72 @@ export const useNotificationStore = create((set, get) => {
     },
 
     /**
+     * Flushes any pending batched notifications immediately.
+     * ✅ v89.33: يُستدعى قبل قراءة العدّاد في مسارات حساسة زمنياً
+     *    (فتح قائمة الإشعارات، markRead) لضمان التزامن اللحظي بين
+     *    Navbar وصفحة الإشعارات.
+     */
+    flushBatch: () => {
+      processBatch();
+    },
+
+    /**
      * Marks a single notification as read
      */
-    markRead: (notificationId, nextValues = {}) => set((state) => {
-      const updated = state.items.map((item) => (
-        String(item.id) === String(notificationId)
-          ? normalizeNotification({ ...item, ...nextValues, seen: true, is_read: true })
-          : item
-      ));
-      saveToStorage(updated);
-      return { items: updated };
-    }),
+    markRead: (notificationId, nextValues = {}) => {
+      // إفراغ أي دفعة مؤجّلة أولاً حتى لا يُدهس markRead بواسطة upsert لاحق.
+      processBatch();
+      set((state) => {
+        const updated = state.items.map((item) => (
+          String(item.id) === String(notificationId)
+            ? normalizeNotification({ ...item, ...nextValues, seen: true, is_read: true })
+            : item
+        ));
+        saveToStorage(updated);
+        return { items: updated };
+      });
+      broadcastNotificationsChanged('mark-read');
+    },
 
     /**
      * Marks all notifications as read
      */
-    markAllRead: () => set((state) => {
-      const updated = state.items.map((item) => 
-        normalizeNotification({ ...item, seen: true, is_read: true })
-      );
-      saveToStorage(updated);
-      return { items: updated };
-    }),
+    markAllRead: () => {
+      processBatch();
+      set((state) => {
+        const updated = state.items.map((item) =>
+          normalizeNotification({ ...item, seen: true, is_read: true })
+        );
+        saveToStorage(updated);
+        });
+      broadcastNotificationsChanged('mark-all-read');
+    },
 
     /**
      * Removes a notification
      */
-    removeNotification: (notificationId) => set((state) => {
-      const updated = state.items.filter((item) => String(item.id) !== String(notificationId));
-      saveToStorage(updated);
-      return { items: updated };
-    }),
+    removeNotification: (notificationId) => {
+      processBatch();
+      set((state) => {
+        const updated = state.items.filter((item) => String(item.id) !== String(notificationId));
+        saveToStorage(updated);
+        return { items: updated };
+      });
+      broadcastNotificationsChanged('remove');
+    },
 
     /**
      * Clears all notifications
      */
-    clearAll: () => set(() => {
-      localStorage.removeItem(STORAGE_KEY);
-      return { items: [], initialized: true };
-    }),
+    clearAll: () => {
+      if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
+      pendingBatch = [];
+      set(() => {
+        try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+        return { items: [], initialized: true };
+      });
+      broadcastNotificationsChanged('clear-all');
+    },
 
     /**
      * Restores notifications from storage

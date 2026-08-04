@@ -11,6 +11,8 @@ import {
 import { getMe } from '../../api/users.js';
 import { motion, AnimatePresence } from 'framer-motion';
 import offlineCache from '../../offline/offlineSessionCache.js';
+// ✅ v89.32: تسخين صور الستوريات داخل كاش SW
+import { queueItemsForWarmup } from '../../offline/mediaWarmup.js';
 // ✅ v88.81 — النقطة (3): استهلاك حمولة المشاركة الواردة إلى صفحة Stories
 import { consumePendingShare, dataUrlToBlob } from '../../services/share/sharedIntake.js';
 
@@ -68,6 +70,21 @@ export default function StoriesPage() {
     if (!current) return;
     const gid = current.id || current.user?.id || current.user?.username || activeGroupIndex;
     offlineCache.cacheStoryGroup(gid, current).catch(() => {});
+    // ✅ v89.32: سخّن المجموعة الحالية والتالية لتصفح سلس بلا إنترنت
+    try {
+      const win = [
+        groups[activeGroupIndex],
+        groups[activeGroupIndex + 1],
+      ].filter(Boolean);
+      // إدراج عناصر الستوري داخل كل مجموعة إن وجدت
+      const flat = [];
+      for (const g of win) {
+        flat.push(g);
+        if (Array.isArray(g?.items)) flat.push(...g.items);
+        if (Array.isArray(g?.stories)) flat.push(...g.stories);
+      }
+      queueItemsForWarmup(flat);
+    } catch { /* ignore */ }
   }, [activeGroupIndex, groups]);
 
   useEffect(() => { loadData(); }, [loadData]);

@@ -296,6 +296,10 @@ _include("app.api.routes.trending.router", prefix="/api/trending")
 _include("app.api.routes.upload.router", prefix="/api/upload")
 # ✅ v89.22 — Share Download Proxy (yt-dlp) لجلب الفيديو الحقيقي من روابط المنصات
 _include("app.api.routes.share_download.router", prefix="/api/share")
+# ✅ v89.39 — Share Meta: og:image ديناميكي لكل منشور/ريل (معاينات واتساب/تيليجرام/X)
+_include("app.api.routes.share_meta.router", prefix="/api/share-meta")
+# ✅ v89.40 — Share Short: المسار المختصر /s/p/{id} و /s/r/{id} (share_url الرسمي)
+_include("app.api.routes.share_short.router", prefix="/s")
 # ✅ v89.27 ROOT FIX: prefix بديل للطوارئ — لو واجهة قديمة تنادي
 # /api/v1/share/... (توافق مع إصدارات سابقة) تصل لنفس المعالج.
 _include("app.api.routes.share_download.router", prefix="/api/v1/share")

@@ -1,4 +1,4 @@
-// components/feed/ExternalSourceCard.jsx — v89.25
+// components/feed/ExternalSourceCard.jsx — v89.41
 // ---------------------------------------------------------------
 // كارت المصدر الخارجي — يعمل بوضعين:
 //
@@ -148,10 +148,27 @@ function VideoPlayerCard({ linkCard, logo }) {
 
   const pct = totalDurSec > 0 ? Math.min(100, (currentT / totalDurSec) * 100) : 0;
 
+  // ✅ v89.41: شارة YouTube صغيرة أعلى يمين المشغّل + شارة "ملخص" اختيارية أعلى اليسار
+  const isYouTube = String(linkCard?.platform || '').toLowerCase() === 'youtube';
+  const overlayBadge = linkCard?.overlayBadge || linkCard?.scoreBadge || null;
+
   return (
     <div className="ym-ext-card ym-ext-card--video" dir="rtl">
       {/* مشغّل الفيديو */}
       <div className="ym-vplayer" ref={wrapRef} onClick={handleTogglePlay}>
+        {/* شارة أعلى المشغّل (اختيارية) — لمطابقة الصورة المرجعية */}
+        {overlayBadge ? (
+          <div className="ym-vplayer-overlay-badge" aria-hidden="true">
+            {typeof overlayBadge === 'string' ? overlayBadge : 'ملخص المباراة'}
+          </div>
+        ) : null}
+
+        {/* شارة YouTube صغيرة أعلى اليمين */}
+        {isYouTube ? (
+          <div className="ym-vplayer-yt-badge" aria-hidden="true">
+            <YouTubeGlyph size={14} />
+          </div>
+        ) : null}
         {src ? (
           <video
             ref={videoRef}
@@ -579,6 +596,28 @@ function VideoCardStyles() {
         font-weight: 700;
         font-variant-numeric: tabular-nums;
         letter-spacing: 0.3px;
+      }
+      /* شارة YouTube أعلى المشغّل */
+      .ym-vplayer-yt-badge {
+        position: absolute;
+        top: 10px; right: 10px;
+        display: inline-grid; place-items: center;
+        width: 28px; height: 28px;
+        border-radius: 8px;
+        background: rgba(0,0,0,0.55);
+        z-index: 3;
+      }
+      .ym-vplayer-overlay-badge {
+        position: absolute;
+        top: 10px; left: 10px;
+        padding: 6px 12px;
+        border-radius: 8px;
+        background: rgba(0,0,0,0.65);
+        color: #fff;
+        font-size: 0.78rem;
+        font-weight: 800;
+        z-index: 3;
+        direction: rtl;
       }
       /* الأزرار: أسفل اليمين */
       .ym-vplayer-controls {

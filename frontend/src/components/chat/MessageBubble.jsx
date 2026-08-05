@@ -10,6 +10,22 @@ import MessageReadReceipts from './MessageReadReceipts.jsx';
 import MessageRetry from './MessageRetry.jsx';
 import useMessageTranslation from '../../hooks/useMessageTranslation.js';
 import { resolveMediaUrl } from '../../config/mediaConfig.js';
+import ExternalSourceCard from '../feed/ExternalSourceCard.jsx';
+
+// ✅ v89.39 — استخراج link_card من الرسالة بأي شكل وصل
+//   (dict جاهز، JSON string من عمود Text، أو camelCase من حمولة المشاركة).
+function resolveMessageLinkCard(message = {}) {
+  const raw = message?.link_card || message?.linkCard || null;
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch { return null; }
+  }
+  return null;
+}
 
 const QUICK_REACTIONS = ['❤️', '🔥', '😂', '👏', '👍', '😮'];
 
@@ -341,6 +357,9 @@ function MessageBubble({
   const isImage = mediaKind === 'image';
   const isVideo = mediaKind === 'video';
   const isFile = mediaKind === 'file';
+  // ✅ v89.39 — كارت الرابط الغني (يُعرض داخل الفقاعة)
+  const linkCard = resolveMessageLinkCard(message);
+  const hasLinkCard = Boolean(linkCard && !isDeleted);
   const content = normalizeMessageContent(message, mediaKind);
   const fileName = extractFileName(message);
   const shouldGlow = highlightQuery.trim() && messageMatchesSearch(message, highlightQuery);
@@ -720,6 +739,21 @@ function MessageBubble({
               avatarSrc={senderAvatar}
               avatarAlt={message?.sender || '\u0645\u0633\u062a\u062e\u062f\u0645'}
             />
+          ) : null}
+
+          {/* ✅ v89.39 — كارت الرابط الغني داخل فقاعة الدردشة/المجموعات.
+              يُعرض بعد الوسائط وقبل نص الرسالة، ويختفي عند الحذف.
+              في وضع الرابط بدون ملف، يكون هو المحتوى الرئيسي للفقاعة. */}
+          {hasLinkCard ? (
+            <div
+              className="yam-link-card-shell"
+              onClick={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{ width: '100%', minWidth: 240, maxWidth: 340, marginBottom: 6 }}
+            >
+              <ExternalSourceCard linkCard={linkCard} />
+            </div>
           ) : null}
 
           {isFile && mediaUrl && !isDeleted ? (

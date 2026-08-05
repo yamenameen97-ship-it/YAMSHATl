@@ -60,3 +60,20 @@ class Post(Base):
     admin_source_share_mode = Column(String(20), nullable=True)  # 'link' | 'download'
     admin_source_download_size = Column(Integer, nullable=True)
     admin_source_download_mime = Column(String(120), nullable=True)
+
+    # ==========================================================
+    # ✅ v89.37 — REPOST ROOT FIX (إعادة النشر كسجل Post حقيقي)
+    # ==========================================================
+    # original_post_id: يشير إلى المنشور الأصلي عند كون هذا السجل إعادة نشر.
+    #   NULL للمنشور الأصلي.
+    # is_repost: علم صريح لتمييز إعادات النشر عن المنشورات العادية،
+    #   يُستخدم في الفلترة والعرض داخل الفيد وفي صفحة البروفايل.
+    # عند حذف المنشور الأصلي نستخدم SET NULL حتى لا تختفي إعادات النشر
+    # من فيد الأشخاص الذين قاموا بها (نُحوّلها إلى منشور يتيم بمحتواه المخزّن).
+    original_post_id = Column(
+        Integer,
+        ForeignKey('posts.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+    is_repost = Column(Boolean, default=False, nullable=False, index=True)

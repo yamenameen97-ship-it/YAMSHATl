@@ -71,6 +71,10 @@ export const takeReportAction = (reportId, action, notes = null, durationHours =
   API.post(`/admin/reports/${reportId}/action`, { action, notes, duration_hours: durationHours });
 export const updateReportStatus = (reportId, status) => API.patch(`/reports/admin/${reportId}`, { status });
 export const escalateReport = (reportId) => API.post(`/reports/admin/${reportId}/action`, { action: 'escalate' });
+// v89.35 — Bulk Moderation: تنفيذ إجراء جماعي على عدة بلاغات بضغطة زر واحدة
+// action ∈ { 'dismiss', 'escalate', 'remove_content', 'warn_user', 'ban_user', 'temporary_ban' }
+export const bulkModerateReports = (ids, action, notes = null) =>
+  API.post('/reports/admin/bulk', { ids, action, notes });
 
 // ============================================================
 // v88.45 — Reels Management (Admin Panel)

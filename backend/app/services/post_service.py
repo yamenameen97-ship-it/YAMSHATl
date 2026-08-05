@@ -260,7 +260,9 @@ def _can_view_post(post: Post, current_user: User | None) -> bool:
 
 
 def _share_url(post_id: int) -> str:
-    return f'/post/{quote(str(post_id))}'
+    # v89.40: نستخدم المسار المختصر /s/p/{id} الذي يخدم Open Graph للـcrawlers
+    # (واتساب/تيليجرام/X/فيسبوك) ثم يعيد التوجيه للمستخدم البشري إلى #/post/{id}.
+    return f'/s/p/{quote(str(post_id))}'
 
 
 def _resolve_display_name(db: Session, user: User | None) -> tuple[str, str]:
@@ -286,7 +288,7 @@ def _resolve_display_name(db: Session, user: User | None) -> tuple[str, str]:
     return full_name, display_name
 
 
-def _serialize_post(db: Session, post: Post, current_user: User | None = None) -> dict:
+def _serialize_post(db: Session, post: Post, current_user: User | None = None, _depth: int = 0) -> dict:
     user = db.query(User).filter(User.id == post.user_id).first()
     # v88.40: اسم العرض من UserProfile (ياسر حمود قاسم) بدل username الإنجليزي
     author_full_name, author_display_name = _resolve_display_name(db, user)
@@ -338,6 +340,55 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
         first_line = str(post.content or '').strip().split('\n', 1)[0].strip()
         if first_line:
             poll_question_extracted = first_line
+
+    # ==========================================================================
+    # ✅ v89.38 — حساب حقول إعادة النشر مسبقاً بشكل موثوق (Repost Root Serialization)
+    # ==========================================================================
+    _is_repost_flag = bool(getattr(post, 'is_repost', False))
+    _raw_original_id = getattr(post, 'original_post_id', None)
+    try:
+        _original_post_id = int(_raw_original_id) if _raw_original_id is not None else None
+    except Exception:
+        _original_post_id = None
+
+    _embedded_original_post = None
+    if _is_repost_flag and _depth < 1:
+        _orig_obj = None
+        # 1) محاولة القراءة عبر original_post_id (المسار الرئيسي بعد الهجرة)
+        if _original_post_id is not None:
+            try:
+                _orig_obj = db.query(Post).filter(Post.id == _original_post_id).first()
+            except Exception:
+                _orig_obj = None
+        # 2) fallback: استنتاج الأصل من PostShare(share_type='repost') إذا لم يكن original_post_id متاحاً
+        #    (يغطّي إعادات نشر قديمة أنشئت قبل تطبيق الهجرة)
+        if _orig_obj is None:
+            try:
+                _share_row = db.query(PostShare).filter(
+                    PostShare.user_id == post.user_id,
+                    PostShare.share_type == 'repost',
+                ).order_by(PostShare.id.desc()).first()
+                if _share_row is not None and _share_row.post_id:
+                    _orig_obj = db.query(Post).filter(Post.id == int(_share_row.post_id)).first()
+                    if _orig_obj is not None and _original_post_id is None:
+                        _original_post_id = int(_orig_obj.id)
+            except Exception:
+                _orig_obj = None
+        # 3) تسلسل الأصل بأمان مع تقييد العمق لمنع أي حلقة لا نهائية
+        if _orig_obj is not None:
+            try:
+                _embedded_original_post = _serialize_post(
+                    db, _orig_obj, current_user=current_user, _depth=_depth + 1,
+                )
+            except Exception as _err:  # pragma: no cover — دفاع ضد أي تلف بيانات
+                logger.warning('failed to serialize original_post for repost %s: %s', getattr(post, 'id', '?'), _err)
+                _embedded_original_post = {
+                    'id': int(_orig_obj.id),
+                    'user_id': int(getattr(_orig_obj, 'user_id', 0) or 0),
+                    'content': getattr(_orig_obj, 'content', '') or '',
+                    'image_url': getattr(_orig_obj, 'image_url', '') or '',
+                    'media_url': getattr(_orig_obj, 'media', '') or getattr(_orig_obj, 'image_url', '') or '',
+                }
 
     return {
         'id': post.id,
@@ -406,6 +457,23 @@ def _serialize_post(db: Session, post: Post, current_user: User | None = None) -
             'download_size': getattr(post, 'admin_source_download_size', None),
             'download_mime': getattr(post, 'admin_source_download_mime', None),
         } if getattr(post, 'admin_source_platform', None) or getattr(post, 'admin_source_url', None) else None,
+        # ✅ v89.38 — حقول إعادة النشر الجذرية (Repost Root) — تضمين original_post موثوق
+        'is_repost': _is_repost_flag,
+        'original_post_id': _original_post_id,
+        # عند كونه إعادة نشر، أرفق بيانات المنشور الأصلي ليعرضها الفرونت
+        # (مثل X/Twitter Retweet card) مع تقييد _depth لمنع أي تكرار لا نهائي.
+        # ✅ v89.38: منطق موحّد وموثوق — إذا كان is_repost=True وrepost سابق (قبل الهجرة)
+        # بلا original_post_id، نحاول استنتاج الأصل من PostShare(share_type='repost')
+        # لنفس user_id ليضمن ظهور بطاقة الأصل دائماً.
+        'original_post': _embedded_original_post,
+        # مُعيد النشر (reposter) — يُستخدم لعرض شارة "أعاد فلان النشر"
+        'reposter': {
+            'user_id': int(post.user_id),
+            'username': user.username if user else (getattr(post, 'username', None) or None),
+            'display_name': author_display_name,
+            'full_name': author_full_name,
+            'avatar': user.avatar if user else None,
+        } if _is_repost_flag else None,
     }
 
 
@@ -871,14 +939,19 @@ def toggle_save_post(db: Session, user_id: int, post_id: int) -> dict:
 
 
 def share_post(db: Session, user_id: int, post_id: int, platform: str | None = None, *, share_type: str | None = None, quote_text: str | None = None) -> dict:
-    """v88.99 — مشاركة أو إعادة نشر منشور.
+    """v89.37 ROOT FIX — مشاركة أو إعادة نشر منشور.
 
     - platform: المنصة المستهدفة للمشاركة العادية ('copy', 'whatsapp', ...).
     - share_type: 'repost' لإعادة النشر، أو 'share' (افتراضي) للمشاركة العادية.
     - quote_text: نص الاقتباس عند إعادة النشر من نوع quote.
 
-    سلوك إعادة النشر (repost): تبديل (toggle) — إذا كان المستخدم قد أعاد نشر
-    المنشور مسبقاً يتم إلغاء إعادة النشر، وإلا تُسجَّل إعادة نشر جديدة.
+    سلوك إعادة النشر (repost):
+      — تبديل (toggle): إذا كان لدى المستخدم إعادة نشر سابقة
+        لنفس المنشور → تُحذف إعادة النشر (Post التي is_repost=True)
+        وسجل PostShare المقابل ويُحدّث العداد.
+      — في حالة إضافة: يُنشَأ **سجل Post حقيقي** (is_repost=True,
+        original_post_id=post_id) بمحتوى وميديا المنشور الأصلي،
+        حتى يظهر فوراً في فيد المُعيد للنشر وفي بروفايله (مثل X/Twitter Retweet).
     """
     post = db.query(Post).filter(Post.id == post_id).first()
     if post is None:
@@ -889,82 +962,156 @@ def share_post(db: Session, user_id: int, post_id: int, platform: str | None = N
         resolved_share_type = 'share'
 
     # ==========================================================
-    # ✅ v88.99 — معالجة إعادة النشر (repost) كتبديل (toggle)
+    # ✅ v89.37 — REPOST ROOT FIX: إنشاء سجل Post حقيقي لإعادة النشر
     # ==========================================================
     if resolved_share_type == 'repost':
-        existing_repost = db.query(PostShare).filter(
-            PostShare.post_id == post_id,
+        # لا يمكن إعادة نشر إعادة نشر — ارجع دائماً للأصل
+        target_post_id = int(getattr(post, 'original_post_id', None) or post.id)
+        target_post = post
+        if target_post_id != int(post.id):
+            resolved_target = db.query(Post).filter(Post.id == target_post_id).first()
+            if resolved_target is not None:
+                target_post = resolved_target
+
+        # تحقق من وجود إعادة نشر سابقة من نفس المستخدم لنفس المنشور الأصلي
+        existing_repost_post = None
+        try:
+            existing_repost_post = db.query(Post).filter(
+                Post.user_id == user_id,
+                Post.original_post_id == target_post_id,
+                Post.is_repost.is_(True),
+            ).first()
+        except Exception:
+            # حماية دفاعية إذا لم تُطبق الهجرة بعد
+            existing_repost_post = None
+
+        existing_share_row = db.query(PostShare).filter(
+            PostShare.post_id == target_post_id,
             PostShare.user_id == user_id,
             PostShare.share_type == 'repost',
         ).first()
 
-        if existing_repost is not None:
-            # إلغاء إعادة النشر — احذف السجل ونقص العداد
-            db.delete(existing_repost)
+        # ---------- إلغاء إعادة النشر (Toggle OFF) ----------
+        if existing_repost_post is not None or existing_share_row is not None:
+            if existing_repost_post is not None:
+                db.delete(existing_repost_post)
+            if existing_share_row is not None:
+                db.delete(existing_share_row)
             db.flush()
             reposts_count = db.query(func.count(PostShare.id)).filter(
-                PostShare.post_id == post_id,
+                PostShare.post_id == target_post_id,
                 PostShare.share_type == 'repost',
             ).scalar() or 0
             try:
-                post.reposts_count = int(reposts_count)
+                target_post.reposts_count = int(reposts_count)
             except Exception:
                 pass
             db.commit()
             return {
-                'post_id': post_id,
+                'post_id': target_post_id,
                 'reposted': False,
                 'is_reposted': False,
                 'reposts_count': int(reposts_count),
                 'repost_count': int(reposts_count),
                 'share_type': 'repost',
-                'share_url': _share_url(post_id),
+                'share_url': _share_url(target_post_id),
             }
-        else:
-            # تسجيل إعادة نشر جديدة
-            share = PostShare(
-                post_id=post_id,
-                user_id=user_id,
-                platform='repost',
-                share_type='repost',
-                quote_text=str(quote_text or '').strip()[:500] or None if quote_text else None,
+
+        # ---------- تسجيل إعادة نشر جديدة (Toggle ON) ----------
+        # 1) سجل PostShare للعداد
+        share_row = PostShare(
+            post_id=target_post_id,
+            user_id=user_id,
+            platform='repost',
+            share_type='repost',
+            quote_text=(str(quote_text).strip()[:500] or None) if quote_text else None,
+        )
+        db.add(share_row)
+
+        # 2) ✅ إنشاء سجل Post حقيقي للإعادة (الإصلاح الجذري)
+        actor = db.query(User).filter(User.id == user_id).first()
+        now = utcnow_naive()
+
+        # التأكد من وجود الأعمدة قبل الإنشاء (دفاعياً حيال تأخّر Alembic)
+        try:
+            _post_columns = set(Post.__table__.columns.keys())
+        except Exception:
+            _post_columns = set()
+
+        repost_kwargs: dict = {
+            'user_id': int(user_id),
+            'username': actor.username if actor else None,
+            # نسخ المحتوى من الأصل حتّى يبقى مرئياً حتى لو حُذف الأصل
+            'content': (str(quote_text).strip()[:500] if quote_text else (target_post.content or '')),
+            'content_html': target_post.content_html or None,
+            'media': target_post.media,
+            'image_url': target_post.image_url,
+            'media_json': target_post.media_json,
+            'hashtags_json': target_post.hashtags_json,
+            'mentions_json': target_post.mentions_json,
+            'is_draft': False,
+            'is_pinned': False,
+            'allow_comments': True,
+            'published_at': now,
+            'updated_at': now,
+            'created_at': now,
+        }
+
+        if 'is_repost' in _post_columns or not _post_columns:
+            repost_kwargs['is_repost'] = True
+        if 'original_post_id' in _post_columns or not _post_columns:
+            repost_kwargs['original_post_id'] = target_post_id
+
+        # تمرير verified_by_yamshat و link_card من الأصل حتى يظهر كارد المصدر في الإعادة
+        if 'link_card' in _post_columns and getattr(target_post, 'link_card', None):
+            repost_kwargs['link_card'] = target_post.link_card
+        if 'verified_by_yamshat' in _post_columns:
+            repost_kwargs['verified_by_yamshat'] = bool(getattr(target_post, 'verified_by_yamshat', False))
+
+        repost_post = Post(**repost_kwargs)
+        db.add(repost_post)
+        db.flush()
+
+        # 3) تحديث عداد إعادات النشر على المنشور الأصلي
+        reposts_count = db.query(func.count(PostShare.id)).filter(
+            PostShare.post_id == target_post_id,
+            PostShare.share_type == 'repost',
+        ).scalar() or 0
+        try:
+            target_post.reposts_count = int(reposts_count)
+        except Exception:
+            pass
+
+        db.commit()
+        db.refresh(repost_post)
+
+        # v87.0 — إشعار: شخص أعاد نشر منشورك
+        if target_post.user_id and int(target_post.user_id) != int(user_id):
+            _notify(
+                db,
+                user_id=int(target_post.user_id),
+                notification_type='POST_REPOST',
+                data={
+                    'post_id': int(target_post_id),
+                    'repost_id': int(repost_post.id),
+                    'from_user_id': int(user_id),
+                    'username': (actor.username if actor else None),
+                    'actor_avatar': (getattr(actor, 'avatar', None) if actor else None),
+                },
             )
-            db.add(share)
-            db.flush()
-            reposts_count = db.query(func.count(PostShare.id)).filter(
-                PostShare.post_id == post_id,
-                PostShare.share_type == 'repost',
-            ).scalar() or 0
-            try:
-                post.reposts_count = int(reposts_count)
-            except Exception:
-                pass
-            db.commit()
 
-            # v87.0 — إشعار: شخص أعاد نشر منشورك
-            if post.user_id and int(post.user_id) != int(user_id):
-                actor = db.query(User).filter(User.id == user_id).first()
-                _notify(
-                    db,
-                    user_id=int(post.user_id),
-                    notification_type='POST_REPOST',
-                    data={
-                        'post_id': int(post_id),
-                        'from_user_id': int(user_id),
-                        'username': (actor.username if actor else None),
-                        'actor_avatar': (getattr(actor, 'avatar', None) if actor else None),
-                    },
-                )
-
-            return {
-                'post_id': post_id,
-                'reposted': True,
-                'is_reposted': True,
-                'reposts_count': int(reposts_count),
-                'repost_count': int(reposts_count),
-                'share_type': 'repost',
-                'share_url': _share_url(post_id),
-            }
+        return {
+            'post_id': target_post_id,
+            'repost_id': int(repost_post.id),
+            'reposted': True,
+            'is_reposted': True,
+            'reposts_count': int(reposts_count),
+            'repost_count': int(reposts_count),
+            'share_type': 'repost',
+            'share_url': _share_url(target_post_id),
+            # يُمكّن الفرونت من حقن الإعادة مباشرةً في الفيد دون انتظار refetch
+            'repost': _serialize_post(db, repost_post, current_user=actor),
+        }
 
     # ==========================================================
     # المشاركة العادية (share) — تبقى كما هي

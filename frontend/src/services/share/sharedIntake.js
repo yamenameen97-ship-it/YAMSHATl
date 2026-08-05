@@ -482,6 +482,13 @@ export function stagePendingShare(payload, chosenTarget, options = {}) {
 
   const adminSource = options.adminSource || buildAdminSource({ url, title, text, mode, fileMeta: usedFileMeta });
 
+  // ✅ v89.39 ROOT FIX: في وضع 'link' بدون ملف، إن لم يوجد linkCard أصلاً
+  //   (مثلاً استعادة من sessionStorage بعد reload قديم) نبنيه الآن ضماناً
+  //   لاكتمال السلسلة — لا تصل الدردشة/المجموعات رسالة نصية عارية أبداً.
+  const finalLinkCard = (mode === 'link' && !linkCard && url)
+    ? buildDefaultLinkCard({ title, text, url, thumbnailDataUrl: options.thumbnailDataUrl })
+    : linkCard;
+
   _memoryPending = {
     target,
     mode,
@@ -492,7 +499,7 @@ export function stagePendingShare(payload, chosenTarget, options = {}) {
     sourceTitle: title,
     sourceText: text,
     thumbnailDataUrl: options.thumbnailDataUrl || null,
-    linkCard,
+    linkCard: finalLinkCard,
     adminSource,
     verifiedByYamshat: mode === 'download',
     receivedAt: payload.receivedAt || new Date().toISOString(),
@@ -508,7 +515,7 @@ export function stagePendingShare(payload, chosenTarget, options = {}) {
       sourceTitle: title,
       sourceText: text,
       thumbnailDataUrl: options.thumbnailDataUrl || null,
-      linkCard,
+      linkCard: finalLinkCard,
       adminSource,
       verifiedByYamshat: _memoryPending.verifiedByYamshat,
       receivedAt: _memoryPending.receivedAt,
@@ -538,7 +545,17 @@ export function consumePendingShare(expectedTarget) {
           sourceTitle: parsed.sourceTitle || '',
           sourceText: parsed.sourceText || '',
           thumbnailDataUrl: parsed.thumbnailDataUrl || null,
-          linkCard: parsed.linkCard || null,
+          // ✅ v89.39 ROOT FIX: إن فُقد linkCard من نسخة sessionStorage قديمة
+          //   لكن sourceUrl موجود في وضع link، نعيد بناءه — السلسلة لا تنقطع.
+          linkCard: parsed.linkCard
+            || ((parsed.mode || 'link') === 'link' && parsed.sourceUrl
+              ? buildDefaultLinkCard({
+                  title: parsed.sourceTitle || '',
+                  text: parsed.sourceText || '',
+                  url: parsed.sourceUrl,
+                  thumbnailDataUrl: parsed.thumbnailDataUrl || null,
+                })
+              : null),
           adminSource: parsed.adminSource || null,
           verifiedByYamshat: Boolean(parsed.verifiedByYamshat),
           receivedAt: parsed.receivedAt || new Date().toISOString(),
@@ -560,7 +577,13 @@ export function consumePendingShare(expectedTarget) {
 }
 
 export function peekPendingShare() {
-  if (_memoryPending) return { hasFile: Boolean(_memoryPending.file), target: _memoryPending.target, mode: _memoryPending.mode };
+  if (_memoryPending) return {
+    hasFile: Boolean(_memoryPending.file),
+    target: _memoryPending.target,
+    mode: _memoryPending.mode,
+    // ✅ v89.39: كشف وجود كارت الرابط مسبقاً لتعرض الشاشات معاينة غنية
+    hasLinkCard: Boolean(_memoryPending.linkCard),
+  };
   try {
     const raw = sessionStorage.getItem(PENDING_KEY);
     if (!raw) return null;
@@ -965,6 +988,9 @@ export async function directPublishFromShare({
   if (target === 'chat' || target === 'groups') {
     // للتحادث/المجموعات ليس هناك نشر بلا مستقبِل محدَّد → نعيد ميتاداتا الرفع
     // ليختار المستخدم المستقبِل في الشاشة التالية، بدون المرور بـ PostComposer.
+    // ✅ v89.39 ROOT FIX: نمرّر السلسلة كاملة (linkCard + adminSource + verifiedByYamshat
+    //   + sourceUrl/sourceTitle/sourceText) لتصل Inbox/GroupsHome فترسلها في
+    //   حمولة الرسالة (link_card) — سابقاً كان يُمرَّر linkCard فقط ويسقط الباقي.
     return {
       ok: true,
       routed: target,
@@ -975,6 +1001,11 @@ export async function directPublishFromShare({
       isImage,
       description,
       linkCard,
+      adminSource,
+      verifiedByYamshat: !!verifiedByYamshat,
+      sourceUrl,
+      sourceTitle,
+      sourceText,
     };
   }
 

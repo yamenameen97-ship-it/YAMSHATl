@@ -11,6 +11,7 @@ import {
   getAdminReportsSummary,
   takeReportAction,
   updateReportStatus,
+  bulkModerateReports,
 } from '../../api/admin.js';
 import socket from '../../api/socket.js';
 
@@ -142,7 +143,7 @@ function deriveAppealsFromReports(reports) {
     }));
 }
 
-function QueueRow({ report, active, onOpen, onResolve, onEscalate, onRemove }) {
+function QueueRow({ report, active, onOpen, onResolve, onEscalate, onRemove, isSelected, onToggleSelect }) {
   return (
     <div
       onClick={() => onOpen(report)}
@@ -152,14 +153,31 @@ function QueueRow({ report, active, onOpen, onResolve, onEscalate, onRemove }) {
         borderRadius: 18,
         padding: '14px 16px',
         cursor: 'pointer',
-        background: active ? 'rgba(59,130,246,0.14)' : 'rgba(15,23,42,0.7)',
-        border: `1px solid ${active ? 'rgba(59,130,246,0.55)' : 'rgba(148,163,184,0.14)'}`,
+        background: isSelected
+          ? 'rgba(139,92,246,0.16)'
+          : active
+            ? 'rgba(59,130,246,0.14)'
+            : 'rgba(15,23,42,0.7)',
+        border: `1px solid ${isSelected ? 'rgba(139,92,246,0.6)' : active ? 'rgba(59,130,246,0.55)' : 'rgba(148,163,184,0.14)'}`,
         display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1.7fr) minmax(180px, 0.9fr) minmax(220px, 0.9fr)',
+        gridTemplateColumns: '28px minmax(0, 1.7fr) minmax(180px, 0.9fr) minmax(220px, 0.9fr)',
         gap: 14,
         alignItems: 'center',
       }}
     >
+      <div
+        onClick={(event) => { event.stopPropagation(); onToggleSelect(report.id); }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <input
+          type="checkbox"
+          checked={!!isSelected}
+          onChange={(event) => { event.stopPropagation(); onToggleSelect(report.id); }}
+          onClick={(event) => event.stopPropagation()}
+          style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#8b5cf6' }}
+          aria-label={`تحديد البلاغ ${report.id}`}
+        />
+      </div>
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 800, color: '#f8fafc' }}>{report.type}</span>
@@ -202,6 +220,11 @@ export default function AdminReports() {
   const [removals, setRemovals] = useState([]);
   const [appeals, setAppeals] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
+  // v89.35 — Bulk Moderation state
+  const [selectedReportIds, setSelectedReportIds] = useState([]);
+  const [bulkBusy, setBulkBusy] = useState('');
+  const [bulkNotes, setBulkNotes] = useState('');
+  const [confirmBulk, setConfirmBulk] = useState(null); // { action, label, tone }
 
   const pushActivity = useCallback((title, description, tone = '#38bdf8') => {
     setActivityLog((prev) => [{ id: `${Date.now()}-${prev.length}`, title, description, tone, at: new Date().toISOString() }, ...prev].slice(0, 12));
@@ -507,6 +530,104 @@ export default function AdminReports() {
     pushToast({ type: 'success', title: 'تمت المزامنة', description: 'تم جلب أحدث بيانات البلاغات من الخادم.' });
   }, [loadReports, pushActivity, pushToast]);
 
+  // v89.35 — Bulk Moderation: helpers
+  const toggleReportSelect = useCallback((id) => {
+    setSelectedReportIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }, []);
+
+  const toggleSelectAllVisible = useCallback(() => {
+    setSelectedReportIds((prev) => {
+      const visibleIds = filteredReports.map((r) => r.id);
+      const allSelected = visibleIds.length > 0 && visibleIds.every((id) => prev.includes(id));
+      if (allSelected) {
+        return prev.filter((id) => !visibleIds.includes(id));
+      }
+      return Array.from(new Set([...prev, ...visibleIds]));
+    });
+  }, [filteredReports]);
+
+  const clearBulkSelection = useCallback(() => setSelectedReportIds([]), []);
+
+  const applyBulkAction = useCallback(async (action, label, tone = '#8b5cf6') => {
+    if (!selectedReportIds.length) {
+      pushToast({ type: 'warning', title: 'لا يوجد تحديد', description: 'حدد بلاغًا واحدًا على الأقل قبل تنفيذ الإجراء الجماعي.' });
+      return;
+    }
+    const ids = [...selectedReportIds];
+    const previousStates = new Map();
+    // Optimistic update
+    setReports((prev) => prev.map((item) => {
+      if (!ids.includes(item.id)) return item;
+      previousStates.set(item.id, { status: item.status, severity: item.severity });
+      if (action === 'dismiss') return { ...item, status: 'resolved' };
+      if (action === 'escalate') return { ...item, status: 'escalated', severity: item.severity === 'critical' ? 'critical' : 'high' };
+      if (action === 'remove_content') return { ...item, status: 'resolved' };
+      if (action === 'warn_user' || action === 'ban_user' || action === 'temporary_ban') return { ...item, status: 'resolved' };
+      return item;
+    }));
+
+    try {
+      setBulkBusy(action);
+      const { data } = await bulkModerateReports(ids, action, bulkNotes || `إجراء جماعي: ${label}`);
+      const results = Array.isArray(data?.results) ? data.results : [];
+      const okCount = results.filter((r) => r.ok).length;
+      const failCount = results.length - okCount;
+
+      // Revert failed items
+      const failedIds = new Set(results.filter((r) => !r.ok).map((r) => r.id));
+      if (failedIds.size) {
+        setReports((prev) => prev.map((item) => failedIds.has(item.id) && previousStates.has(item.id)
+          ? { ...item, ...previousStates.get(item.id) }
+          : item));
+      }
+
+      pushActivity(`bulk_${action}`, `${label} • نجح ${okCount}${failCount ? ` / فشل ${failCount}` : ''}`, tone);
+      pushToast({
+        type: failCount ? 'warning' : 'success',
+        title: 'تم تنفيذ الإجراء الجماعي',
+        description: `${label}: نجح ${okCount} من أصل ${results.length}${failCount ? ` • فشل ${failCount}` : ''}`,
+      });
+
+      // Update removals/appeals for actions that create them
+      if (action === 'remove_content' || action === 'temporary_ban') {
+        const successful = results.filter((r) => r.ok).map((r) => r.id);
+        setReports((current) => {
+          const affected = current.filter((r) => successful.includes(r.id));
+          affected.forEach((r) => createRemovalRecord(r, action === 'temporary_ban' ? 'temporary_ban' : 'remove_content'));
+          return current;
+        });
+      }
+
+      setSelectedReportIds([]);
+      setBulkNotes('');
+      setConfirmBulk(null);
+    } catch (error) {
+      // Full revert
+      setReports((prev) => prev.map((item) => previousStates.has(item.id)
+        ? { ...item, ...previousStates.get(item.id) }
+        : item));
+      pushToast({
+        type: 'error',
+        title: 'تعذر تنفيذ الإجراء الجماعي',
+        description: error?.response?.data?.detail || error?.message || 'الخادم لم يستجب للطلب.',
+      });
+    } finally {
+      setBulkBusy('');
+    }
+  }, [selectedReportIds, bulkNotes, pushActivity, pushToast, createRemovalRecord]);
+
+  const bulkToolbarActions = useMemo(() => [
+    { action: 'dismiss', label: 'اعتماد/إغلاق', tone: '#22c55e', variant: 'success' },
+    { action: 'escalate', label: 'تصعيد', tone: '#3b82f6', variant: 'primary' },
+    { action: 'remove_content', label: 'إزالة المحتوى', tone: '#f97316', variant: 'danger' },
+    { action: 'warn_user', label: 'تحذير المستخدمين', tone: '#facc15', variant: 'warning' },
+    { action: 'temporary_ban', label: 'حظر مؤقت', tone: '#f59e0b', variant: 'warning' },
+    { action: 'ban_user', label: 'حظر دائم', tone: '#dc2626', variant: 'danger' },
+  ], []);
+
+  const visibleAllSelected = filteredReports.length > 0 && filteredReports.every((r) => selectedReportIds.includes(r.id));
+  const visibleSomeSelected = filteredReports.some((r) => selectedReportIds.includes(r.id));
+
   const moderationActions = [
     { key: 'temporary_ban', title: 'حظر مؤقت', description: 'تسجيل قيد مؤقت وربطه بالبلاغ المحدد', tone: '#ef4444', action: () => handleTemporaryBan(activeReport) },
     { key: 'remove_content', title: 'إخفاء المحتوى', description: 'إزالة فورية للمحتوى وربطه بسجل الإزالة', tone: '#f97316', action: () => handleRemoveContent(activeReport) },
@@ -590,6 +711,72 @@ export default function AdminReports() {
                   <label className="field select-field"><span className="field-label">المسار</span><select className="input" value={filters.queue} onChange={(event) => setFilters((prev) => ({ ...prev, queue: event.target.value }))}><option value="all">الكل</option>{queueMix.map((item) => <option key={item.label} value={item.label}>{item.label}</option>)}</select></label>
                 </div>
 
+                {/* v89.35 — شريط أدوات الإشراف الجماعي (Bulk Moderation) */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 10,
+                    padding: '12px 14px',
+                    marginBottom: 12,
+                    borderRadius: 16,
+                    background: selectedReportIds.length
+                      ? 'linear-gradient(135deg, rgba(139,92,246,0.14), rgba(59,130,246,0.10))'
+                      : 'rgba(15,23,42,0.6)',
+                    border: `1px solid ${selectedReportIds.length ? 'rgba(139,92,246,0.5)' : 'rgba(148,163,184,0.14)'}`,
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: '#e2e8f0', fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={visibleAllSelected}
+                          ref={(el) => { if (el) el.indeterminate = !visibleAllSelected && visibleSomeSelected; }}
+                          onChange={toggleSelectAllVisible}
+                          style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#8b5cf6' }}
+                        />
+                        <span>تحديد الكل ({filteredReports.length})</span>
+                      </label>
+                      <div style={{ color: '#8b5cf6', fontSize: 13, fontWeight: 700 }}>
+                        {selectedReportIds.length ? `✓ ${selectedReportIds.length} محدد` : 'لا يوجد تحديد'}
+                      </div>
+                    </div>
+                    {selectedReportIds.length ? (
+                      <Button size="small" variant="secondary" onClick={clearBulkSelection}>إلغاء التحديد</Button>
+                    ) : null}
+                  </div>
+
+                  {selectedReportIds.length ? (
+                    <>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {bulkToolbarActions.map((btn) => (
+                          <Button
+                            key={btn.action}
+                            size="small"
+                            variant={btn.variant}
+                            loading={bulkBusy === btn.action}
+                            disabled={!!bulkBusy && bulkBusy !== btn.action}
+                            onClick={() => setConfirmBulk(btn)}
+                            style={{ borderColor: `${btn.tone}66` }}
+                          >
+                            {btn.label}
+                          </Button>
+                        ))}
+                      </div>
+                      <Input
+                        placeholder="ملاحظة اختيارية تُرفق مع كل إجراء (تظهر في سجل التدقيق)…"
+                        value={bulkNotes}
+                        onChange={(event) => setBulkNotes(event.target.value)}
+                      />
+                    </>
+                  ) : (
+                    <div style={{ color: '#94a3b8', fontSize: 12 }}>
+                      حدد عدة بلاغات من القائمة لتفعيل أدوات الإشراف الجماعيًا (اعتماد / تصعيد / إزالة / تحذير / حظر) بضغطة زر واحدة.
+                    </div>
+                  )}
+                </div>
+
                 <div
                   onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
                   style={{
@@ -613,6 +800,8 @@ export default function AdminReports() {
                             onResolve={handleResolve}
                             onEscalate={handleEscalate}
                             onRemove={handleRemoveContent}
+                            isSelected={selectedReportIds.includes(report.id)}
+                            onToggleSelect={toggleReportSelect}
                           />
                         </div>
                       );
@@ -772,6 +961,55 @@ export default function AdminReports() {
               </ul>
             </Card>
           </section>
+        ) : null}
+
+        {/* v89.35 — مودال تأكيد الإجراء الجماعي */}
+        {confirmBulk ? (
+          <div
+            onClick={() => !bulkBusy && setConfirmBulk(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(2,6,23,0.72)',
+              backdropFilter: 'blur(6px)',
+              display: 'grid',
+              placeItems: 'center',
+              zIndex: 9999,
+              padding: 20,
+            }}
+          >
+            <Card
+              onClick={(event) => event.stopPropagation()}
+              style={{ padding: 24, maxWidth: 480, width: '100%', border: `1px solid ${confirmBulk.tone}55` }}
+            >
+              <div style={{ fontSize: 13, color: confirmBulk.tone, marginBottom: 8, fontWeight: 700 }}>
+                تأكيد إجراء جماعي
+              </div>
+              <h3 style={{ margin: '0 0 12px', color: '#f8fafc' }}>
+                {confirmBulk.label} لـ {selectedReportIds.length} بلاغ
+              </h3>
+              <p style={{ margin: '0 0 16px', color: '#cbd5e1', lineHeight: 1.8, fontSize: 14 }}>
+                سيتم تطبيق إجراء <strong style={{ color: confirmBulk.tone }}>{confirmBulk.label}</strong> 
+                على {selectedReportIds.length} بلاغ دفعة واحدة. هذا الإجراء سيُسجَّل في ملفّ التدقيق (Audit Log) تلقائيًا.
+              </p>
+              {bulkNotes ? (
+                <div style={{ padding: 12, borderRadius: 12, background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.14)', marginBottom: 16 }}>
+                  <div style={{ color: '#94a3b8', fontSize: 11, marginBottom: 4 }}>الملاحظة المرفقة:</div>
+                  <div style={{ color: '#e2e8f0', fontSize: 13 }}>{bulkNotes}</div>
+                </div>
+              ) : null}
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <Button variant="secondary" onClick={() => setConfirmBulk(null)} disabled={!!bulkBusy}>إلغاء</Button>
+                <Button
+                  variant={confirmBulk.variant}
+                  loading={bulkBusy === confirmBulk.action}
+                  onClick={() => applyBulkAction(confirmBulk.action, confirmBulk.label, confirmBulk.tone)}
+                >
+                  تأكيد وتنفيذ
+                </Button>
+              </div>
+            </Card>
+          </div>
         ) : null}
 
         {activeTab === 'appeals' ? (

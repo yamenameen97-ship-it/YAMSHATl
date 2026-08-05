@@ -117,6 +117,12 @@ export default function ShareTargetLanding() {
   const [publishDisabled, setPublishDisabled] = useState(true);
   const [capturingThumb, setCapturingThumb] = useState(false);
   const [linkPublishing, setLinkPublishing] = useState(false);
+  // ✅ v89.41: اختيار نوع التنزيل (صورة/فيديو) قبل بدء التنزيل
+  // showDownloadTypeSheet: البست الوسيط بين اختيار "تنزيل ومشاركة" وبدء التنزيل
+  // downloadKind: 'video' | 'image' — يحدّد ما إذا كنّا سنُحضر الفيديو الأصلي
+  //   عبر yt-dlp، أم نُنزّل thumbnail فقط (أسرع + مضمون النجاح)
+  const [showDownloadTypeSheet, setShowDownloadTypeSheet] = useState(false);
+  const [downloadKind, setDownloadKind] = useState(null);
   // ✅ v89.24 ROOT FIX #1: إشعار انحدار جودة — عندما yt-dlp يفشل ونسقط لـ thumbnail
   //   نُعلِم المستخدم صراحة أن النتيجة صورة وليس فيديو أصلي.
   const [degradedNotice, setDegradedNotice] = useState(null);
@@ -208,9 +214,8 @@ export default function ShareTargetLanding() {
     };
   }, []);
 
-  // ✅ v89.18 ROOT FIX #7: fallback timer للـ non-PWA — إن كان browser mode
-  //   ولم يصل payload خلال 4s نعتبر أنّ Share Target API فشلت (متوقّع في browser)
-  //   ونعرض شاشة التثبيت مبكراً بدل انتظار الـ 12s watchdog.
+  // ✅ v89.36 ROOT FIX: fallback timer للـ non-PWA — 2s بدلاً من 4s
+  //   السبب: تسريع عرض بطاقة التثبيت للمستخدمين على متصفح عادي.
   const [browserFallbackShown, setBrowserFallbackShown] = useState(false);
 
   // ✅ v89.19 ROOT FIX #6: totalRenderTimeout — ضمان مطلق أن شيئاً ما يُعرض دائماً
@@ -226,22 +231,19 @@ export default function ShareTargetLanding() {
     if (!isBrowserMode) return undefined;
     if (!loading) return undefined;
     if (payload) return undefined;
-    const timer = setTimeout(() => setBrowserFallbackShown(true), 4000);
+    const timer = setTimeout(() => setBrowserFallbackShown(true), 2000); // v89.36: 4s → 2s
     return () => clearTimeout(timer);
   }, [isBrowserMode, loading, payload, retryTick]);
 
-  // ✅ v89.19 ROOT FIX #6: مؤقّت إجمالي 15s — ضمان مطلق لعرض شيء ما
-  //   ✅ v89.19 ROOT FIX #2: isAuthChecking كان يُقرأ قبل إعلانه (Temporal Dead Zone)
-  //   مما يرمي ReferenceError في كل render → ErrorBoundary يلتقطه ويعرض
-  //   "حدث خطأ أثناء استقبال المشاركة". الحل: الاعتماد فقط على loading
-  //   (المُعلَن أعلى الملف).
+  // ✅ v89.36 ROOT FIX: مؤقّت إجمالي 8s (بدلاً من 15s)
+  //   السبب: 15s طويل جداً — المستخدم يرى شاشة فارغة بنفسجية طوال هذا الوقت.
+  //   الحل: بعد 8s نفرض عرض بطاقة الإنقاذ الشاملة.
   useEffect(() => {
     if (!loading) return undefined;
     const timer = setTimeout(() => {
       setTotalRenderTimeout(true);
-      // فرض إنهاء loading إن كان لا يزال true
       try { setLoading(false); } catch (_) { /* ignore */ }
-    }, 15000);
+    }, 8000);
     return () => clearTimeout(timer);
   }, [loading, retryTick]);
 
@@ -277,20 +279,22 @@ export default function ShareTargetLanding() {
   const isAuthenticated = Boolean(session?.username || session?.user || session?.email);
   const [authTimeout, setAuthTimeout] = useState(false);
 
-  // مؤقت طوارئ 3s: إذا بقي authHydrated=false يُعتبر فشل hydration
-  //   ونفتح بوابة تسجيل الدخول (مع إبقاء الحمولة محفوظة في IndexedDB).
+  // ✅ v89.36 ROOT FIX: تقليل مؤقت auth timeout إلى 500ms — لا نعطل UI
+  //   السبب: المستخدم أفاد أن الشاشة تبقى بيضاء/بنفسجية أثناء "جارٍ التحقق من الجلسة..."
+  //   الحل: تقليل الانتظار جذرياً + عرض المحتوى المُشارَك فوراً حتى قبل اكتمال auth.
+  //   الحمولة تبقى محفوظة في IDB وستُعرض للمستخدم في كل الأحوال.
   useEffect(() => {
     if (authHydrated) return;
-    const timer = setTimeout(() => setAuthTimeout(true), 1500);  // v89.07: 3s→1.5s
+    const timer = setTimeout(() => setAuthTimeout(true), 500);  // v89.36: 1.5s → 500ms
     return () => clearTimeout(timer);
   }, [authHydrated]);
 
-  // ✅ v89.16 ROOT FIX #5: watchdog زمني 12s — إذا بقي loading=true
-  //   لمدة 12 ثانية دون وصول أي payload → نعتبر أن SW/IDB/Cache فشلت
-  //   ونعرض واجهة بديلة فيها تشخيص + زر إعادة محاولة.
+  // ✅ v89.36 ROOT FIX: تقليل watchdog من 12s إلى 5s
+  //   السبب: المستخدم يرى شاشة فارغة طويلة قبل ظهور خيارات الإنقاذ.
+  //   الحل: نعرض خيارات إعادة المحاولة بعد 5s بدلاً من 12s.
   useEffect(() => {
     if (!loading) return undefined;
-    const timer = setTimeout(() => setWaitTimedOut(true), 12000);
+    const timer = setTimeout(() => setWaitTimedOut(true), 5000);
     return () => clearTimeout(timer);
   }, [loading, retryTick]);
 
@@ -719,10 +723,22 @@ export default function ShareTargetLanding() {
     }
   }, [payload, selectedTarget, contentType, firstFile, linkPublishing, navigate]);
 
-  // ✅ v88.84: "تنزيل ومشاركة" — يفتح بست التنزيل
+  // ✅ v88.84 / v89.41: "تنزيل ومشاركة" — يفتح أولاً بست اختيار النوع (صورة/فيديو)
+  //   قبل الانتقال إلى بست التنزيل الفعلي.
   const handleDownloadAndShare = useCallback(() => {
     if (!payload || !selectedTarget) return;
     setShowModeSheet(false);
+    // v89.41: افتح بست اختيار نوع التنزيل بدلاً من الانتقال المباشر
+    setDownloadKind(null);
+    setShowDownloadTypeSheet(true);
+  }, [payload, selectedTarget]);
+
+  // ✅ v89.41: اختيار نوع التنزيل (صورة/فيديو) → يفتح بست التنزيل الفعلي
+  const handleChooseDownloadKind = useCallback((kind) => {
+    if (!payload || !selectedTarget) return;
+    if (kind !== 'video' && kind !== 'image') return;
+    setDownloadKind(kind);
+    setShowDownloadTypeSheet(false);
     setShowDownloadSheet(true);
     setDownloadProgress(0);
     setDownloadStage('idle');
@@ -732,6 +748,12 @@ export default function ShareTargetLanding() {
     // تعيين الوصف الافتراضي بدون رابط
     setEditableDescription(defaultDescriptionNoLink);
   }, [payload, selectedTarget, defaultDescriptionNoLink]);
+
+  // ✅ v89.41: إغلاق بست اختيار النوع
+  const closeDownloadTypeSheet = useCallback(() => {
+    setShowDownloadTypeSheet(false);
+    setDownloadKind(null);
+  }, []);
 
   // ✅ v89.22 (2026): بدء التنزيل الفعلي — أولاً backend proxy (yt-dlp) للفيديو الحقيقي،
   //    ثم fallback لـ thumbnail عند CORS/فشل yt-dlp.
@@ -776,7 +798,24 @@ export default function ShareTargetLanding() {
         let fileName = 'shared';
         let fileType = 'application/octet-stream';
 
-        if (isPlatformStream) {
+        // ✅ v89.41: إن اختار المستخدم "تنزيل كصورة" صراحةً → نتخطى yt-dlp
+        //   ونذهب مباشرة إلى thumbnail (أسرع + بدون فشل proxy).
+        const forceImageOnly = downloadKind === 'image';
+
+        if (isPlatformStream && forceImageOnly) {
+          try {
+            window.__YAMSHAT_MEDIA_DEGRADED__ = null;
+          } catch (_) { /* ignore */ }
+          const thumbRes = await downloadPlatformThumbnail(urlStr, (pct) => setDownloadProgress(pct));
+          if (!thumbRes?.blob) {
+            const e = new Error('تعذّر جلب صورة المعاينة من ' + info.displayName);
+            e.code = 'MEDIA_UNAVAILABLE';
+            throw e;
+          }
+          blob = thumbRes.blob;
+          fileName = `${info.platform}_${thumbRes.videoId || Date.now()}.jpg`;
+          fileType = blob.type || 'image/jpeg';
+        } else if (isPlatformStream) {
           // ✅ v89.24 (2026) ROOT FIX #1: التفريق بين أسباب الفشل + كشف الجسم الفعلي
           //   قبل الإصلاح: كان proxyRes ينجح بـ ok:true حتى لو كان الجسم صورة
           //   (Content-Type مغلوط من yt-dlp، أو fallback داخلي)، ومسار fileResp
@@ -864,7 +903,7 @@ export default function ShareTargetLanding() {
       setDownloadStage('error');
       setDownloadProgress(0);
     }
-  }, [payload, firstFile]);
+  }, [payload, firstFile, downloadKind]);
 
 
   // ✅ v89.23 (2026) ROOT FIX #2: النشر المباشر لكل الوجهات —
@@ -886,6 +925,22 @@ export default function ShareTargetLanding() {
             linkCard = await enrichLinkCardFromOEmbed(payload.url).catch(() => null);
           }
         } catch { /* ignore */ }
+
+        // ✅ v89.41: تأكيد وضع الفيديو في linkCard لـ ExternalSourceCard
+        //   ليظهر كمشغّل فيديو (مع شارة YouTube + توثيق Yamshat)
+        //   في حال تم تنزيل فيديو فعلياً (mime = video/*).
+        try {
+          const isRealVideo = String(downloadedFileMeta?.type || '').startsWith('video/');
+          if (linkCard) {
+            linkCard = {
+              ...linkCard,
+              mode: isRealVideo ? 'video' : 'link',
+              type: isRealVideo ? 'video' : (linkCard.type || 'link'),
+              isDownloaded: true,
+              verifiedByYamshat: true,
+            };
+          }
+        } catch (_) { /* ignore */ }
 
         const result = await directPublishFromShare({
           target: targetKey,
@@ -957,7 +1012,7 @@ export default function ShareTargetLanding() {
     setSelectedTarget(null);
   }, []);
 
-  // ✅ v88.84: إغلاق بست التنزيل
+  // ✅ v88.84 / v89.41: إغلاق بست التنزيل + إعادة ضبط نوع التنزيل
   const closeDownloadSheet = useCallback(() => {
     if (downloadStage === 'downloading') return; // لا نغلق أثناء التنزيل
     setShowDownloadSheet(false);
@@ -968,6 +1023,7 @@ export default function ShareTargetLanding() {
     setPublishDisabled(true);
     setSelectedTarget(null);
     setDegradedNotice(null); // ✅ v89.24 ROOT FIX #1: تنظيف إشعار الانحدار
+    setDownloadKind(null); // ✅ v89.41: تنظيف نوع التنزيل
   }, [downloadStage]);
 
   const openFeed = async () => {
@@ -995,30 +1051,11 @@ export default function ShareTargetLanding() {
         <div className="share-target-badge">مشاركة إلى يام شات</div>
         <h1>إلى أين تريد نشر هذا المحتوى؟</h1>
 
-        {/* ✅ v89.04 ROOT FIX #3: بوابة تسجيل الدخول — مع مؤقت طوارئ
-            إذا لم تجتز auth hydration خلال 3s نمضي إلى واجهة تسجيل الدخول */}
-        {isAuthChecking && !totalRenderTimeout ? (
-          /* ✅ v89.07 ROOT FIX: spinner مرئي كبير بدل نص فقط
-             ✅ v89.19 ROOT FIX #6: إضافة totalRenderTimeout escape — لو استمر
-             isAuthChecking أكثر من 15s نتجاوزه ونعرض المحتوى المتاح. */
-          <div className="share-empty-box" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: 24 }}>
-            <div
-              aria-hidden="true"
-              style={{
-                width: 56, height: 56,
-                border: '5px solid rgba(139,92,246,.2)',
-                borderTopColor: '#8B5CF6',
-                borderRadius: '50%',
-                animation: 'ym-share-spin .85s linear infinite',
-              }}
-            />
-            <style>{`@keyframes ym-share-spin{to{transform:rotate(360deg)}}`}</style>
-            <strong style={{ fontSize: '1.05rem', fontWeight: 800 }}>جارٍ التحقّق من الجلسة...</strong>
-            <span style={{ color: '#94A3B8', fontSize: '.9rem', textAlign: 'center', maxWidth: 360, lineHeight: 1.6 }}>
-              لحظات وسنعرض لك خيارات المشاركة. المحتوى المُشارَك محفوظ محليّاً ولن يُفقد.
-            </span>
-          </div>
-        ) : showLoginGate ? (
+        {/* ✅ v89.36 ROOT FIX: إزالة شاشة "جارٍ التحقّق من الجلسة" الطويلة
+            السبب: كانت تعرض spinner فارغ طوال hydration وتُخفي المحتوى المُشارَك.
+            الحل: نعرض المحتوى المُستلم فوراً حتى قبل اكتمال auth. إن كان المستخدم
+            غير مسجّل → نعرض login gate مع المحتوى محفوظاً. لا شاشة انتظار فارغة. */}
+        {showLoginGate ? (
           <div className="share-login-gate" role="alert">
             <div className="share-login-gate-icon" aria-hidden="true">🔒</div>
             <div className="share-login-gate-body">
@@ -1343,6 +1380,60 @@ export default function ShareTargetLanding() {
         </div>
       ) : null}
 
+      {/* ✅ v89.41: بست اختيار نوع التنزيل (صورة / فيديو) قبل بدء التنزيل */}
+      {showDownloadTypeSheet && selectedTarget ? (
+        <div className="ym-share-overlay" onClick={closeDownloadTypeSheet}>
+          <div className="ym-share-sheet ym-share-sheet--mode" onClick={(e) => e.stopPropagation()}>
+            <div className="ym-share-handle" />
+            <div className="ym-share-sheet-header">
+              <span className="ym-share-sheet-emoji">⬇️</span>
+              <div>
+                <strong>اختر نوع التنزيل</strong>
+                <span>ما الذي تريد تنزيله من المصدر؟</span>
+              </div>
+            </div>
+
+            <div className="ym-share-mode-grid">
+              {/* تنزيل كفيديو */}
+              <button
+                type="button"
+                className="ym-share-mode-btn"
+                onClick={() => handleChooseDownloadKind('video')}
+              >
+                <span className="ym-share-mode-icon">🎬</span>
+                <span className="ym-share-mode-body">
+                  <strong>تنزيل كفيديو</strong>
+                  <span>
+                    ينزّل الفيديو الأصلي (mp4) عبر خادم Yamshat.
+                    قد يستغرق وقتاً أطول وقد يفشل على بعض المنصات.
+                  </span>
+                </span>
+              </button>
+
+              {/* تنزيل كصورة */}
+              <button
+                type="button"
+                className="ym-share-mode-btn"
+                onClick={() => handleChooseDownloadKind('image')}
+              >
+                <span className="ym-share-mode-icon">🖼️</span>
+                <span className="ym-share-mode-body">
+                  <strong>تنزيل كصورة</strong>
+                  <span>
+                    ينزّل صورة معاينة (thumbnail) عالية الجودة فقط.
+                    أسرع بكثير ومضمون النجاح على كل المنصات.
+                  </span>
+                </span>
+              </button>
+            </div>
+
+            <button type="button" className="ym-share-cancel" onClick={closeDownloadTypeSheet}>
+              رجوع
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* ✅ v88.84: بست التنزيل — شريط تقدم + وصف قابل للتعديل + زر نشر */}
       {showDownloadSheet ? (
         <div className="ym-share-overlay" onClick={() => { if (downloadStage !== 'downloading') closeDownloadSheet(); }}>
@@ -1351,7 +1442,10 @@ export default function ShareTargetLanding() {
             <div className="ym-share-sheet-header">
               <span className="ym-share-sheet-emoji">⬇️</span>
               <div>
-                <strong>تنزيل ومشاركة إلى {selectedTarget?.title}</strong>
+                <strong>
+                  {downloadKind === 'image' ? '🖼️ تنزيل كصورة إلى ' : '🎬 تنزيل كفيديو إلى '}
+                  {selectedTarget?.title}
+                </strong>
                 <span>
                   {downloadStage === 'idle' && 'اضغط "بدء التنزيل" لبدء العملية'}
                   {downloadStage === 'downloading' && `جارٍ التنزيل... ${downloadProgress}%`}

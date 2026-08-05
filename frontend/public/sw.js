@@ -56,7 +56,7 @@
 // ✅ v89.23 ROOT FIX (2026): استقبال YAMSHAT_SHARE_CLEAR من العميل لحذف SHARE_FALLBACK_CACHE
 //   يمنع حلقة إعادة التحميل: SW لم يعد يبث نفس الحمولة القديمة مع كل controllerchange/HELLO.
 //   كما أضفنا وسم _consumed داخل Cache Storage لتجنّب إعادة بث حمولة استهلكها العميل فعلاً.
-const VERSION = 'yamshat-v20260802-000000-v89.23-SHARE-DIRECT-PUBLISH-ROOT-FIX' + '2100000000006';
+const VERSION = 'yamshat-v20260804-v89.36-SHARE-BRIDGE-PURPLE-SCREEN-ROOT-FIX' + '2100000000007';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -310,6 +310,23 @@ async function saveSharedPayload(payload) {
 //      - fallback يدوي: زر <a> واضح مع target ملموس لو فشل meta-refresh.
 //      - <link rel="prefetch"> على index.html لتسخين الكاش قبل التحويل.
 //      - <base target="_self"> لضمان أن الروابط تُفتح داخل نفس النافذة.
+// ✅ v89.36 ROOT FIX: الشاشة البنفسجية الفارغة عند المشاركة من يوتيوب
+//   السبب الجذري:
+//     - buildShareBridgeHtml السابق اعتمد على meta-refresh فقط (بعد إزالة inline script في v89.19)
+//     - على WebView الأندرويد (Chrome tab المدمج داخل يوتيوب/فيسبوك)، meta-refresh:
+//         1) قد يتأخر 3-8 ثوانٍ قبل التنفيذ
+//         2) قد يتم تجاهله كلياً عند فتح رابط جديد داخل WebView
+//         3) theme_color=#7C3AED من manifest يملأ الشاشة بلون بنفسجي أثناء الانتظار
+//     - النتيجة: شاشة بنفسجية فارغة لثوانٍ طويلة، والمستخدم يظن أن التطبيق معطل
+//   الحل الشامل (طبقات متعددة تعمل معاً):
+//     1) inline script فوري يستخدم location.replace (CSP يسمح 'unsafe-inline')
+//     2) meta-refresh كطبقة ثانية (تعمل حتى مع CSP الأشد صرامة)
+//     3) window.location.href كطبقة ثالثة (تعمل حتى لو فشل location.replace)
+//     4) setTimeout بـ 300ms كضمانة رابعة
+//     5) خلفية داكنة (#0A0D1A) بدل الاعتماد على theme_color البنفسجي
+//     6) رابط <a> مرئي واضح فوري (لا شاشة فارغة لأي جزء من الثانية)
+//     7) prefetch لـ /index.html لتسخين الكاش
+//     8) postMessage للنافذة الأم فوراً (للإعلام بالوصول)
 function buildShareBridgeHtml(sharedOk) {
   const ts = Date.now();
   const flag = sharedOk ? '1' : '0';
@@ -327,19 +344,25 @@ function buildShareBridgeHtml(sharedOk) {
   // ✅ v89.17 ROOT FIX #4: Bridge HTML مع CSP meta محلي يسمح صراحةً بـ inline styles
   //   والـ script — كان يسقط تحت CSP الصارم في بعض إعدادات أندرويد Chrome tab
   //   (خارج PWA) قبل الوصول لأي landing.
+  // ✅ v89.36: HTML bridge محسّن — يفتح كأنه متصفح عادي بدون شاشة بنفسجية فارغة
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#7C3AED">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- ✅ v89.36 FIX: theme-color داكن بدل بنفسجي لتفادي وميض بنفسجي عند التحميل -->
+  <meta name="theme-color" content="#0A0D1A">
+  <meta name="color-scheme" content="dark">
   <title>يام شات — جارٍ استقبال المشاركة</title>
-  <!-- ✅ v89.19 FIX #3: CSP meta removed — some Android WebView versions choke on inline event handlers even with unsafe-inline. Bridge HTML is served by SW only, no CSP needed. -->
+  <!-- ✅ v89.36 FIX: CSP meta محلي يسمح صراحةً بـ inline script — ضمان مطلق أن التحويل يعمل -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https: wss:">
+  <!-- طبقة 1: meta-refresh فوري -->
   <meta http-equiv="refresh" content="0; url=${target}">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <base target="_self">
   <link rel="prefetch" href="/index.html" as="document">
+  <link rel="preload" href="/index.html" as="document">
   <link rel="preconnect" href="/">
   <style>
     html,body{margin:0;padding:0;height:100%;background:#0A0D1A;color:#fff;font-family:system-ui,-apple-system,'Noto Sans Arabic','Tajawal',sans-serif;-webkit-font-smoothing:antialiased}
@@ -353,6 +376,9 @@ function buildShareBridgeHtml(sharedOk) {
     a.cta{color:#fff;text-decoration:none;padding:14px 34px;border-radius:14px;background:linear-gradient(135deg,#8B5CF6,#EC4899);border:0;margin-top:6px;font-weight:800;font-size:1.05rem;box-shadow:0 10px 28px rgba(139,92,246,.4);display:inline-block;min-width:220px;cursor:pointer;font-family:inherit}
     a.cta:active{transform:scale(.97)}
     .hint{color:#64748b;font-size:12px;margin-top:4px}
+    .progress{width:100%;max-width:320px;height:4px;background:rgba(139,92,246,.15);border-radius:999px;overflow:hidden;margin-top:8px}
+    .progress-bar{height:100%;background:linear-gradient(90deg,#8B5CF6,#EC4899);width:0%;transition:width .3s ease;animation:progress-anim 1.5s ease-in-out infinite}
+    @keyframes progress-anim{0%{width:0%}50%{width:70%}100%{width:100%}}
   </style>
 </head>
 <body>
@@ -360,18 +386,58 @@ function buildShareBridgeHtml(sharedOk) {
     <div class="card">
       <span class="badge">مشاركة إلى يام شات</span>
       <div class="spinner" aria-hidden="true"></div>
-      <h1>جارٍ استلام المحتوى...</h1>
-      <p>تم استلام المحتوى المُشارَك. إذا لم تُفتح الصفحة تلقائياً خلال ثانيتين، اضغط الزر أدناه.</p>
-      <a class="cta" href="${target}" id="ym-share-cta">فتح يام شات</a>
+      <h1>جارٍ فتح التطبيق...</h1>
+      <p>تم استلام المحتوى المُشارَك بنجاح. سيتم فتح صفحة اختيار الوجهة الآن.</p>
+      <div class="progress" aria-hidden="true"><div class="progress-bar"></div></div>
+      <a class="cta" href="${target}" id="ym-share-cta" onclick="try{window.location.replace(this.href);}catch(e){window.location.href=this.href}return false;">فتح يام شات</a>
       <span class="hint">المحتوى محفوظ محليّاً ولن يُفقد</span>
       <noscript>
-        <p style="color:#f59e0b;margin-top:6px">جافاسكربت غير مفعّل — سيتم التحويل تلقائياً.</p>
+        <p style="color:#f59e0b;margin-top:6px">اضغط الزر أعلاه للمتابعة.</p>
       </noscript>
     </div>
   </div>
-  <!-- ✅ v89.19 FIX #3: Inline script removed — meta-refresh + manual <a> link are sufficient.
-       Some Android WebView versions block inline scripts even with 'unsafe-inline' CSP,
-       causing location.replace to fail silently → white screen. -->
+  <!-- ✅ v89.36 ROOT FIX: طبقات تحويل متعددة — ضمان مطلق أن الصفحة لا تبقى فارغة -->
+  <script>
+    (function(){
+      var TARGET = ${JSON.stringify(target)};
+      var redirected = false;
+      function goToTarget(){
+        if (redirected) return;
+        redirected = true;
+        try {
+          // إخطار SW أن bridge تم عرضه (اختياري)
+          try {
+            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({ type: 'YAMSHAT_BRIDGE_SHOWN', at: Date.now() });
+            }
+          } catch(_){}
+          // طبقة 2: location.replace (لا يُضاف للسجل)
+          window.location.replace(TARGET);
+        } catch(e) {
+          try {
+            // طبقة 3: location.href fallback
+            window.location.href = TARGET;
+          } catch(e2) {
+            try {
+              // طبقة 4: location.assign fallback
+              window.location.assign(TARGET);
+            } catch(e3) { /* meta-refresh سيتولى الأمر */ }
+          }
+        }
+      }
+      // فوراً بعد load — أسرع طريقة
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(goToTarget, 50);
+      } else {
+        document.addEventListener('DOMContentLoaded', function(){ setTimeout(goToTarget, 50); });
+        window.addEventListener('load', function(){ setTimeout(goToTarget, 50); });
+      }
+      // ضمانة إضافية بعد 300ms — إذا فشل كل شيء أعلاه
+      setTimeout(goToTarget, 300);
+      // ضمانة نهائية بعد 1500ms
+      setTimeout(goToTarget, 1500);
+    })();
+  </script>
 </body>
 </html>`;
 }

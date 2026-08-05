@@ -339,6 +339,30 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     onError: (error) => pushToast({ type: 'error', title: 'تعذر مشاركة المنشور', description: error?.response?.data?.detail || error?.message }),
   });
 
+  // ✅ v89.38 — REPOST ROOT FIX (Desktop): استدعاء API إعادة النشر الحقيقي
+  //   بدل الاكتفاء بتجهيز الاقتباس في localStorage فقط.
+  //   يمرّر share_type='repost' لـ sharePost ليُنشئ الباكيند Post حقيقياً
+  //   (is_repost=True, original_post_id=post.id) فيظهر فوراً في الفيد والبروفايل.
+  const repostMutation = useMutation({
+    mutationFn: () => sharePost(post.id, { share_type: 'repost' }),
+    onSuccess: (response) => {
+      const reposted = response?.data?.reposted ?? response?.data?.is_reposted ?? true;
+      pushToast({
+        type: 'success',
+        title: reposted ? 'تمت إعادة النشر' : 'تم إلغاء إعادة النشر',
+      });
+      // تحديث كامل للفيد والبروفايل حتّى يظهر منشور إعادة النشر فوراً
+      queryClient.invalidateQueries({ queryKey: ['feed-data'] });
+      queryClient.invalidateQueries({ queryKey: ['profile-feed'] });
+      queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
+    },
+    onError: (error) => pushToast({
+      type: 'error',
+      title: 'تعذر إعادة النشر',
+      description: error?.response?.data?.detail || error?.message,
+    }),
+  });
+
   const handleShare = async (platform) => {
     const url = `${window.location.origin}/post/${post.id}`;
     try {
@@ -512,6 +536,17 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
     }
   };
 
+  // ✅ v89.38 — REPOST ROOT FIX (Desktop):
+  //   زر «إعادة النشر» الآن يستدعي API الحقيقي (sharePost + share_type='repost')
+  //   فيُنشئ الباكيند Post حقيقياً في جدول posts ويظهر فوراً في الفيد
+  //   وفي بروفايل المُعيد (مثل X/Twitter Retweet).
+  const handleRepost = () => {
+    if (repostMutation.isPending || repostMutation.isLoading) return;
+    repostMutation.mutate();
+  };
+
+  // ملاحظة: handleQuote لا يزال متاحاً للاقتباس (Quote-Tweet) من القائمة المنسدلة إن لزم،
+  //   لكن زر إعادة النشر الأساسي الآن يستدعي handleRepost مباشرةً.
   const handleQuote = () => {
     localStorage.setItem('yamshat_quote_draft', JSON.stringify({ id: post.id, username: post.username, content: post.content }));
     window.dispatchEvent(new Event('yamshat:quote-post'));
@@ -778,9 +813,19 @@ export default function PostCard({ post, onShowAnalytics, onLike }) {
             <span className="ym-pc-count">{post.comments_count || commentsPagination.total_count || 0}</span>
           </button>
 
-          <button type="button" className="ym-pc-action" aria-label="إعادة نشر" onClick={handleQuote}>
-            <span className="ym-pc-emoji">❝</span>
-            <span className="ym-pc-action-label">نشر</span>
+          {/* ✅ v89.38 — REPOST ROOT FIX (Desktop): الزر يستدعي handleRepost الذي يُرسل share_type='repost'
+              إلى الباكيند فيُنشئ Post حقيقياً (is_repost=True) يظهر في الفيد والبروفايل */}
+          <button
+            type="button"
+            className={`ym-pc-action ${(post.reposted || post.is_reposted) ? 'is-reposted' : ''}`}
+            aria-label={(post.reposted || post.is_reposted) ? 'إلغاء إعادة النشر' : 'إعادة نشر'}
+            aria-pressed={(post.reposted || post.is_reposted) ? 'true' : 'false'}
+            title={(post.reposted || post.is_reposted) ? 'إلغاء إعادة النشر' : 'إعادة نشر'}
+            disabled={repostMutation.isPending || repostMutation.isLoading}
+            onClick={handleRepost}
+          >
+            <span className="ym-pc-emoji">🔄</span>
+            <span className="ym-pc-count">{Number(post.reposts_count || post.repost_count || 0)}</span>
           </button>
 
           <button type="button" className="ym-pc-action" aria-label="مشاركة" onClick={() => setShowShareModal(true)}>

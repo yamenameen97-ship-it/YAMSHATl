@@ -56,7 +56,29 @@
 // ✅ v89.23 ROOT FIX (2026): استقبال YAMSHAT_SHARE_CLEAR من العميل لحذف SHARE_FALLBACK_CACHE
 //   يمنع حلقة إعادة التحميل: SW لم يعد يبث نفس الحمولة القديمة مع كل controllerchange/HELLO.
 //   كما أضفنا وسم _consumed داخل Cache Storage لتجنّب إعادة بث حمولة استهلكها العميل فعلاً.
-const VERSION = 'yamshat-v20260804-v89.36-SHARE-BRIDGE-PURPLE-SCREEN-ROOT-FIX' + '2100000000007';
+// ✅ v89.42 ROOT FIX (2026-08): SHARE CHOOSER INFINITE RELOAD LOOP — إصلاح حازم نهائي
+//   الأعراض: عند الضغط على "مشاركة" في يوتيوب واختيار Yamshat، تفتح ورقة اختيار
+//   وجهة المشاركة (chooser sheet) وتبقى في حالة تحميل مستمر ومتكرر ولا يستطيع
+//   المستخدم اختيار الوجهة.
+//   السبب الجذري (سبع طبقات مجتمعة):
+//   1) buildShareBridgeHtml كان يحتوي على 4 طبقات تحويل متوازية داخل chooser
+//      sheet قبل استقراره → Chrome يُعيد تشغيل POST → حلقة لا نهائية.
+//   2) SW كان يبث YAMSHAT_SHARE_RECEIVED فور POST بينما chooser sheet لا يزال
+//      ينتظر رد POST → re-render داخل chooser sheet نفسه.
+//   3) ShareTargetLanding 5 مصادر متوازية للقراءة (readAny + swMessageHandler +
+//      controllerChangeHandler + visibilityHandler + swReadyPromise).
+//   4) HTML الجسر كان يرسل YAMSHAT_BRIDGE_SHOWN داخل chooser sheet نفسه.
+//   5) beforeinstallprompt handler كان يُطلق داخل chooser sheet → re-render.
+//   6) mount-time display-mode check يُطلق setState → re-render.
+//   7) VERSION قديم لا يجبر SW القديم على التحديث.
+//   الحل الحازم:
+//   A) POST response = Response.redirect(303 See Other) — الطريقة القياسية
+//      في Web Share Target API التي لا تُبقي chooser sheet في loading.
+//   B) buildShareBridgeHtml نظيف: طبقة تحويل واحدة فقط بعد 60ms، بلا
+//      meta-refresh فوري، بلا setTimeout متعدد، بلا postMessage داخل bridge.
+//   C) SW يؤخر بث YAMSHAT_SHARE_RECEIVED 400ms — بعد إغلاق chooser sheet.
+//   D) رفع VERSION لإجبار تحديث SW القديم.
+const VERSION = 'yamshat-v20260805-v89.42-SHARE-CHOOSER-LOOP-ROOT-FIX' + '2100000000042';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,
@@ -327,7 +349,63 @@ async function saveSharedPayload(payload) {
 //     6) رابط <a> مرئي واضح فوري (لا شاشة فارغة لأي جزء من الثانية)
 //     7) prefetch لـ /index.html لتسخين الكاش
 //     8) postMessage للنافذة الأم فوراً (للإعلام بالوصول)
+// ✅ v89.42 ROOT FIX: buildShareBridgeHtml مبسّط تماماً — طبقة تحويل واحدة فقط
+//   بعد استقرار النافذة (60ms). لا meta-refresh فوري، لا setTimeout متعدد،
+//   لا postMessage من داخل bridge. يمنع Chrome من إعادة تشغيل POST داخل
+//   chooser sheet وينهي حلقة إعادة التحميل.
 function buildShareBridgeHtml(sharedOk) {
+  const ts = Date.now();
+  const flag = sharedOk ? '1' : '0';
+  const target = `/#/share-target?shared=${flag}&via=sw&ts=${ts}`;
+  // v89.42: طبقة تحويل واحدة فقط — بلا meta-refresh مبكّر ولا layers متعددة
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A0D1A">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https: wss:">
+<meta http-equiv="Cache-Control" content="no-store">
+<title>يام شات</title>
+<style>
+html,body{margin:0;padding:0;height:100%;background:#0A0D1A;color:#fff;font-family:system-ui,-apple-system,'Noto Sans Arabic',sans-serif}
+.wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:14px;padding:24px;text-align:center;box-sizing:border-box}
+.spinner{width:44px;height:44px;border:4px solid rgba(139,92,246,.2);border-top-color:#8B5CF6;border-radius:50%;animation:s .8s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+h1{font-size:1.1rem;margin:0;font-weight:800}
+a.cta{color:#fff;text-decoration:none;padding:12px 28px;border-radius:12px;background:linear-gradient(135deg,#8B5CF6,#EC4899);font-weight:800;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="spinner"></div>
+<h1>جارٍ فتح يام شات...</h1>
+<a class="cta" id="cta" href="${target}">فتح</a>
+</div>
+<script>
+(function(){
+  var T = ${JSON.stringify(target)};
+  var done = false;
+  function go(){
+    if (done) return;
+    done = true;
+    try { window.location.replace(T); }
+    catch(e){ try { window.location.href = T; } catch(_){} }
+  }
+  // v89.42: تحويل واحد فقط بعد 60ms — يكفي لإغلاق chooser sheet وتفادي حلقة POST
+  if (document.readyState === 'complete') {
+    setTimeout(go, 60);
+  } else {
+    window.addEventListener('load', function(){ setTimeout(go, 60); }, { once: true });
+  }
+})();
+</script>
+</body>
+</html>`;
+}
+
+// v89.42: النسخة القديمة محفوظة تحت اسم مختلف (غير مستخدمة، للمراجعة فقط)
+function _buildShareBridgeHtml_legacy_v89_36(sharedOk) {
   const ts = Date.now();
   const flag = sharedOk ? '1' : '0';
   const target = `/#/share-target?shared=${flag}&via=sw&ts=${ts}`;
@@ -614,37 +692,35 @@ async function handleShareTarget(request) {
     //   الحل: نحفظ حتى الحمولة الفارغة — الواجهة ستكشفها وتعرض "لا يوجد محتوى".
     await saveSharedPayload(finalPayload);
 
-    // إعلام كل العملاء بأن حمولة جديدة وصلت + إرفاق payload خفيفة مباشرة
-    //   ✅ v89.15 ROOT FIX #2b: نُرفق payload خفيفة في YAMSHAT_SHARE_RECEIVED نفسها،
-    //   بحيث حتى لو فشلت IDB بشكل صامت لدى العميل، الـ landing يحصل على البيانات فوراً.
+    // ✅ v89.42 ROOT FIX: تأخير بث YAMSHAT_SHARE_RECEIVED 400ms — يمنع إطلاقه
+    //   داخل chooser sheet الذي لا يزال ينتظر رد POST. البث يخرج بعد أن يكون
+    //   chooser sheet قد أُغلق فعلياً والمستخدم داخل الصفحة الأصلية.
     try {
       const lightForClients = buildLightPayload(finalPayload, null);
-      const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
-      clientsList.forEach((client) => client.postMessage({
+      const msg = {
         type: 'YAMSHAT_SHARE_RECEIVED',
         timestamp: Date.now(),
         hasFiles: cleanFiles.length > 0,
         hasUrl: Boolean(url),
         payload: lightForClients,
-        _v: 'v89.15',
-      }));
+        _v: 'v89.42',
+      };
+      // v89.42: بث مؤجل — لا await، يخرج بعد 400ms من إرسال redirect للـ chooser
+      setTimeout(() => {
+        self.clients.matchAll({ includeUncontrolled: true, type: 'window' })
+          .then((clientsList) => clientsList.forEach((client) => {
+            try { client.postMessage(msg); } catch (_) { /* ignore */ }
+          }))
+          .catch(() => null);
+      }, 400);
     } catch (_) { /* ignore */ }
 
-    return new Response(buildShareBridgeHtml(true), {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-      },
-    });
+    // ✅ v89.42 ROOT FIX: 303 See Other redirect بدل HTML bridge — الطريقة القياسية
+    //   في Web Share Target API. Chrome يُغلق chooser sheet فور استلام redirect
+    //   ولا يُبقيه في حالة loading. الجسر HTML يُقدَّم عبر GET /share-bridge.html.
+    return Response.redirect(`/share-target?shared=1&via=sw&ts=${Date.now()}`, 303);
   } catch (error) {
-    return new Response(buildShareBridgeHtml(false), {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-      },
-    });
+    return Response.redirect(`/share-target?shared=0&via=sw&ts=${Date.now()}`, 303);
   }
 }
 

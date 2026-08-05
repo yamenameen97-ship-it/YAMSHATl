@@ -88,6 +88,8 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, set[str]] = {
         'admin_source_download_size', 'admin_source_download_mime',
         # v88.99 — عمود عدّاد إعادات النشر
         'reposts_count',
+        # v89.43 — أعمدة إعادة النشر كسجل Post حقيقي
+        'original_post_id', 'is_repost',
     },
     'comments': {'user_id', 'username', 'comment', 'content'},
     'messages': {'sender_id', 'receiver_id', 'sender', 'receiver', 'message', 'content'},
@@ -446,6 +448,27 @@ def _migrate_posts_table(engine: Engine) -> None:
     _add_column_if_missing(engine, 'posts', 'save_count', 'save_count INTEGER NOT NULL DEFAULT 0')
     # ✅ v88.99 — عمود عدّاد إعادات النشر (منفصل عن المشاركة العادية)
     _add_column_if_missing(engine, 'posts', 'reposts_count', 'reposts_count INTEGER NOT NULL DEFAULT 0')
+    # ==========================================================
+    # ✅ v89.43 ROOT FIX — أعمدة نظام إعادة النشر الحقيقي (Repost as real Post)
+    # هذه الأعمدة أضافتها هجرة Alembic 20260805_0024 (v89.37) ولكنها لم تكن
+    # موجودة في تسلسل الترحيل bootstrap — مما يسبب فشل صامت عند INSERT
+    # لسجل إعادة النشر على قواعد البيانات التي تعتمد على bootstrap فقط.
+    # النتيجة: زر إعادة النشر يعطي رقم النجاح لكن المنشور لا يظهر فعلياً في الفيد.
+    # ==========================================================
+    if engine.dialect.name == 'postgresql':
+        _add_column_if_missing(engine, 'posts', 'original_post_id', 'original_post_id INTEGER NULL REFERENCES posts(id) ON DELETE SET NULL')
+        _add_column_if_missing(engine, 'posts', 'is_repost', 'is_repost BOOLEAN NOT NULL DEFAULT FALSE')
+    else:
+        _add_column_if_missing(engine, 'posts', 'original_post_id', 'original_post_id INTEGER NULL')
+        _add_column_if_missing(engine, 'posts', 'is_repost', 'is_repost BOOLEAN NOT NULL DEFAULT 0')
+    # فهارس idempotent على أعمدة إعادة النشر
+    try:
+        if engine.dialect.name == 'postgresql':
+            with engine.begin() as connection:
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_posts_original_post_id ON posts (original_post_id)'))
+                connection.execute(text('CREATE INDEX IF NOT EXISTS ix_posts_is_repost ON posts (is_repost)'))
+    except Exception:
+        pass
     _add_column_if_missing(engine, 'posts', 'created_at', 'created_at TIMESTAMP NULL')
 
     # ==========================================================

@@ -50,38 +50,16 @@ function setupUpdateListener() {
     const { type, version, message } = event.data || {};
 
     if (type === 'yamshat:update-available') {
-      console.log('[SWM] تحديث جديد متاح:', version);
-
-      // ✅ v89.19 ROOT FIX #1: تحقق من وجود waiting worker حقيقي قبل إطلاق
-      //   update-ready. السبب الجذري السابق: SW كان يبثّ update-available عند
-      //   كل تحميل صفحة (حتى بدون waiting worker جديد) — فتظهر نافذة
-      //   "تحديث جديد متاح" باستمرار بلا مبرّر ولا يمكن للمستخدم تجاوزها.
-      //
-      //   الحل:
-      //     - update-available (توافق رجعي) يُطلق كما هو (مسموع للتشخيص فقط)
-      //     - update-ready يُطلق فقط إذا وُجد waiting worker فعلي
-      //       (هذا الحدث هو ما يعرض النافذة عبر <AppUpdatePrompt />)
-      const detail = { registration: swRegistration, version, message };
-      window.dispatchEvent(new CustomEvent('yamshat:update-available', { detail }));
-
-      // فحص فعلي لوجود waiting worker قبل إطلاق update-ready
-      const hasWaitingWorker = !!(swRegistration?.waiting);
-      if (hasWaitingWorker) {
-        window.dispatchEvent(new CustomEvent('yamshat:update-ready', { detail }));
-      } else {
-        // انتظار قصير ثم إعادة الفحص — قد يكون SW في مرحلة installing
-        // ولم يصبح waiting بعد.
-        setTimeout(() => {
-          if (swRegistration?.waiting) {
-            window.dispatchEvent(new CustomEvent('yamshat:update-ready', { detail: { ...detail, registration: swRegistration } }));
-          } else {
-            console.log('[SWM] update-available وصل لكن لا يوجد waiting worker — تجاهل لتفادي حلقة إظهار');
-          }
-        }, 800);
-      }
-
-      // ✅ لم نعد نستخدم showUpdateNotification (حقن HTML) —
-      // مكوّن <AppUpdatePrompt /> React يتولّى العرض بأسلوب النظام.
+      // ✅ v89.41 ROOT FIX: لا نُطلق أي حدث update-ready هنا إطلاقاً.
+      //   السبب الجذري لظهور الرسالة المتكرر:
+      //   SW يبثّ update-available عند كل تفعيل/كل تحميل صفحة، وحتى مع
+      //   التحقق من waiting worker كان يُطلق update-ready بشكل مضلّل عند
+      //   كل تسجيل من جديد. الحل الجذري: نتجاهل هذه الرسالة بالكامل هنا،
+      //   ونعتمد فقط على مسار updatefound الحقيقي داخل pwaInitializer.
+      //   ذلك المسار يتحقق فعلياً من statechange→installed + scriptURL مختلف،
+      //   ثم يُطلق update-ready. AppUpdatePrompt يتحقق مرة ثانية من scriptURL
+      //   ويمنع تكرار العرض لنفس النسخة.
+      console.log('[SWM v89.41] update-available broadcast تم تجاهله — العرض حصراً عبر updatefound الحقيقي في pwaInitializer.', version, message);
     }
 
     if (type === 'yamshat:sync-now') {
@@ -97,24 +75,22 @@ function setupUpdateListener() {
 
 /**
  * بدء فحص دوري للتحديثات
- * يتحقق من التحديثات كل 5 دقائق
+ *
+ * ✅ v89.41 ROOT FIX: تم تعطيل الفحص الدوري كل 5 دقائق + الفحص عند online.
+ *   السبب الجذري: كل فحص update() قد يكتشف waiting worker (حتى من نسخة
+ *   قديمة عالقة) → updatefound → نافذة "تحديث متاح" وهمية مع كل تنقل.
+ *   الحل: نُبقي فحصاً واحداً فقط عند التسجيل الأول (فحص جاد بعد login/reload)،
+ *   وتُلغى دورية الـ 5 دقائق ومستمع online. الفحص الفعلي يحدث تلقائياً عبر
+ *   updateViaCache:'none' + navigation-triggered SW check المدمج في المتصفح.
  */
 function startPeriodicUpdateCheck() {
   if (!swRegistration) return;
 
-  // فحص فوري عند التسجيل
+  // فحص واحد فقط عند التسجيل — لا دورية ولا online listener.
   checkForUpdates();
 
-  // فحص دوري كل 5 دقائق
-  updateCheckInterval = setInterval(() => {
-    checkForUpdates();
-  }, 5 * 60 * 1000);
-
-  // فحص عند استعادة الاتصال بالإنترنت
-  window.addEventListener('online', () => {
-    console.log('[SWM] استعادة الاتصال بالإنترنت، جاري البحث عن تحديثات...');
-    checkForUpdates();
-  });
+  // ⚠️ v89.41: أُزيل setInterval كل 5 دقائق + مستمع online.
+  //   كانا يُنتجان "waiting worker يعود بعد كل reload" → نافذة متكررة.
 }
 
 /**

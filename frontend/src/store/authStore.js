@@ -38,6 +38,13 @@ export const useAuthStore = create((set, get) => ({
         error: null,
       });
       logger.info('Login successful', { username: userData?.username });
+      // ✅ v89.41: إطلاق حدث login — يُمسح فيه مفاتيح shown/applied
+      // الخاصة بنافذة التحديث، بحيث يُسمح بفحص واحد لهذا المستخدم.
+      try {
+        window.dispatchEvent(new CustomEvent('yamshat:auth-login', {
+          detail: { username: userData?.username, kind: 'login' },
+        }));
+      } catch (_) { /* ignore */ }
       return userData;
     } catch (err) {
       const message = err?.response?.data?.detail || err?.message || 'فشل تسجيل الدخول';
@@ -99,6 +106,12 @@ export const useAuthStore = create((set, get) => ({
     clearStoredUser();
     set({ user: null, token: '', isAuthenticated: false, error: null });
     logger.info('Logout successful');
+    // ✅ v89.41: إطلاق حدث logout — يُمسح فيه مفاتيح shown/applied لنافذة التحديث
+    try {
+      window.dispatchEvent(new CustomEvent('yamshat:auth-logout', {
+        detail: { kind: 'logout' },
+      }));
+    } catch (_) { /* ignore */ }
     window.location.hash = '#/login';
   },
 
@@ -119,6 +132,12 @@ export const authStore = {
   logout() {
     clearStoredUser();
     useAuthStore.setState({ user: null, token: '', isAuthenticated: false });
+    // ✅ v89.41: إطلاق حدث logout للـ compat-API القديم أيضاً
+    try {
+      window.dispatchEvent(new CustomEvent('yamshat:auth-logout', {
+        detail: { kind: 'logout' },
+      }));
+    } catch (_) { /* ignore */ }
     window.location.hash = '#/login';
   },
 };

@@ -257,9 +257,20 @@ export class PWAInitializer {
           return;
         }
 
+        // ✅ v89.41 ROOT FIX: تحقق من أن waiting.scriptURL != active.scriptURL
+        // حتى لا نُطلق update-ready لنفس نسخة السكربت (تحديث وهمي).
+        try {
+          const waitingURL = registration.waiting?.scriptURL || newWorker.scriptURL || '';
+          const activeURL = registration.active?.scriptURL || '';
+          if (waitingURL && activeURL && waitingURL === activeURL) {
+            console.log('[PWA v89.41] statechange installed لكن scriptURL مطابق — تحديث وهمي، تجاهل.');
+            return;
+          }
+        } catch (_) { /* ignore */ }
+
         // A real update is waiting for explicit user approval.
         this.state.updateAvailable = true;
-        console.log('[PWA] Update available — dispatching yamshat:update-ready');
+        console.log('[PWA v89.41] Update available — dispatching yamshat:update-ready (real, scriptURL differs)');
         this.emit('update-available');
 
         // v88.11: نُطلق الحدث بدلاً من حقن HTML — يستقبله <AppUpdatePrompt />
@@ -284,9 +295,22 @@ export class PWAInitializer {
    */
   showUpdatePrompt(newWorker) {
     // Deprecated in v88.11 — النافذة تُعرض الآن عبر <AppUpdatePrompt /> بأسلوب نظام YAMSHAT.
-    // نُطلق الحدث فقط للتأكد من الظهور في حال تم استدعاء الدالة من مسار قديم.
+    //
+    // ✅ v89.41 ROOT FIX: لا نُطلق الحدث إلا إذا وُجد waiting worker حقيقي
+    // بـ scriptURL مختلف عن active. استدعاء هذه الدالة من مسار قديم بدون
+    // تحقق كان يسبّب ظهور النافذة مع أي controllerchange أو broadcast رخو.
     try {
       const registration = this.state.swRegistration;
+      const waitingURL = registration?.waiting?.scriptURL || newWorker?.scriptURL || '';
+      const activeURL = registration?.active?.scriptURL || '';
+      if (!waitingURL) {
+        console.log('[PWA v89.41] showUpdatePrompt تجاهل — لا waiting worker.');
+        return;
+      }
+      if (waitingURL && activeURL && waitingURL === activeURL) {
+        console.log('[PWA v89.41] showUpdatePrompt تجاهل — scriptURL مطابق.');
+        return;
+      }
       window.dispatchEvent(
         new CustomEvent('yamshat:update-ready', {
           detail: { registration, worker: newWorker },
@@ -503,25 +527,16 @@ export class PWAInitializer {
    *   نفس المنطق: لا نريد updatefound أثناء استقبال مشاركة.
    */
   startUpdateCheck() {
-    setInterval(() => {
-      if (this.state.swRegistration) {
-        // ✅ v89.20: تخطي update() أثناء /share-target
-        let inShareTarget = false;
-        try {
-          const path = (window.location && window.location.pathname) || '';
-          const hash = (window.location && window.location.hash) || '';
-          inShareTarget = path === '/share-target'
-            || path.startsWith('/share-target/')
-            || hash.startsWith('#/share-target')
-            || hash.includes('/share-target');
-        } catch (_) { /* ignore */ }
-        if (inShareTarget) return;
-
-        this.state.swRegistration.update().catch((error) => {
-          console.warn('[PWA] Update check error:', error);
-        });
-      }
-    }, this.config.updateCheckInterval);
+    // ⚠️ v89.41 ROOT FIX: تم تعطيل setInterval تماماً — لا يوجد فحص دوري.
+    //   السبب الجذري لتكرار رسالة "تحديث متاح":
+    //   فحص update() دورياً (كل ساعة + كل 5 دقائق من service-worker-manager) يجلب
+    //   نسخة SW من الخادم، وإذا تغيّرت byte-واحد (حتى لو من أدوات build
+    //   تضع timestamp) → updatefound → waiting worker → نافذة تحديث.
+    //   الحل: نعتمد فقط على الفحص المدمج في المتصفح عند navigation + updateViaCache:'none'
+    //   + فحص واحد فوري عند registerServiceWorker (مرة واحدة فقط لكل تشغيل تطبيق).
+    //   AppUpdatePrompt + SHOWN/APPLIED signatures تضمن أن النافذة لا تظهر إلا مرة
+    //   واحدة لكل نسخة حقيقية.
+    console.log('[PWA v89.41] Periodic update check DISABLED — relying on browser navigation-triggered SW check only.');
   }
 
   /**

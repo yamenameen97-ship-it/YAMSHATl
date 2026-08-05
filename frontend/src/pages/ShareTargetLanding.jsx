@@ -161,10 +161,26 @@ export default function ShareTargetLanding() {
   const [isBrowserMode, setIsBrowserMode] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
 
+  // ✅ v89.42 ROOT FIX: تأخير كامل لكشف display-mode و beforeinstallprompt handler
+  //   السبب الجذري:
+  //     كلا الكاشفَين كانا يُطلَقان mount-time — أي داخل chooser sheet نفسه
+  //     (لأن Chrome يُنشئ نافذة share chooser تحمل نفس document.readyState).
+  //     detectMode() على mount → setState → re-render، ثم beforeinstallprompt
+  //     يُطلق أيضاً داخل chooser sheet على بعض إصدارات Chrome Android → setState
+  //     → re-render → HELLO ping → SW يرد → setPayload → حلقة.
+  //   الحل:
+  //     - نؤجل كل شيء 500ms — بعد أن يكون chooser sheet قد أُغلق فعلياً
+  //       والمستخدم داخل الصفحة الأصلية.
+  //     - نتجاهل أي beforeinstallprompt يصل خلال أول 500ms.
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    // كشف display-mode
+    let mounted = true;
+    let mql = null;
+    let acceptInstallPrompt = false;
+
+    // v89.42: كشف display-mode مؤجل لتجنّب re-render داخل chooser sheet
     const detectMode = () => {
+      if (!mounted) return;
       try {
         const isStandalone =
           window.matchMedia?.('(display-mode: standalone)')?.matches ||
@@ -177,18 +193,14 @@ export default function ShareTargetLanding() {
         setIsBrowserMode(false);
       }
     };
-    detectMode();
 
-    // استمع لأي تغيير في display-mode (نادر، لكن ممكن)
-    let mql = null;
-    try {
-      mql = window.matchMedia('(display-mode: standalone)');
-      if (mql?.addEventListener) mql.addEventListener('change', detectMode);
-      else if (mql?.addListener) mql.addListener(detectMode);
-    } catch { /* ignore */ }
-
-    // التقاط beforeinstallprompt event للاستخدام لاحقاً
+    // v89.42: onBeforeInstall — يتجاهل أي حدث يصل قبل مرور 500ms
+    //   (يعني: أي حدث يُطلق داخل chooser sheet سيُتجاهل تماماً)
     const onBeforeInstall = (e) => {
+      if (!acceptInstallPrompt) {
+        try { e.preventDefault?.(); } catch { /* ignore */ }
+        return;
+      }
       try {
         e.preventDefault?.();
         setInstallPromptEvent(e);
@@ -198,14 +210,27 @@ export default function ShareTargetLanding() {
       window.addEventListener('beforeinstallprompt', onBeforeInstall);
     } catch { /* ignore */ }
 
-    // إن كان hook مخزّن مسبقاً في main.jsx → استخدمه
-    try {
-      if (window.__YAMSHAT_DEFERRED_INSTALL_PROMPT__) {
-        setInstallPromptEvent(window.__YAMSHAT_DEFERRED_INSTALL_PROMPT__);
-      }
-    } catch { /* ignore */ }
+    // v89.42: كل الأعمال المؤجلة تعمل بعد 500ms
+    const bootTimer = setTimeout(() => {
+      if (!mounted) return;
+      acceptInstallPrompt = true;
+      detectMode();
+      try {
+        mql = window.matchMedia('(display-mode: standalone)');
+        if (mql?.addEventListener) mql.addEventListener('change', detectMode);
+        else if (mql?.addListener) mql.addListener(detectMode);
+      } catch { /* ignore */ }
+      // إن كان hook مخزّن مسبقاً في main.jsx → استخدمه
+      try {
+        if (window.__YAMSHAT_DEFERRED_INSTALL_PROMPT__) {
+          setInstallPromptEvent(window.__YAMSHAT_DEFERRED_INSTALL_PROMPT__);
+        }
+      } catch { /* ignore */ }
+    }, 500);
 
     return () => {
+      mounted = false;
+      try { clearTimeout(bootTimer); } catch { /* ignore */ }
       try {
         if (mql?.removeEventListener) mql.removeEventListener('change', detectMode);
         else if (mql?.removeListener) mql.removeListener(detectMode);
@@ -298,8 +323,22 @@ export default function ShareTargetLanding() {
     return () => clearTimeout(timer);
   }, [loading, retryTick]);
 
+  // ✅ v89.42 ROOT FIX: تأخير كل مصادر القراءة المتوازية 500ms
+  //   السبب الجذري:
+  //     readAny + swMessageHandler + controllerChangeHandler + visibilityHandler +
+  //     swReadyPromise — كلها تنطلق mount-time أي داخل chooser sheet قبل
+  //     استقراره. أي HELLO ping / setPayload / re-render داخل chooser sheet يُطلق
+  //     حلقة POST جديدة داخل نفس الورقة.
+  //   الحل:
+  //     - تأخير كل ردود swMessageHandler / controllerchange / visibility
+  //       حتى مرور 500ms من mount — يضمن أن chooser sheet قد أُغلق
+  //       والمستخدم داخل الصفحة الحقيقية.
+  //     - أول HELLO يُدفع أيضاً بعد 500ms لتجنّب حلقة SW يرد → chooser sheet.
   useEffect(() => {
     let mounted = true;
+    let chooserSheetSettled = false;
+    const CHOOSER_SETTLE_MS = 500;
+    const chooserSettleTimer = setTimeout(() => { chooserSheetSettled = true; }, CHOOSER_SETTLE_MS);
 
     // ✅ v89.02 ROOT FIX #4: تحرّي دقيق لمصدر الوصول + مهلة كافية لجميع الحالات
     //   السبب الجذري:
@@ -461,6 +500,14 @@ export default function ShareTargetLanding() {
     let swReadyPromise = null;
     if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
       swMessageHandler = async (event) => {
+        // ✅ v89.42: إذا لم يستقر chooser sheet بعد — أجّل الرسالة
+        if (!chooserSheetSettled) {
+          const evData = event?.data;
+          setTimeout(() => {
+            try { swMessageHandler({ data: evData }); } catch (_) { /* ignore */ }
+          }, CHOOSER_SETTLE_MS);
+          return;
+        }
         const t = event?.data?.type;
         if (t === 'YAMSHAT_SHARE_RECEIVED') {
           // ✅ v89.15 ROOT FIX #4b: إذا أرفق SW payload خفيفة مع الإشعار → استخدمها مباشرة
@@ -521,12 +568,18 @@ export default function ShareTargetLanding() {
           }
         } catch { /* ignore */ }
       };
-      sendHello();
+      // ✅ v89.42: تأخير أول HELLO 500ms — لا نُطلق SW داخل chooser sheet
+      setTimeout(() => { if (!stopFlag) sendHello(); }, CHOOSER_SETTLE_MS);
 
       // ✅ v89.02 ROOT FIX #4: فور تحكّم SW للمرة الأولى → إعادة قراءة فورية.
       //   هذا يغطي الحالة via=direct&shared=0 حيث يصل المستخدم عبر nginx
       //   قبل تثبيت SW ويجب أن نلتقط أول تحكّم دون انتظار polling.
       controllerChangeHandler = async () => {
+        // ✅ v89.42: تجاهل أي controllerchange داخل chooser sheet
+        if (!chooserSheetSettled) {
+          setTimeout(() => { try { controllerChangeHandler(); } catch (_) {} }, CHOOSER_SETTLE_MS);
+          return;
+        }
         try {
           // ✅ v89.23: تجنّب حلقة إعادة التحميل — لا تطلب حمولة إذا استُهلكت
           if (typeof window !== 'undefined' && window.__YAMSHAT_SHARE_CONSUMED__) return;
@@ -563,6 +616,8 @@ export default function ShareTargetLanding() {
 
     // ✅ v88.98: عند عودة visibility (يوتيوب فتح تبويب جديد ثم عاد)
     visibilityHandler = async () => {
+      // ✅ v89.42: تجاهل حدث visibility قبل استقرار chooser sheet
+      if (!chooserSheetSettled) return;
       if (document.visibilityState === 'visible' && !stopFlag) {
         try {
           const data = await readAny();
@@ -572,11 +627,13 @@ export default function ShareTargetLanding() {
     };
     try { document.addEventListener('visibilitychange', visibilityHandler); } catch { /* ignore */ }
 
-    loadPayloadWithRetry();
+    // ✅ v89.42: تأخير بدء polling حتى يستقر chooser sheet
+    setTimeout(() => { if (!stopFlag && mounted) loadPayloadWithRetry(); }, CHOOSER_SETTLE_MS);
 
     return () => {
       mounted = false;
       stopFlag = true;
+      try { clearTimeout(chooserSettleTimer); } catch { /* ignore */ }
       if (swMessageHandler && navigator.serviceWorker) {
         try { navigator.serviceWorker.removeEventListener('message', swMessageHandler); } catch { /* ignore */ }
       }

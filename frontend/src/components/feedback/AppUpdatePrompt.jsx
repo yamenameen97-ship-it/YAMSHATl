@@ -2,65 +2,73 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 
 /**
  * ═══════════════════════════════════════════════════════════════════
- * AppUpdatePrompt — v88.37 NATIVE SYSTEM-STYLE UPDATE SHEET (PURPLE)
+ * AppUpdatePrompt — v89.41 ROOT FIX: NEVER-REPEAT UPDATE PROMPT
  * ═══════════════════════════════════════════════════════════════════
  *
- * تصميم مطابق لأسلوب نوافذ النظام (Android / PWA System Sheet):
- *   - خلفية بنفسجية داكنة بتدرج (مطابقة لهوية YAMSHAT البنفسجية)
- *   - عنوان: "تحديث جديد متاح"
- *   - زر رئيسي (أبيض بارز): "تحديث الآن"
- *   - زر ثانوي (شفاف): "لاحقاً"
+ * السلوك الجديد (إصلاح جذري لظهور الرسالة المتكرر):
  *
- * الهدف:
- *   1) استبدال بانر المتصفح/الـ HTML injection القبيح القادم من pwaInitializer.
- *   2) توحيد شكل رسالة التحديث مع باقي نظام YAMSHAT (in-app, not browser popup).
- *   3) إجبار الويب على تنزيل التحديثات الجديدة عبر:
- *      - مسح جميع الـ Service Worker caches
- *      - postMessage: SKIP_WAITING إلى الـ waiting worker
- *      - controllerchange → hard reload بدون كاش
+ * 1. لا تظهر الرسالة إلا عند تحقق تحديث فعلي: registration.waiting موجود
+ *    ولديه scriptURL مختلف عن active.scriptURL (نسخة أحدث حقاً).
+ * 2. تُخزَّن "نسخة scriptURL" للـ waiting worker عند العرض في مفتاح
+ *    SHOWN_STORAGE_KEY. أي محاولة لعرض نفس النسخة مرة أخرى تُتجاهل نهائياً.
+ * 3. عند ضغط "تحديث الآن": نُخزّن نفس النسخة كـ APPLIED_STORAGE_KEY —
+ *    لا تعود الرسالة أبداً لهذا الإصدار حتى بعد إعادة التحميل.
+ * 4. عند ضغط "لاحقاً": نُبقي علامة SHOWN — بحيث لا تظهر لنفس الجلسة إطلاقاً.
+ * 5. أحداث السلسلة الرخوة (yamshat:update-available وحدها) لا تعرض شيئاً.
+ * 6. مفاتيح SHOWN/APPLIED تُمسح فقط عند:
+ *    - logout (يُطلق حدث 'yamshat:auth-logout')
+ *    - login  (يُطلق حدث 'yamshat:auth-login')
+ *    بحيث بعد تسجيل خروج + دخول جديد نسمح بفحص واحد فقط لهذا المستخدم.
+ * 7. نستمع لحدث 'yamshat:auth-login' + 'yamshat:auth-logout' لمسح المفاتيح.
  *
- * يستمع لأحداث:
- *   - 'yamshat:update-ready'      (registration جاهزة مع waiting worker)
- *   - 'yamshat:update-available'  (من service-worker-manager broadcast)
+ * الحصيلة: تظهر الرسالة مرة واحدة فقط لكل نسخة/جلسة، وبعد ضغط "تحديث الآن"
+ * لا تعود أبداً إلى أن يسجّل المستخدم خروجه ثم دخوله من جديد.
  *
  * ═══════════════════════════════════════════════════════════════════
  */
 
-const DISMISS_STORAGE_KEY = 'yamshat_update_dismissed_at';
 const APPLYING_STORAGE_KEY = 'yamshat_update_applying';
-// ✅ v89.19 ROOT FIX #1: منع حلقة التحديث الأبدية
-//   السبب الجذري: بعد إعادة التحميل بسبب SKIP_WAITING، controllerchange يحدث
-//   وقد تبقى علامة APPLYING_STORAGE_KEY فترة قبل مسحها، فتتحقق شروط الظهور
-//   من جديد على reload بعد reload.
-const RELOAD_COUNT_KEY = 'yamshat_update_reload_count';
-const RELOAD_WINDOW_MS = 60 * 1000; // نافذة 60s
-const MAX_RELOADS_IN_WINDOW = 2;
-// v88.11: قلّصنا مدة الهدوء من 6 ساعات إلى 30 دقيقة فقط
-// حتى نضمن أن المستخدم يرى التحديث الجديد بشكل شبه فوري
-const DISMISS_COOLDOWN_MS = 30 * 60 * 1000;
+// نسخة scriptURL آخر نافذة عُرضت (per session — يُمسح عند logout/login)
+const SHOWN_STORAGE_KEY = 'yamshat_update_shown_script_url';
+// نسخة scriptURL آخر نافذة طُبّقت بضغط "تحديث الآن" — لا تعود أبداً حتى login جديد
+const APPLIED_STORAGE_KEY = 'yamshat_update_applied_script_url';
 
-/**
- * ✅ v89.19 ROOT FIX #1: كشف حلقة إعادة التحميل
- * إذا حصل reload>=MAX_RELOADS_IN_WINDOW مرات خلال RELOAD_WINDOW_MS، نعتبرها حلقة
- * ونمنع أي إعادة تحميل جديدة حتى تنقضي النافذة.
- */
+// حماية reload loop
+const RELOAD_COUNT_KEY = 'yamshat_update_reload_count';
+const RELOAD_WINDOW_MS = 60 * 1000;
+const MAX_RELOADS_IN_WINDOW = 2;
+
+// ─────────────────────────────────────────────────────────────────
+// أدوات تخزين آمنة (localStorage قد يفشل في وضع خاص/بلا صلاحيات)
+// ─────────────────────────────────────────────────────────────────
+function safeGet(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeSet(key, val) {
+  try { localStorage.setItem(key, val); } catch { /* noop */ }
+}
+function safeRemove(key) {
+  try { localStorage.removeItem(key); } catch { /* noop */ }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// كشف حلقة إعادة التحميل
+// ─────────────────────────────────────────────────────────────────
 function isInReloadLoop() {
   try {
-    const raw = localStorage.getItem(RELOAD_COUNT_KEY);
+    const raw = safeGet(RELOAD_COUNT_KEY);
     if (!raw) return false;
     const data = JSON.parse(raw);
     if (!data || !Array.isArray(data.times)) return false;
     const now = Date.now();
     const recent = data.times.filter((t) => now - t < RELOAD_WINDOW_MS);
     return recent.length >= MAX_RELOADS_IN_WINDOW;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 function trackReload() {
   try {
-    const raw = localStorage.getItem(RELOAD_COUNT_KEY);
+    const raw = safeGet(RELOAD_COUNT_KEY);
     const now = Date.now();
     let times = [];
     try {
@@ -69,63 +77,40 @@ function trackReload() {
     } catch { /* ignore */ }
     times = times.filter((t) => now - t < RELOAD_WINDOW_MS);
     times.push(now);
-    localStorage.setItem(RELOAD_COUNT_KEY, JSON.stringify({ times }));
+    safeSet(RELOAD_COUNT_KEY, JSON.stringify({ times }));
   } catch { /* noop */ }
 }
 
-function wasRecentlyDismissed() {
-  try {
-    const at = Number(localStorage.getItem(DISMISS_STORAGE_KEY) || 0);
-    if (!at) return false;
-    return Date.now() - at < DISMISS_COOLDOWN_MS;
-  } catch {
-    return false;
-  }
-}
-
 /**
- * Reload once after a waiting worker becomes the controller. The worker itself
- * owns its versioned caches; deleting them from the page races its activation.
+ * إعادة التحميل بعد قبول التحديث — مرة واحدة فقط.
  */
 function reloadAfterUpdate() {
-  // ✅ v89.19 ROOT FIX #1: منع الحلقة اللانهائية
   if (isInReloadLoop()) {
-    console.warn('[UpdatePrompt] كُشِفت حلقة إعادة تحميل — تم إيقاف reload التلقائي.');
+    console.warn('[UpdatePrompt] كُشِفت حلقة إعادة تحميل — إيقاف reload التلقائي.');
     try { sessionStorage.removeItem(APPLYING_STORAGE_KEY); } catch { /* noop */ }
     return;
   }
   trackReload();
-  try {
-    sessionStorage.setItem(APPLYING_STORAGE_KEY, '1');
-  } catch {
-    /* noop */
-  }
+  try { sessionStorage.setItem(APPLYING_STORAGE_KEY, '1'); } catch { /* noop */ }
   window.location.reload();
 }
 
 function isApplyingUpdate() {
-  try {
-    return sessionStorage.getItem(APPLYING_STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
+  try { return sessionStorage.getItem(APPLYING_STORAGE_KEY) === '1'; } catch { return false; }
 }
 
 function clearApplyingUpdate() {
-  try {
-    sessionStorage.removeItem(APPLYING_STORAGE_KEY);
-  } catch {
-    /* noop */
-  }
+  try { sessionStorage.removeItem(APPLYING_STORAGE_KEY); } catch { /* noop */ }
 }
 
 export default function AppUpdatePrompt() {
   const [registration, setRegistration] = useState(null);
   const [visible, setVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const currentSignatureRef = useRef(null);
   const controllerChangedRef = useRef(false);
 
+  // مسح علامة "applying" بعد reload
   useEffect(() => {
     if (isApplyingUpdate()) {
       window.setTimeout(clearApplyingUpdate, 1200);
@@ -133,17 +118,30 @@ export default function AppUpdatePrompt() {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────
-  // Show only when there is an actual waiting worker. Bare broadcast events
-  // are intentionally ignored: they caused the sheet to reappear on every load.
+  // مستمع أحداث المصادقة — مسح مفاتيح shown/applied عند logout/login
+  // بحيث لا تعود الرسالة إلا بعد دورة auth كاملة.
+  // ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const onAuthChange = (event) => {
+      const kind = event?.detail?.kind || event?.type || '';
+      console.log('[UpdatePrompt] auth event received:', kind, '— clearing shown/applied markers');
+      safeRemove(SHOWN_STORAGE_KEY);
+      safeRemove(APPLIED_STORAGE_KEY);
+    };
+    window.addEventListener('yamshat:auth-logout', onAuthChange);
+    window.addEventListener('yamshat:auth-login', onAuthChange);
+    return () => {
+      window.removeEventListener('yamshat:auth-logout', onAuthChange);
+      window.removeEventListener('yamshat:auth-login', onAuthChange);
+    };
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────
+  // العرض فقط عند وجود waiting worker حقيقي + توقيع لم يُعرض سابقاً
   // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const handleReady = async (event) => {
-      // ✅ v89.20 ROOT FIX #1: منع ظهور نافذة التحديث أثناء مسار /share-target
-      //   السبب الجذري:
-      //     عند استقبال مشاركة خارجية من يوتيوب/تيك توك، قد يصل حدث
-      //     yamshat:update-ready إذا كان هناك waiting worker عالق. ظهور النافذة
-      //     هنا + controllerchange → reload → يُفقد الحمولة → صفحة بيضاء.
-      //   الحل: نتخطى معالجة الحدث بالكامل إذا كنا في مسار /share-target.
+      // منع أثناء /share-target
       try {
         const path = (window.location && window.location.pathname) || '';
         const hash = (window.location && window.location.hash) || '';
@@ -157,63 +155,63 @@ export default function AppUpdatePrompt() {
         }
       } catch (_) { /* ignore */ }
 
-      const candidate = event.detail?.registration || null;
+      const candidate = event?.detail?.registration || null;
       let nextRegistration = candidate;
       if (!nextRegistration && 'serviceWorker' in navigator) {
-        nextRegistration = await navigator.serviceWorker.getRegistration();
+        try { nextRegistration = await navigator.serviceWorker.getRegistration(); } catch (_) { /* ignore */ }
       }
-      // ✅ v89.19 ROOT FIX #1: تحقق صارم من وجود waiting worker + عدم في حلقة
-      //   waiting !== active يعني هناك نسخة جديدة فعلاً بانتظار التنشيط.
-      //   بدون هذا الفحص، أي broadcast يعرض النافذة على كل تحميل.
+
+      // ✅ ROOT FIX #1: waiting worker حقيقي (ليس مطابقاً للـ active)
       if (!nextRegistration?.waiting) return;
       if (nextRegistration.waiting === nextRegistration.active) return;
+
+      // scriptURL يجب أن يكون مختلفاً (نسخة أحدث فعلاً)
+      const waitingURL = nextRegistration.waiting?.scriptURL || '';
+      const activeURL = nextRegistration.active?.scriptURL || '';
+      if (!waitingURL) return;
+      if (waitingURL && activeURL && waitingURL === activeURL) {
+        console.log('[UpdatePrompt] waiting.scriptURL == active.scriptURL — تحديث وهمي، تجاهل.');
+        return;
+      }
+
+      // ✅ ROOT FIX #2: هل طُبّقت هذه النسخة سابقاً بضغط "تحديث الآن"؟
+      const appliedSig = safeGet(APPLIED_STORAGE_KEY);
+      if (appliedSig && appliedSig === waitingURL) {
+        console.log('[UpdatePrompt] هذه النسخة طُبّقت سابقاً — لن تظهر مرة أخرى حتى login جديد.');
+        return;
+      }
+
+      // ✅ ROOT FIX #3: هل عُرضت لهذه الجلسة سابقاً؟
+      const shownSig = safeGet(SHOWN_STORAGE_KEY);
+      if (shownSig && shownSig === waitingURL) {
+        console.log('[UpdatePrompt] هذه النسخة عُرضت سابقاً في هذه الجلسة — لن تعود.');
+        return;
+      }
+
       if (isApplyingUpdate()) return;
       if (isInReloadLoop()) {
         console.warn('[UpdatePrompt] حلقة تحديث مكتشفة — لن تُعرض النافذة.');
         return;
       }
-      // ✅ v89.20 ROOT FIX #2: تحقق إضافي أن waiting worker ليس عالقاً من نسخة قديمة
-      //   نفحص أن waiting worker لديه scriptURL يحوي BUILD_ID مختلف عن الحالي.
-      //   إذا كان نفس الإصدار → تجاهل (رسالة وهمية).
-      try {
-        const waitingURL = nextRegistration.waiting?.scriptURL || '';
-        const activeURL = nextRegistration.active?.scriptURL || '';
-        // إذا كان نفس scriptURL (نفس الملف) → ليس تحديثاً حقيقياً
-        if (waitingURL && activeURL && waitingURL === activeURL) {
-          console.log('[UpdatePrompt] waiting worker has same scriptURL as active — not a real update, skipping');
-          return;
-        }
-      } catch (_) { /* ignore */ }
+
+      // كل الشروط تحققت — نعرض النافذة مرة واحدة فقط لهذا التوقيع
+      currentSignatureRef.current = waitingURL;
+      safeSet(SHOWN_STORAGE_KEY, waitingURL); // ⚠️ نضع العلامة فوراً حتى لا تعاد عند أي حدث لاحق
       setRegistration(nextRegistration);
-      setCollapsed(wasRecentlyDismissed());
       setVisible(true);
     };
 
     window.addEventListener('yamshat:update-ready', handleReady);
-    // ✅ v89.20 ROOT FIX #1+#2: تم إزالة handleReady({ detail: {} }) الفوري.
-    //   السبب الجذري:
-    //     استدعاء handleReady فوراً عند mount كان يفحص registration.waiting
-    //     في كل تحميل صفحة. إذا كان هناك waiting worker عالق من نسخة قديمة
-    //     (بسبب فشل skipWaiting سابق أو تحديث متوقف) → تظهر رسالة "تحديث متاح"
-    //     وهمية على كل صفحة، وعند /share-target يؤدي controllerchange إلى
-    //     حلقة إعادة تحميل لا نهائية.
-    //   الحل:
-    //     - لا نستدعي handleReady يدوياً أبداً — فقط عند وصول حدث
-    //       yamshat:update-ready حقيقي من pwaInitializer.handleUpdateFound()
-    //       الذي يُطلق فقط عند updatefound فعلي + statechange→installed.
-    //     - هذا يضمن أن النافذة تظهر فقط عند وجود تحديث حقيقي جديد.
+    // ⚠️ لا نستمع لـ yamshat:update-available (broadcast رخو من SW يُطلق بلا داعٍ).
     return () => window.removeEventListener('yamshat:update-ready', handleReady);
   }, []);
 
   // ─────────────────────────────────────────────────────────────────
-  // A controller change is expected only after the user confirms the update.
-  // Reload once, never on passive service-worker activation.
+  // controllerchange — إعادة تحميل مرة واحدة بعد قبول التحديث فقط
   // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return undefined;
     const onControllerChange = () => {
-      // ✅ v89.20 ROOT FIX #1: منع reload أثناء /share-target نهائياً
-      //   حتى لو وصل controllerchange أثناء استقبال مشاركة، لا نُعيد التحميل.
       try {
         const path = (window.location && window.location.pathname) || '';
         const hash = (window.location && window.location.hash) || '';
@@ -235,27 +233,23 @@ export default function AppUpdatePrompt() {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────
-  // زر "تحديث الآن" — force update كامل
+  // زر "تحديث الآن"
   // ─────────────────────────────────────────────────────────────────
   const handleUpdateNow = useCallback(async () => {
     setRefreshing(true);
     try {
-      const reg = registration || await navigator.serviceWorker?.getRegistration();
-      // Do not call update(), clear caches, or reload if there is no real update.
-      // Those operations were the source of the repeated update/login flicker.
+      const reg = registration || (await navigator.serviceWorker?.getRegistration());
       if (!reg?.waiting) {
         setVisible(false);
         setRefreshing(false);
         return;
       }
-      try {
-        localStorage.removeItem(DISMISS_STORAGE_KEY);
-        sessionStorage.setItem(APPLYING_STORAGE_KEY, '1');
-      } catch {
-        /* noop */
-      }
+      const sig = reg.waiting?.scriptURL || currentSignatureRef.current || '';
+      // ✅ نُخزّن نسخة scriptURL كـ APPLIED — لن تعود أبداً حتى login جديد
+      if (sig) safeSet(APPLIED_STORAGE_KEY, sig);
+      try { sessionStorage.setItem(APPLYING_STORAGE_KEY, '1'); } catch { /* noop */ }
       reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-      // Fallback for browsers that do not deliver controllerchange promptly.
+      // fallback في حال لم يصل controllerchange بسرعة
       window.setTimeout(() => {
         if (!controllerChangedRef.current) reloadAfterUpdate();
       }, 2500);
@@ -266,47 +260,15 @@ export default function AppUpdatePrompt() {
   }, [registration]);
 
   // ─────────────────────────────────────────────────────────────────
-  // زر "لاحقاً" — يطوي النافذة (لا يخفيها كلياً)
+  // زر "لاحقاً" — يُخفي النافذة نهائياً لهذه الجلسة (SHOWN مُثبَّت مسبقاً).
   // ─────────────────────────────────────────────────────────────────
   const handleDismiss = useCallback(() => {
-    try {
-      localStorage.setItem(DISMISS_STORAGE_KEY, String(Date.now()));
-    } catch {
-      /* noop */
-    }
-    setCollapsed(true);
+    // SHOWN_STORAGE_KEY تم ضبطه بالفعل عند العرض — لا حاجة لإعادة كتابته.
+    setVisible(false);
   }, []);
 
   if (!visible) return null;
 
-  // ─────────────────────────────────────────────────────────────────
-  // الوضع المصغّر (بعد "لاحقاً"): زر عائم صغير أخضر مع نبضة
-  // ─────────────────────────────────────────────────────────────────
-  if (collapsed) {
-    return (
-      <>
-        <button
-          type="button"
-          className="yam-native-update-mini"
-          dir="rtl"
-          title="تحديث جديد متاح — اضغط للتثبيت"
-          aria-label="تحديث جديد متاح"
-          onClick={() => setCollapsed(false)}
-        >
-          <span className="yam-native-update-mini-dot" aria-hidden="true" />
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M21 12a9 9 0 11-3.5-7.1" />
-            <path d="M21 4v5h-5" />
-          </svg>
-        </button>
-        <style>{miniStyles}</style>
-      </>
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────────
-  // الوضع الكامل (نافذة نظام مطابقة للأسلوب الأصلي في الصورة)
-  // ─────────────────────────────────────────────────────────────────
   return (
     <div
       className="yam-native-update-overlay"
@@ -316,22 +278,18 @@ export default function AppUpdatePrompt() {
       aria-labelledby="yam-native-update-title"
     >
       <div className="yam-native-update-sheet">
-        {/* شارة/أيقونة صغيرة أعلى النافذة */}
         <div className="yam-native-update-badge" aria-hidden="true">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 12a9 9 0 11-3.5-7.1" />
             <path d="M21 4v5h-5" />
           </svg>
         </div>
-
         <h2 id="yam-native-update-title" className="yam-native-update-title">
           تحديث جديد متاح
         </h2>
-
         <p className="yam-native-update-subtitle">
           إصدار جديد من YAMSHAT جاهز — تحديثات، إصلاحات، وأداء أفضل.
         </p>
-
         <div className="yam-native-update-actions">
           <button
             type="button"
@@ -356,229 +314,153 @@ export default function AppUpdatePrompt() {
           </button>
         </div>
       </div>
-
       <style>{sheetStyles}</style>
     </div>
   );
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   أنماط النافذة الكاملة — مطابقة لهوية YAMSHAT البنفسجية
-   خلفية بنفسجية داكنة، زر أبيض بارز، زر ثانوي شفاف
-   يعتمد على متغيرات النظام: #8b5cf6 / #7c3aed / #6d28d9 / #a855f7
+   أنماط النافذة — بنفسجي YAMSHAT (بدون تغيير بصري)
    ══════════════════════════════════════════════════════════════════ */
 const sheetStyles = `
-  .yam-native-update-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 10000;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    animation: yamNativeFade 220ms ease-out;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif;
-  }
+.yam-native-update-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: yamNativeFade 220ms ease-out;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  font-family: 'Noto Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif;
+}
+@keyframes yamNativeFade { from { opacity: 0; } to { opacity: 1; } }
 
-  @keyframes yamNativeFade {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-  }
+.yam-native-update-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  padding: 26px 22px 24px;
+  background: linear-gradient(180deg, #7c3aed 0%, #6d28d9 55%, #4c1d95 100%);
+  border-top-left-radius: 26px;
+  border-top-right-radius: 26px;
+  box-shadow:
+    0 -12px 48px rgba(76, 29, 149, 0.55),
+    0 -1px 0 rgba(255, 255, 255, 0.10) inset;
+  color: #ffffff;
+  text-align: right;
+  animation: yamNativeSlideUp 320ms cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+@keyframes yamNativeSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
+.yam-native-update-sheet::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.yam-native-update-badge {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.16);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  margin-bottom: 14px;
+  box-shadow:
+    0 6px 18px rgba(76, 29, 149, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+}
+
+.yam-native-update-title {
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+.yam-native-update-subtitle {
+  margin: 0 0 22px;
+  font-size: 0.92rem;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.55;
+}
+
+.yam-native-update-actions {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  flex-direction: row-reverse;
+}
+
+.yam-native-update-btn {
+  flex: 1;
+  min-height: 52px;
+  padding: 0 18px;
+  border-radius: 14px;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 140ms ease, background 200ms ease, opacity 200ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.yam-native-update-btn:active { transform: scale(0.97); }
+.yam-native-update-btn:disabled { opacity: 0.7; cursor: default; }
+
+.yam-native-update-btn-primary {
+  background: #ffffff;
+  color: #6d28d9;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 18px rgba(76, 29, 149, 0.35);
+}
+.yam-native-update-btn-primary:hover { background: #f5f3ff; }
+
+.yam-native-update-btn-secondary {
+  background: rgba(255, 255, 255, 0.10);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.yam-native-update-btn-secondary:hover { background: rgba(255, 255, 255, 0.15); }
+
+.yam-native-update-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid rgba(109, 40, 217, 0.25);
+  border-top-color: #6d28d9;
+  border-radius: 50%;
+  animation: yamNativeSpin 700ms linear infinite;
+}
+@keyframes yamNativeSpin { to { transform: rotate(360deg); } }
+
+@media (min-width: 900px) {
+  .yam-native-update-overlay { align-items: center; }
   .yam-native-update-sheet {
-    position: relative;
-    width: 100%;
-    max-width: 640px;
-    padding: 26px 22px 24px;
-    background: linear-gradient(180deg, #7c3aed 0%, #6d28d9 55%, #4c1d95 100%);
-    border-top-left-radius: 26px;
-    border-top-right-radius: 26px;
-    box-shadow: 0 -12px 48px rgba(76, 29, 149, 0.55), 0 -1px 0 rgba(255, 255, 255, 0.10) inset;
-    color: #ffffff;
-    text-align: right;
-    animation: yamNativeSlideUp 320ms cubic-bezier(0.2, 0.9, 0.25, 1);
+    max-width: 480px;
+    border-radius: 22px;
+    padding: 30px 26px 26px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
   }
+  .yam-native-update-sheet::before { display: none; }
+}
 
-  @keyframes yamNativeSlideUp {
-    from { transform: translateY(100%); }
-    to   { transform: translateY(0); }
-  }
-
-  /* شريط سحب صغير أعلى النافذة (اختياري بصري فقط) */
-  .yam-native-update-sheet::before {
-    content: '';
-    position: absolute;
-    top: 8px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 44px;
-    height: 4px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.28);
-  }
-
-  .yam-native-update-badge {
-    width: 46px;
-    height: 46px;
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.16);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: #ffffff;
-    margin-bottom: 14px;
-    box-shadow: 0 6px 18px rgba(76, 29, 149, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
-  }
-
-  .yam-native-update-title {
-    margin: 0 0 6px;
-    font-size: 1.2rem;
-    font-weight: 700;
-    color: #ffffff;
-    letter-spacing: -0.01em;
-  }
-
-  .yam-native-update-subtitle {
-    margin: 0 0 22px;
-    font-size: 0.92rem;
-    color: rgba(255, 255, 255, 0.85);
-    line-height: 1.55;
-  }
-
-  .yam-native-update-actions {
-    display: flex;
-    gap: 12px;
-    align-items: stretch;
-    flex-direction: row-reverse; /* الأساسي "تحديث الآن" على اليمين مطابقاً للصورة */
-  }
-
-  .yam-native-update-btn {
-    flex: 1;
-    min-height: 52px;
-    padding: 0 18px;
-    border-radius: 14px;
-    font-family: inherit;
-    font-size: 1rem;
-    font-weight: 700;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 140ms ease, background 200ms ease, opacity 200ms ease;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .yam-native-update-btn:active {
-    transform: scale(0.97);
-  }
-
-  .yam-native-update-btn:disabled {
-    opacity: 0.7;
-    cursor: default;
-  }
-
-  /* الزر الرئيسي "تحديث الآن" — أبيض بارز على خلفية بنفسجية */
-  .yam-native-update-btn-primary {
-    background: #ffffff;
-    color: #6d28d9;
-    border: 1px solid rgba(255, 255, 255, 0.9);
-    box-shadow: 0 6px 18px rgba(76, 29, 149, 0.35);
-  }
-
-  .yam-native-update-btn-primary:hover {
-    background: #f5f3ff;
-  }
-
-  /* الزر الثانوي "لاحقاً" — شفاف على الخضرة */
-  .yam-native-update-btn-secondary {
-    background: rgba(255, 255, 255, 0.10);
-    color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-  }
-
-  .yam-native-update-btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  /* مؤشر تحميل داخل الزر أثناء التحديث */
-  .yam-native-update-spinner {
-    width: 20px;
-    height: 20px;
-    border: 2.5px solid rgba(109, 40, 217, 0.25);
-    border-top-color: #6d28d9;
-    border-radius: 50%;
-    animation: yamNativeSpin 700ms linear infinite;
-  }
-  @keyframes yamNativeSpin {
-    to { transform: rotate(360deg); }
-  }
-
-  /* تكييف على سطح المكتب: نجعلها بطاقة مركزية بدل sheet سفلي */
-  @media (min-width: 900px) {
-    .yam-native-update-overlay {
-      align-items: center;
-    }
-    .yam-native-update-sheet {
-      max-width: 480px;
-      border-radius: 22px;
-      padding: 30px 26px 26px;
-      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
-    }
-    .yam-native-update-sheet::before {
-      display: none;
-    }
-  }
-
-  /* شاشات صغيرة جداً */
-  @media (max-width: 360px) {
-    .yam-native-update-sheet {
-      padding: 22px 16px 20px;
-    }
-    .yam-native-update-btn {
-      min-height: 48px;
-      font-size: 0.95rem;
-    }
-  }
-`;
-
-/* أنماط الزر العائم المصغّر بعد "لاحقاً" */
-const miniStyles = `
-  .yam-native-update-mini {
-    position: fixed;
-    inset-inline-start: 14px;
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-    z-index: 9998;
-    width: 46px;
-    height: 46px;
-    border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
-    color: #ffffff;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 8px 22px rgba(109, 40, 217, 0.55);
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    transition: transform 180ms ease;
-  }
-  .yam-native-update-mini:active { transform: scale(0.94); }
-  .yam-native-update-mini-dot {
-    position: absolute;
-    top: 5px;
-    inset-inline-end: 5px;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: #ffcc33;
-    box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.9);
-    animation: yamNativeMiniPulse 1.6s ease-in-out infinite;
-  }
-  @keyframes yamNativeMiniPulse {
-    0%, 100% { transform: scale(1);    opacity: 1;   }
-    50%      { transform: scale(1.25); opacity: 0.7; }
-  }
+@media (max-width: 360px) {
+  .yam-native-update-sheet { padding: 22px 16px 20px; }
+  .yam-native-update-btn { min-height: 48px; font-size: 0.95rem; }
+}
 `;

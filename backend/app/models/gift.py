@@ -8,7 +8,6 @@ class Gift(Base):
     """نموذج الهدايا المتاحة في النظام"""
     __tablename__ = 'gifts'
     __table_args__ = (
-        Index('ix_gifts_name', 'name'),
         Index('ix_gifts_price', 'price'),
     )
 
@@ -26,7 +25,6 @@ class UserCoins(Base):
     """نموذج رصيد العملات للمستخدمين"""
     __tablename__ = 'user_coins'
     __table_args__ = (
-        Index('ix_user_coins_user_id', 'user_id'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -42,9 +40,6 @@ class GiftTransaction(Base):
     """نموذج معاملات الهدايا"""
     __tablename__ = 'gift_transactions'
     __table_args__ = (
-        Index('ix_gift_transactions_sender_id', 'sender_id'),
-        Index('ix_gift_transactions_receiver_id', 'receiver_id'),
-        Index('ix_gift_transactions_created_at', 'created_at'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -62,8 +57,6 @@ class LiveStreamRecording(Base):
     """نموذج تسجيلات البث المباشر"""
     __tablename__ = 'live_stream_recordings'
     __table_args__ = (
-        Index('ix_live_stream_recordings_host_id', 'host_id'),
-        Index('ix_live_stream_recordings_created_at', 'created_at'),
     )
 
     id = Column(Integer, primary_key=True, index=True)

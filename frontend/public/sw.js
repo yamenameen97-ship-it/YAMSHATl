@@ -78,7 +78,7 @@
 //      meta-refresh فوري، بلا setTimeout متعدد، بلا postMessage داخل bridge.
 //   C) SW يؤخر بث YAMSHAT_SHARE_RECEIVED 400ms — بعد إغلاق chooser sheet.
 //   D) رفع VERSION لإجبار تحديث SW القديم.
-const VERSION = 'yamshat-v20260805-v89.42-SHARE-CHOOSER-LOOP-ROOT-FIX' + '2100000000042';
+const VERSION = 'yamshat-v20260807-v89.52-DB-BOOTSTRAP-AND-AUTH-LOOP-FINAL-FIX' + '2100000000052';
 const CACHE_NAMES = {
   SHELL: `${VERSION}:shell`,
   STATIC: `${VERSION}:static`,

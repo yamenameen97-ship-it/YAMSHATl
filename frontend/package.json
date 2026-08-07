@@ -1,7 +1,7 @@
 {
   "name": "yamshat-frontend",
   "private": true,
-  "version": "89.34.0",
+  "version": "89.52.0",
   "type": "module",
   "engines": {
     "node": "20.x || 22.x",

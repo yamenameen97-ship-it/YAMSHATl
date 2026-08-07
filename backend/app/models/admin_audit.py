@@ -8,9 +8,6 @@ class AdminAuditLog(Base):
     """نموذج سجلات تدقيق الإدارة"""
     __tablename__ = 'admin_audit_logs'
     __table_args__ = (
-        Index('ix_admin_audit_logs_admin_id', 'admin_id'),
-        Index('ix_admin_audit_logs_action', 'action'),
-        Index('ix_admin_audit_logs_created_at', 'created_at'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -32,7 +29,6 @@ class UserReport(Base):
         Index('ix_user_reports_reporter_id', 'reporter_id'),
         Index('ix_user_reports_target_id', 'target_id'),
         Index('ix_user_reports_status', 'status'),
-        Index('ix_user_reports_created_at', 'created_at'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -53,9 +49,7 @@ class AdminNotification(Base):
     """نموذج إشعارات الإدارة"""
     __tablename__ = 'admin_notifications'
     __table_args__ = (
-        Index('ix_admin_notifications_admin_id', 'admin_id'),
         Index('ix_admin_notifications_is_read', 'is_read'),
-        Index('ix_admin_notifications_created_at', 'created_at'),
     )
 
     id = Column(Integer, primary_key=True, index=True)

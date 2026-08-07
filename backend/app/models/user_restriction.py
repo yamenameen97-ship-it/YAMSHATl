@@ -50,7 +50,6 @@ class UserRestriction(Base):
     __tablename__ = 'user_restrictions'
     __table_args__ = (
         Index('ix_user_restrictions_user_type_active', 'user_id', 'restriction_type', 'is_active'),
-        Index('ix_user_restrictions_until', 'expires_at'),
     )
 
     id = Column(Integer, primary_key=True, index=True)

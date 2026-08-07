@@ -9,8 +9,6 @@ class ConversationState(Base):
     __tablename__ = 'conversation_states'
     __table_args__ = (
         UniqueConstraint('user_id', 'other_user_id', name='uq_conversation_state_pair'),
-        Index('ix_conversation_state_user_id', 'user_id'),
-        Index('ix_conversation_state_other_user_id', 'other_user_id'),
         Index('ix_conversation_state_is_archived', 'is_archived'),
         Index('ix_conversation_state_is_pinned', 'is_pinned'),
         Index('ix_conversation_state_is_muted', 'is_muted'),

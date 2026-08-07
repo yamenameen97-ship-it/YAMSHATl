@@ -8,7 +8,6 @@ class LiveRoomModerator(Base):
     """نموذج مشرفي غرفة البث المباشر"""
     __tablename__ = 'live_room_moderators'
     __table_args__ = (
-        Index('ix_live_room_moderators_room_id', 'room_id'),
         Index('ix_live_room_moderators_user_id', 'user_id'),
     )
 
@@ -32,7 +31,6 @@ class LiveRoomMutedUser(Base):
     """نموذج المستخدمين المكتومين في غرفة البث"""
     __tablename__ = 'live_room_muted_users'
     __table_args__ = (
-        Index('ix_live_room_muted_users_room_id', 'room_id'),
         Index('ix_live_room_muted_users_user_id', 'user_id'),
     )
 
@@ -53,7 +51,6 @@ class LiveRoomKickedUser(Base):
     """نموذج المستخدمين المطرودين من غرفة البث"""
     __tablename__ = 'live_room_kicked_users'
     __table_args__ = (
-        Index('ix_live_room_kicked_users_room_id', 'room_id'),
         Index('ix_live_room_kicked_users_user_id', 'user_id'),
     )
 
@@ -72,7 +69,6 @@ class LiveRoomBannedUser(Base):
     """نموذج المستخدمين المحظورين من غرفة البث"""
     __tablename__ = 'live_room_banned_users'
     __table_args__ = (
-        Index('ix_live_room_banned_users_room_id', 'room_id'),
         Index('ix_live_room_banned_users_user_id', 'user_id'),
     )
 
@@ -93,7 +89,6 @@ class LiveRoomComment(Base):
     """نموذج التعليقات المباشرة في غرفة البث"""
     __tablename__ = 'live_room_comments'
     __table_args__ = (
-        Index('ix_live_room_comments_room_id', 'room_id'),
         Index('ix_live_room_comments_user_id', 'user_id'),
         Index('ix_live_room_comments_created_at', 'created_at'),
     )

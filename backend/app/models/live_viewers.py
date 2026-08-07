@@ -8,7 +8,6 @@ class LiveStreamViewer(Base):
     """نموذج المشاهدين الحاليين في البث المباشر"""
     __tablename__ = 'live_stream_viewers'
     __table_args__ = (
-        Index('ix_live_stream_viewers_stream_id', 'stream_id'),
         Index('ix_live_stream_viewers_user_id', 'user_id'),
         Index('ix_live_stream_viewers_joined_at', 'joined_at'),
     )
@@ -44,7 +43,6 @@ class LiveStreamSession(Base):
     """نموذج جلسة البث المباشر"""
     __tablename__ = 'live_stream_sessions'
     __table_args__ = (
-        Index('ix_live_stream_sessions_stream_id', 'stream_id'),
         Index('ix_live_stream_sessions_host_id', 'host_id'),
         Index('ix_live_stream_sessions_started_at', 'started_at'),
     )
@@ -104,7 +102,6 @@ class LiveStreamHostSettings(Base):
     __tablename__ = 'live_stream_host_settings'
     __table_args__ = (
         Index('ix_live_stream_host_settings_host_id', 'host_id'),
-        Index('ix_live_stream_host_settings_stream_id', 'stream_id'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -137,7 +134,6 @@ class LiveStreamCameraState(Base):
     """نموذج حالة الكاميرا في البث المباشر"""
     __tablename__ = 'live_stream_camera_states'
     __table_args__ = (
-        Index('ix_live_stream_camera_states_stream_id', 'stream_id'),
         Index('ix_live_stream_camera_states_host_id', 'host_id'),
     )
 

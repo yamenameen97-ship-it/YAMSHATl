@@ -178,6 +178,15 @@ export class PWAInitializer {
       //     - عند /share-target: نتخطى update() الفوري تماماً. التحديث سيُكتشف
       //       لاحقاً عبر startUpdateCheck() الدورية (كل ساعة) أو عند reload عادي.
       //     - خارج /share-target: نُبقي السلوك كما هو (فحص فوري طبيعي).
+      // ✅ v89.52 ROOT FIX: منع registration.update() الفوري أيضاً في صفحات
+      //   المصادقة العامة (login/register/verify-email/forgot-password/...).
+      //   السبب الجذري لحلقة صفحة تسجيل الدخول:
+      //     - يفتح المستخدم التطبيق فيوجّه HashRouter إلى #/login
+      //     - registration.update() يجلب SW جديد فوراً
+      //     - updatefound → installed → controllerchange → reload → #/login
+      //     - الدورة تتكرر بلا نهاية.
+      //   الحل: نتخطى update() الفوري في كل الصفحات العامة، ونعتمد على
+      //   startUpdateCheck() الدورية بعد دخول التطبيق.
       try {
         const path = (window.location && window.location.pathname) || '';
         const hash = (window.location && window.location.hash) || '';
@@ -185,18 +194,26 @@ export class PWAInitializer {
           || path.startsWith('/share-target/')
           || hash.startsWith('#/share-target')
           || hash.includes('/share-target');
+
+        // ✅ v89.52: افحص كلاً من pathname وHash Router للصفحات العامة
+        const hashPath = hash.replace(/^#/, '').split('?')[0] || '/';
+        const PUBLIC_ROUTES = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/admin/login'];
+        const onPublicAuthPage = PUBLIC_ROUTES.some((r) =>
+          hashPath === r || hashPath.startsWith(r + '/') || path === r || path.startsWith(r + '/')
+        );
+
         if (inShareTarget) {
           console.log('[PWA v89.20] Skipping immediate registration.update() — inside /share-target flow');
+        } else if (onPublicAuthPage) {
+          console.log('[PWA v89.52] Skipping immediate registration.update() — on public/auth page:', hashPath || path);
         } else {
           registration.update().catch((error) => {
             console.warn('[PWA] Update check error:', error);
           });
         }
       } catch (_) {
-        // fallback: إذا فشل الفحص، نُجري update() (سلوك آمن خارج share-target)
-        registration.update().catch((error) => {
-          console.warn('[PWA] Update check error:', error);
-        });
+        // fallback: إذا فشل الفحص، نتجنّب update() الفوري بشكل آمن — سيُكتشف التحديث لاحقاً عبر startUpdateCheck()
+        console.warn('[PWA v89.52] page-context check failed — skipping immediate update() as safe fallback');
       }
 
       this.emit('sw-registered', registration);

@@ -39,7 +39,6 @@ class Group(Base):
         Index('ix_groups_is_public', 'is_public'),
         Index('ix_groups_category', 'category'),
         Index('ix_groups_created_at', 'created_at'),
-        Index('ix_groups_is_frozen', 'is_frozen'),
     )
 
 

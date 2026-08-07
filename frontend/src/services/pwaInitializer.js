@@ -240,6 +240,23 @@ export class PWAInitializer {
       return;
     }
 
+    // ✅ v89.48 ROOT FIX: منع معالجة التحديث أثناء صفحات المصادقة العامة
+    //   السبب الجذري: إطلاق update-ready → AppUpdatePrompt يظهر فوق login → SKIP_WAITING
+    //   → controllerchange → reload → المستخدم يعود إلى login → الدورة تتكرر بلا نهاية.
+    //   الحل: لا نُطلق update-ready إلا بعد دخول المستخدم إلى التطبيق الفعلي.
+    let onPublicAuthPage = false;
+    try {
+      const hash = (window.location && window.location.hash) || '';
+      const hashPath = hash.replace(/^#/, '').split('?')[0] || '/';
+      const PUBLIC_ROUTES = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/admin/login'];
+      onPublicAuthPage = PUBLIC_ROUTES.some((r) => hashPath === r || hashPath.startsWith(r + '/'));
+    } catch (_) { /* ignore */ }
+
+    if (onPublicAuthPage) {
+      console.log('[PWA v89.48] updatefound ignored — on public/auth page (breaks login reload loop)');
+      return;
+    }
+
     newWorker.addEventListener('statechange', () => {
       if (newWorker.state === 'installed' && navigator.serviceWorker.controller && registration.waiting === newWorker) {
         // ✅ v89.20: تحقق إضافي أثناء statechange (المسار قد تغيّر)
@@ -254,6 +271,19 @@ export class PWAInitializer {
         } catch (_) { /* ignore */ }
         if (stillInShareTarget) {
           console.log('[PWA v89.20] update-ready suppressed — inside /share-target flow (statechange)');
+          return;
+        }
+
+        // ✅ v89.48 ROOT FIX: تحقق من صفحة المصادقة أيضاً أثناء statechange
+        let stillOnAuthPage = false;
+        try {
+          const h = (window.location && window.location.hash) || '';
+          const hashPath = h.replace(/^#/, '').split('?')[0] || '/';
+          const PUBLIC_ROUTES = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/admin/login'];
+          stillOnAuthPage = PUBLIC_ROUTES.some((r) => hashPath === r || hashPath.startsWith(r + '/'));
+        } catch (_) { /* ignore */ }
+        if (stillOnAuthPage) {
+          console.log('[PWA v89.48] update-ready suppressed — on public/auth page (statechange)');
           return;
         }
 
@@ -481,6 +511,14 @@ export class PWAInitializer {
             || hash.includes('/share-target');
           if (inShareTarget) {
             console.log('[PWA] controllerchange skipped inside /share-target flow');
+            return;
+          }
+          // ✅ v89.48 ROOT FIX: تخطي حدث sw-controlling أثناء صفحة المصادقة
+          //   حتّى لا يُطلق refresh للاستعلامات الحيّة ويدفع useSessionGuard إلى حلقة refresh.
+          const hashPath = hash.replace(/^#/, '').split('?')[0] || '/';
+          const PUBLIC_ROUTES = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/admin/login'];
+          if (PUBLIC_ROUTES.some((r) => hashPath === r || hashPath.startsWith(r + '/'))) {
+            console.log('[PWA v89.48] controllerchange sw-controlling skipped on public/auth page');
             return;
           }
         } catch (_) { /* ignore */ }

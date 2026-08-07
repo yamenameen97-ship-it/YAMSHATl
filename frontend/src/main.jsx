@@ -471,10 +471,10 @@ import { legacyDeviceOptimizer } from './services/legacyDeviceOptimizer.js';
 import { instantTouchFeedback } from './services/instantTouchFeedback.js';
 import { pawTouchEnhancer } from './services/pawTouchEnhancer.js';
 
-const BUILD_ID = 'yamshat-v89.20-SHARE-TARGET-UPDATE-LOOP-FIX';
+const BUILD_ID = 'yamshat-v89.48-LOGIN-RELOAD-LOOP-ROOT-FIX';
 const BUILD_STORAGE_KEY = 'yamshat_build_id';
 const LAST_RESET_KEY = 'yamshat_build_reset_ts';
-const BUILD_CURRENT_TAG = 'v89.20';
+const BUILD_CURRENT_TAG = 'v89.48';
 
 // ✅ v89.01: أداة موحّدة تحدّد ما إذا كنّا حالياً داخل مسار /share-target.
 //    نستخدمها لمنع أي reload/skipWaiting أثناء استقبال المشاركة الخارجية،
@@ -488,6 +488,21 @@ function isInShareTargetFlow() {
       || path.startsWith('/share-target/')
       || hash.startsWith('#/share-target')
       || hash.includes('/share-target');
+  } catch (_) {
+    return false;
+  }
+}
+
+// ✅ v89.48 ROOT FIX: كشف الوجود في صفحة مصادقة عامة (login/register/...)
+//   يُستخدم لمنع إرسال SKIP_WAITING تلقائياً أثناء وجود المستخدم في صفحة
+//   تسجيل الدخول — الإرسال يُطلق controllerchange → reload → حلقة لا نهائية.
+function isOnPublicAuthPage() {
+  try {
+    if (typeof window === 'undefined') return false;
+    const hash = window.location.hash || '';
+    const hashPath = hash.replace(/^#/, '').split('?')[0] || '/';
+    const PUBLIC_ROUTES = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/admin/login'];
+    return PUBLIC_ROUTES.some((r) => hashPath === r || hashPath.startsWith(r + '/'));
   } catch (_) {
     return false;
   }
@@ -702,6 +717,11 @@ async function hardResetIfBuildChanged() {
     if ('serviceWorker' in navigator) {
       if (isInShareTargetFlow()) {
         console.log('[Yamshat] SKIP_WAITING suppressed — currently inside /share-target flow');
+      } else if (isOnPublicAuthPage()) {
+        // ✅ v89.48 ROOT FIX: لا نرسل SKIP_WAITING أثناء صفحة تسجيل الدخول
+        //   لأنه يُطلق controllerchange → reload → المستخدم يعود إلى login → حلقة.
+        //   SW الجديد سيُفعّل طبيعياً بعد تسجيل الدخول (أو عند إغلاق وإعادة فتح الألسنة).
+        console.log('[Yamshat v89.48] SKIP_WAITING suppressed — on public/auth page (breaks login reload loop)');
       } else {
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (const reg of registrations) {

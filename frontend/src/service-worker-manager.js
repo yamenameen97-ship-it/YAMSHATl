@@ -294,10 +294,23 @@ export function warmMediaCache(urls = []) {
 
 /**
  * إجبار تحديث فوري
+ *
+ * ✅ v89.48 ROOT FIX: منع التنفيذ أثناء صفحات المصادقة العامة
+ *   لأن reload يعيد المستخدم غير المسجّل إلى login مرة أخرى → حلقة.
  */
 export async function forceUpdate() {
+  try {
+    const hash = (typeof window !== 'undefined' && window.location.hash) || '';
+    const hashPath = hash.replace(/^#/, '').split('?')[0] || '/';
+    const PUBLIC_ROUTES = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/admin/login'];
+    if (PUBLIC_ROUTES.some((r) => hashPath === r || hashPath.startsWith(r + '/'))) {
+      console.warn('[SWM v89.48] forceUpdate تم رفضه — المستخدم في صفحة مصادقة عامة.');
+      return;
+    }
+  } catch (_) { /* ignore */ }
+
   console.log('[SWM] إجبار تحديث فوري...');
-  
+
   // إخبار Service Worker بتخطي الانتظار
   sendMessageToSW({ type: 'yamshat:skip-waiting' });
 

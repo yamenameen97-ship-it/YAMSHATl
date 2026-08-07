@@ -17,6 +17,15 @@ function redirectToLogin(pathname) {
   if (typeof window === 'undefined') return;
   const currentPath = getCurrentAppPathname();
   const loginPath = pathname.startsWith('/admin') || currentPath.startsWith('/admin') ? '/admin/login' : '/login';
+  // ✅ v89.48 ROOT FIX: لا تقم بإعادة توجيه تلقائي إذا كنا فعلاً على نفس المسار
+  //   منع إعادة تحميل متكرر للصفحة عند فشل refresh مراراً والمستخدم أصلاً في login.
+  if (currentPath === loginPath) {
+    return;
+  }
+  if (isPublicPath(currentPath)) {
+    // المستخدم فعلاً في صفحة عامة (register/forgot-password/reset-password) — لا داعي للتوجيه.
+    return;
+  }
   redirectToAppPath(loginPath);
 }
 

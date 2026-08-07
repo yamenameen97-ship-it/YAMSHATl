@@ -141,7 +141,14 @@ export default function AppUpdatePrompt() {
   // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const handleReady = async (event) => {
-      // منع أثناء /share-target
+      // ✅ v89.48 ROOT FIX: منع أثناء /share-target + كل الصفحات العامة (login/register/...)
+      //   السبب الجذري لحلقة تحميل صفحة تسجيل الدخول:
+      //     - المستخدم غير مسجّل → HashRouter يوجّه إلى #/login
+      //     - AppUpdatePrompt يكتشف waiting SW فيظهر فوق صفحة login
+      //     - أي reload ناتج (تلقائي أو من controllerchange) يعيد المستخدم إلى #/login
+      //     - hardResetIfBuildChanged يعيد إرسال SKIP_WAITING → controllerchange → reload آخر
+      //     - النتيجة: حلقة لا نهائية على صفحة تسجيل الدخول.
+      //   الحل: لا تُطلق أي نافذة تحديث ولا أي تفعيل SW أثناء الوجود في صفحة عامة.
       try {
         const path = (window.location && window.location.pathname) || '';
         const hash = (window.location && window.location.hash) || '';
@@ -151,6 +158,14 @@ export default function AppUpdatePrompt() {
           || hash.includes('/share-target');
         if (inShareTarget) {
           console.log('[UpdatePrompt] handleReady skipped — inside /share-target flow');
+          return;
+        }
+        // ✅ v89.48: قائمة الصفحات العامة — نستخرج المسار من hash (HashRouter)
+        const hashPath = hash.replace(/^#/, '').split('?')[0] || '/';
+        const PUBLIC_ROUTES = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/admin/login'];
+        const isPublicPage = PUBLIC_ROUTES.some((r) => hashPath === r || hashPath.startsWith(r + '/'));
+        if (isPublicPage) {
+          console.log('[UpdatePrompt] handleReady skipped — on public/auth page:', hashPath);
           return;
         }
       } catch (_) { /* ignore */ }
@@ -221,6 +236,16 @@ export default function AppUpdatePrompt() {
           || hash.includes('/share-target');
         if (inShareTarget) {
           console.log('[UpdatePrompt] controllerchange skipped — inside /share-target flow');
+          return;
+        }
+        // ✅ v89.48 ROOT FIX: لا reload تلقائي أثناء صفحة تسجيل الدخول / صفحات المصادقة
+        const hashPath = hash.replace(/^#/, '').split('?')[0] || '/';
+        const PUBLIC_ROUTES = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password', '/admin/login'];
+        const isPublicPage = PUBLIC_ROUTES.some((r) => hashPath === r || hashPath.startsWith(r + '/'));
+        if (isPublicPage) {
+          console.log('[UpdatePrompt] controllerchange skipped — on public/auth page:', hashPath);
+          // تنظيف علامة applying حتى لا نُعيد المحاولة لاحقاً
+          clearApplyingUpdate();
           return;
         }
       } catch (_) { /* ignore */ }

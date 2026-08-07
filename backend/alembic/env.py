@@ -14,10 +14,14 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# v85.2 fix: استخدم effective_database_url (بعد normalize + sslmode)
-# بدلاً من DATABASE_URL الخام. القيمة الخام قد لا تشتغل مع Alembic إذا كانت
-# postgres:// (SQLAlchemy 2.x يرفضها) أو تنقصها sslmode لروابط Render الخارجية.
-_alembic_db_url = getattr(settings, 'effective_database_url', None) or settings.DATABASE_URL
+# v89.50 fix: نستخدم resolve_database_url() الذي يجرّب Internal أولاً ثم يقع
+# تلقائياً على External + sslmode=require عند فشل DNS لروابط Render الداخلية.
+# هذا يضمن أن alembic يعمل من أي بيئة (داخل Render أو خارجه).
+try:
+    from app.db.url_resolver import resolve_database_url
+    _alembic_db_url = resolve_database_url()
+except Exception:
+    _alembic_db_url = getattr(settings, 'effective_database_url', None) or settings.DATABASE_URL
 config.set_main_option('sqlalchemy.url', _alembic_db_url)
 target_metadata = Base.metadata
 

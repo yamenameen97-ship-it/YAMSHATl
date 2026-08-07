@@ -1,11 +1,28 @@
+"""
+Database session/engine wiring — v89.50
+
+v89.50 fix — Smart URL Resolver with Internal→External DNS Fallback
+─────────────────────────────────────────────────────────────────────
+قبل هذا الإصلاح كان الملف يعتمد على DATABASE_URL كما هو من البيئة/settings،
+وعندما يكون الرابط الداخلي لـ Render (dpg-xxx-a بدون domain) وفشل DNS
+في حلّه (مناطق مختلفة/cold start/شبكة داخلية غير جاهزة) نحصل على:
+
+    psycopg2.OperationalError:
+      could not translate host name "dpg-xxx-a" to address:
+      Name or service not known
+
+الحل: نستخدم resolve_database_url() من url_resolver.py الذي يجرّب:
+    Internal → External (مشتق تلقائياً) → sqlite (كملاذ أخير)
+ويختار أول مرشّح ينجح في DNS + TCP handshake.
+"""
+
 import logging
-import os
-import re
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
-from app.core.config import normalize_database_url, settings
+from app.core.config import settings
+from app.db.url_resolver import resolve_database_url, get_last_resolved_url_masked
 
 logger = logging.getLogger(__name__)
 
@@ -19,50 +36,11 @@ engine_kwargs = {
 connect_args = {}
 
 
-def _mask_url_for_log(url: str) -> str:
-    """إخفاء كلمة المرور عند طباعة الرابط في السجلات."""
-    try:
-        return re.sub(r'(://[^:]+:)[^@]+(@)', r'\1***\2', url)
-    except Exception:
-        return url.split('@', 1)[-1] if '@' in url else url
-
-
-def _resolve_database_url() -> str:
-    """
-    v85.2 — استخراج رابط قاعدة البيانات مع تطبيع صارم:
-      • أولاً effective_database_url من Settings (بعد normalize).
-      • ثم DATABASE_URL من Settings (raw) → يتم normalize يدوياً.
-      • ثم متغير البيئة مباشرة (احتياط لكسر أي كاش قديم على Render).
-      • أخيراً SQLite محلي.
-    هذا يضمن أن أي تغيير في متغير البيئة على Render يُلتقط فوراً حتى لو
-    كانت هناك نسخة قديمة من Settings في الذاكرة.
-    """
-    candidates = (
-        getattr(settings, 'effective_database_url', None),
-        getattr(settings, 'DATABASE_URL', None),
-        os.getenv('DATABASE_URL'),
-    )
-    for value in candidates:
-        if not value:
-            continue
-        normalized = normalize_database_url(str(value))
-        if normalized and not normalized.startswith('sqlite'):
-            return normalized
-        if normalized:
-            return normalized
-    return 'sqlite:///./yamshat.db'
-
-
-DATABASE_URL = _resolve_database_url()
-RAW_DB_URL = getattr(settings, 'DATABASE_URL', '') or ''
-
-if DATABASE_URL.startswith('sqlite') and RAW_DB_URL and not RAW_DB_URL.startswith('sqlite'):
-    logger.warning(
-        'DATABASE_URL est vide ou contient encore des placeholders; '
-        'fallback vers SQLite local jusqu\'à ce qu\'une URL réelle soit configurée.'
-    )
-else:
-    logger.info('Database engine will connect to: %s', _mask_url_for_log(DATABASE_URL))
+# v89.50: نستخدم المحلّل الذكي بدلاً من قراءة DATABASE_URL مباشرة.
+# هذا يضمن أن أي فشل DNS في الرابط الداخلي يُعالَج تلقائياً بالوقوع
+# على الرابط الخارجي مع sslmode=require.
+DATABASE_URL = resolve_database_url()
+logger.info('Database engine will connect to: %s', get_last_resolved_url_masked() or DATABASE_URL)
 
 if DATABASE_URL.startswith('sqlite'):
     connect_args['check_same_thread'] = False

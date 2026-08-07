@@ -63,6 +63,24 @@ app.add_middleware(
 
 
 # ============================================================
+# v89.49: 🛡️ حارس جاهزية القاعدة قبل مسارات auth/health/warmup
+# يضمن أن أول طلب /api/auth/login على قاعدة جديدة يجد الجداول والحسابات
+# البذرية جاهزة، حتى إن سبق on_startup event.
+# ============================================================
+@app.middleware("http")
+async def _db_readiness_guard(request: Request, call_next):
+    path = request.url.path or ""
+    # مسارات حرجة يجب أن تجد القاعدة جاهزة قبل الدخول للراوتر
+    if path.startswith("/api/auth/") or path in ("/api/health", "/api/warmup", "/health"):
+        try:
+            from app.db.bootstrap_new_db_guard import ensure_new_database_ready
+            ensure_new_database_ready()
+        except Exception as _guard_exc:
+            logger.warning("[db-readiness-guard] soft-fail: %s", _guard_exc)
+    return await call_next(request)
+
+
+# ============================================================
 # 🛡️ معالج أخطاء يضمن وصول CORS headers حتى عند 500/503
 # هذا يحل الخطأ الذي يظهر للمستخدم كـ "CORS blocked"
 # بينما السبب الحقيقي هو 503 (cold start)
@@ -71,6 +89,23 @@ app.add_middleware(
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Unhandled error on {request.url.path}: {exc}")
     origin = request.headers.get("origin", "*")
+
+    # v89.49: تفريق جذري — إذا كان الخطأ مرتبطاً بالقاعدة (جدول مفقود/عمود ناقص)
+    # نشغّل حارس تهيئة القاعدة فوراً لإنقاذ الطلبات التالية دون انتظار إعادة النشر.
+    err_text = str(exc).lower()
+    db_related = any(kw in err_text for kw in (
+        'relation', 'does not exist', 'no such table', 'undefinedtable',
+        'undefinedcolumn', 'column', 'operationalerror', 'programmingerror',
+    ))
+    if db_related:
+        try:
+            from app.db.bootstrap_new_db_guard import ensure_new_database_ready
+            from app.db.session import engine as _db_engine
+            ensure_new_database_ready(_db_engine)
+            logger.warning("[recovery] triggered new-db-guard after DB error on %s", request.url.path)
+        except Exception as _rec_exc:
+            logger.warning("[recovery] guard failed: %s", _rec_exc)
+
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error", "path": request.url.path},
@@ -378,8 +413,14 @@ async def on_startup():
     try:
         from app.db.bootstrap import initialize_database
         from app.db.session import engine as _db_engine
-        initialize_database(_db_engine)
-        logger.info("   🗄️  Database initialization completed")
+        # v89.49: force=True عند الإقلاع الأول لضمان تهيئة القاعدة الجديدة
+        # بشكل قسري (إنشاء الجداول + الحسابات البذرية) قبل قبول أي طلب.
+        initialize_database(_db_engine, force=True)
+        logger.info("   🗄️  Database initialization completed (force=True)")
+
+        # v89.49: حارس إضافي — يضمن جاهزية القاعدة قبل أي طلب لاحق
+        from app.db.bootstrap_new_db_guard import ensure_new_database_ready
+        ensure_new_database_ready(_db_engine)
     except Exception as exc:
         logger.error(f"   ❌ Database bootstrap failed: {exc}", exc_info=True)
 

@@ -4,7 +4,7 @@ v89.49 — New Database Bootstrap Guard
 حارس idempotent يضمن أن قاعدة البيانات جاهزة قبل قبول أي طلب auth.
 
 يعالج المشكلة التالية:
-- عند إنشاء قاعدة PostgreSQL جديدة على Render (مثل yamshatdt) ووضع رابطها
+- عند إنشاء قاعدة PostgreSQL جديدة على Render (مثل yamshat66) ووضع رابطها
   في DATABASE_URL، قد يفشل on_startup event لأسباب عديدة (cold start،
   timing، فشل صامت في migrations). النتيجة: أول طلب /api/auth/login
   يجد جدول users غير موجود → OperationalError → 500 Internal server error.

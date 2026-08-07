@@ -1,6 +1,8 @@
 """
-v89.50 — Smart DATABASE_URL Resolver with Internal→External DNS Fallback
+v89.51 — Smart DATABASE_URL Resolver with Internal→External DNS Fallback
 =========================================================================
+تحديث v89.51: القاعدة الحالية هي yamshat66 على مضيف dpg-d9qjo6pt0dsc7386fhdg-a
+
 السبب الجذري لخطأ "could not translate host name dpg-xxx-a":
 ─────────────────────────────────────────────────────────────
 رابط Render Internal (dpg-xxx-a بدون domain) يعمل **فقط** داخل شبكة Render
@@ -19,7 +21,7 @@ v89.50 — Smart DATABASE_URL Resolver with Internal→External DNS Fallback
 
 النتيجة في اللوجز:
   psycopg2.OperationalError:
-    could not translate host name "dpg-d96nf4uq1p3s73d2m95g-a" to address:
+    could not translate host name "dpg-d9qjo6pt0dsc7386fhdg-a" to address:
     Name or service not known
 
 الحل الحاسم (v89.50):

@@ -1,4 +1,4 @@
-YAMSHAT - Render Database URL Guide (v89.50)
+YAMSHAT - Render Database URL Guide (v89.51)
 =============================================
 
 المتغيرات المطلوبة داخل خدمة الباك إند:
@@ -6,17 +6,27 @@ YAMSHAT - Render Database URL Guide (v89.50)
   DATABASE_URL_EXTERNAL    ← رابط External (fallback عند فشل DNS)
 
 ═══════════════════════════════════════════════════════════════
-🆕 القاعدة الجديدة الحالية (yamshatdt) — v89.50
+🆕 القاعدة الجديدة الحالية (yamshat66) — v89.51
 ═══════════════════════════════════════════════════════════════
 
 Internal Database URL (يوضع في DATABASE_URL):
-postgresql://yamshatdt_user:I7IKG546v6Rq54mMFsrAyiE3G1jPxeT3@dpg-d96nf4uq1p3s73d2m95g-a/yamshatdt
+postgresql://yamshat66_user:spDXcvDbon5FYdmjVi2THBR1a1KlwnVP@dpg-d9qjo6pt0dsc7386fhdg-a/yamshat66
 
 External Database URL (يوضع في DATABASE_URL_EXTERNAL):
-postgresql://yamshatdt_user:I7IKG546v6Rq54mMFsrAyiE3G1jPxeT3@dpg-d96nf4uq1p3s73d2m95g-a.oregon-postgres.render.com/yamshatdt?sslmode=require
+postgresql://yamshat66_user:spDXcvDbon5FYdmjVi2THBR1a1KlwnVP@dpg-d9qjo6pt0dsc7386fhdg-a.oregon-postgres.render.com/yamshat66?sslmode=require
+
+معلومات القاعدة:
+- Database Name:  yamshat66
+- Username:       yamshat66_user
+- Password:       spDXcvDbon5FYdmjVi2THBR1a1KlwnVP
+- Host Internal:  dpg-d9qjo6pt0dsc7386fhdg-a
+- Host External:  dpg-d9qjo6pt0dsc7386fhdg-a.oregon-postgres.render.com
+- Port:           5432
+- Region:         Oregon
+- PostgreSQL:     18
 
 ملاحظات مهمة:
-- التطبيق الآن (v89.50) يحل الرابط تلقائياً:
+- التطبيق (v89.50+) يحل الرابط تلقائياً:
     1) يجرب Internal أولاً (أسرع، بدون SSL داخل شبكة Render).
     2) عند فشل DNS للـ Internal يقع تلقائياً على External + sslmode=require.
     3) إذا لم يوضع DATABASE_URL_EXTERNAL، يشتقّ التطبيق External لكل مناطق
@@ -24,45 +34,35 @@ postgresql://yamshatdt_user:I7IKG546v6Rq54mMFsrAyiE3G1jPxeT3@dpg-d96nf4uq1p3s73d
 - المستخدم لا يحتاج لأي تعديل يدوي — التبديل تلقائي على مستوى الاتصال.
 
 ═══════════════════════════════════════════════════════════════
-🔬 السبب الجذري للخطأ في v89.49
+🔬 السبب الجذري للخطأ في اللوجز السابقة
 ═══════════════════════════════════════════════════════════════
 
-الخطأ الظاهر في لوجز Render:
+الخطأ الظاهر في لوجز Render (Aug 7):
 
-    psycopg2.OperationalError:
-      could not translate host name "dpg-d96nf4uq1p3s73d2m95g-a" to address:
-      Name or service not known
+    sqlalchemy.exc.OperationalError: (psycopg2.OperationalError)
+      connection to server at "dpg-d96nf4uq1p3s73d2m95g-a.oregon-postgres.render.com"
+      (35.227.164.209), port 5432 failed:
+      SSL connection has been closed unexpectedly
 
-    ERROR:app.services.background_tasks:Shop reservations sweep error:
-      (psycopg2.OperationalError) could not translate host name "dpg-..." to address
+    ERROR:app.services.background_tasks:Shop reservations sweep error
 
-السبب: رابط Render Internal (dpg-xxx-a بدون domain) يعمل فقط داخل شبكة
-Render الخاصة. عندما تفشل شبكة DNS الداخلية لأي سبب (cold start،
-منطقة مختلفة بين الخدمة والقاعدة، خيط خلفية يفتح اتصالاً أثناء انقطاع
-مؤقّت)، لا يستطيع psycopg2 حلّ الاسم، فيفشل الاتصال ويظهر 500 Internal
-Server Error عند تسجيل الدخول.
+السبب: القاعدة القديمة (yamshatdt) لم تعد متاحة أو أن SSL انقطع بشكل غير متوقع.
+تم استبدالها بالقاعدة الجديدة (yamshat66) في هذه النسخة.
 
 ═══════════════════════════════════════════════════════════════
-✅ ما تم إصلاحه في v89.50 (DNS FALLBACK ROOT FIX)
+✅ ما تم تحديثه في v89.51
 ═══════════════════════════════════════════════════════════════
 
-1) ملف جديد: app/db/url_resolver.py
-   - resolve_database_url(): يبني قائمة مرشحين (Internal + External +
-     مشتقات لكل المناطق) ويجرّب كل واحد بـ DNS + TCP قبل تسليمه لـ
-     SQLAlchemy.
-   - Idempotent: بعد أول نجاح يخزن النتيجة ولا يعيد الفحص.
-   - Thread-safe: يستخدم قفلاً واحداً لتفادي إعادة الفحص من عدة خيوط.
+1) backend/.env:
+   - تحديث DATABASE_URL و DATABASE_URL_EXTERNAL إلى قاعدة yamshat66 الجديدة.
 
-2) app/db/session.py:
-   - أصبح يستدعي resolve_database_url() بدلاً من قراءة DATABASE_URL
-     مباشرة، مما يوفر Internal→External Fallback تلقائياً لكل شيء
-     يستخدم SessionLocal (الويب + Celery + خيط الخلفية).
+2) backend/RENDER_DATABASE_URLS_AR.txt:
+   - تحديث كل الأمثلة والتوثيق للقاعدة الجديدة.
 
-3) alembic/env.py:
-   - يستخدم نفس المحلّل — هجرات Alembic تعمل من أي بيئة.
-
-4) .env:
-   - أُضيف DATABASE_URL_EXTERNAL كـ fallback صريح للسرعة القصوى.
+3) نظام Resolver الذكي (v89.50) لا يزال يعمل:
+   - app/db/url_resolver.py: يجرب Internal ثم External تلقائياً.
+   - app/db/session.py: يستخدم Resolver لكل الاتصالات.
+   - alembic/env.py: يستخدم نفس Resolver.
 
 ═══════════════════════════════════════════════════════════════
 🔐 حسابات تسجيل الدخول الافتراضية (بعد أول إقلاع)
@@ -78,8 +78,8 @@ Server Error عند تسجيل الدخول.
 ⚙️ متغيرات البيئة الأساسية على Render
 ═══════════════════════════════════════════════════════════════
 
-DATABASE_URL             = (Internal URL — من لوحة Render → Database → Internal)
-DATABASE_URL_EXTERNAL    = (External URL — من لوحة Render → Database → External)
+DATABASE_URL             = postgresql://yamshat66_user:spDXcvDbon5FYdmjVi2THBR1a1KlwnVP@dpg-d9qjo6pt0dsc7386fhdg-a/yamshat66
+DATABASE_URL_EXTERNAL    = postgresql://yamshat66_user:spDXcvDbon5FYdmjVi2THBR1a1KlwnVP@dpg-d9qjo6pt0dsc7386fhdg-a.oregon-postgres.render.com/yamshat66?sslmode=require
 SECRET_KEY               = (سلسلة عشوائية طويلة — 32+ حرفاً)
 ENVIRONMENT              = production
 DEBUG                    = 0
@@ -90,24 +90,18 @@ COOKIE_SAMESITE          = none
 REFRESH_COOKIE_SECURE    = 1
 DB_BOOTSTRAP_ON_START    = 1
 
-اختياري:
-REDIS_URL                = (إن وُجد)
-
 ═══════════════════════════════════════════════════════════════
-🚀 خطوات النشر
+🚀 خطوات النشر (خطوة واحدة فقط!)
 ═══════════════════════════════════════════════════════════════
 
 1) ارفع محتوى هذا الأرشيف إلى مستودع Git.
-2) في Render → خدمة yamshat-1ya4 → Environment:
-   - DATABASE_URL          = رابط Internal الجديد (من لوحة Render).
-   - DATABASE_URL_EXTERNAL = رابط External الجديد (من لوحة Render).
+2) في Render → خدمة yamshat (backend) → Environment:
+   - DATABASE_URL          = (Internal URL أعلاه)
+   - DATABASE_URL_EXTERNAL = (External URL أعلاه)
 3) Manual Deploy → Deploy latest commit.
 4) راقب اللوجز — يجب أن ترى:
 
-   [db-resolver] probing candidate #1/6: postgresql://...@dpg-xxx-a/yamshatdt
-   [db-resolver]   ↳ OK ✅ selected: ...       ← أو
-   [db-resolver]   ↳ DNS FAIL — skipping
-   [db-resolver] probing candidate #2/6: ...oregon-postgres.render.com...
+   [db-resolver] probing candidate #1/N: postgresql://...@dpg-d9qjo6pt0dsc7386fhdg-a/yamshat66
    [db-resolver]   ↳ OK ✅ selected: ...
    Database engine will connect to: postgresql://...@... (masked)
    🚀 Yamshat backend started
@@ -115,7 +109,7 @@ REDIS_URL                = (إن وُجد)
    ✅ All N routers mounted successfully
 
 5) جرّب /api/health و /api/warmup → يجب أن يرجع 200 OK.
-6) سجّل الدخول بحساب المسؤول — يجب أن يعمل فوراً.
+6) سجّل الدخول بحساب المشترك (yasryameen21@gmail.com / 12345678) — يجب أن يعمل فوراً.
 
 ═══════════════════════════════════════════════════════════════
 🧪 اختبار سريع بعد النشر
@@ -123,4 +117,4 @@ REDIS_URL                = (إن وُجد)
 
 1) افتح: https://<backend>/api/health   → {"status":"ok"}
 2) افتح: https://<backend>/api/warmup   → {"warm":true}
-3) جرّب تسجيل الدخول — لن يظهر "could not translate host name" بعد الآن.
+3) جرّب تسجيل الدخول — لن يظهر "Internal server error" بعد الآن.

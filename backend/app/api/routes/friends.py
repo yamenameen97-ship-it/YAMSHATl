@@ -410,6 +410,15 @@ async def accept_friend_request(
     db.refresh(friendship)
 
     requester = db.query(User).filter(User.id == friendship.requester_id).first()
+
+    # ✅ v89.45: مزامنة العدادات فور قبول الصداقة لأن الصداقة تُحتسب متابعة ثنائية.
+    try:
+        from app.api.routes.users import _sync_user_counts as _sync
+        _sync(db, current_user)
+        if requester:
+            _sync(db, requester)
+    except Exception:
+        pass
     try:
         if requester:
             await create_and_send_notification(
@@ -448,8 +457,20 @@ def decline_or_remove_friendship(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='لا تملك صلاحية هذه العملية')
 
     previous_status = friendship.status
+    other_user_id = friendship.addressee_id if friendship.requester_id == current_user.id else friendship.requester_id
     db.delete(friendship)
     db.commit()
+
+    # ✅ v89.45: إذا كانت مقبولة ثم حُذفت → ندّث العدادات للطرفين لأنها كانت تعد متابعة.
+    if previous_status == FRIENDSHIP_STATUS_ACCEPTED:
+        try:
+            from app.api.routes.users import _sync_user_counts as _sync
+            _sync(db, current_user)
+            other = db.query(User).filter(User.id == other_user_id).first()
+            if other:
+                _sync(db, other)
+        except Exception:
+            pass
 
     return {
         'message': 'تمت العملية',

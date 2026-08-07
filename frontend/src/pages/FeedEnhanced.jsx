@@ -173,6 +173,10 @@ function buildFeedPosts(posts = []) {
         // ✅ v88.85 FIX: تمرير بيانات كارت المصدر الخارجي + شارة "موثق لدى Yamshat"
         link_card: post.link_card || post.linkCard || null,
         verified_by_yamshat: Boolean(post.verified_by_yamshat || post.verifiedByYamshat),
+        // ✅ v89.43 FIX: تمرير حقول إعادة النشر لتظهر شارة «أعاد نشر هذا المنشور» فوق البطاقة
+        is_repost: Boolean(post.is_repost),
+        original_post_id: post.original_post_id ?? null,
+        reposter: post.reposter || null,
       };
     });
   }
@@ -800,6 +804,19 @@ function PostCard({ post }) {
 
   return (
     <article className="yam-post-card-v2">
+      {/* ✅ v89.43 FIX: شارة إعادة النشر — تظهر فوق المنشور عند كونه معاد نشره
+          لتوضيح أن المستخدم أعاد نشره مع بقاء ملكية المحتوى لصاحبه الأصلي */}
+      {post.is_repost ? (
+        <div className="ym-repost-banner" dir="rtl">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M17 2l4 4-4 4" />
+            <path d="M3 11v-1a4 4 0 014-4h14" />
+            <path d="M7 22l-4-4 4-4" />
+            <path d="M21 13v1a4 4 0 01-4 4H3" />
+          </svg>
+          <span>{post.reposter?.display_name || post.reposter?.full_name || post.reposter?.username || post.authorName} أعاد نشر هذا المنشور</span>
+        </div>
+      ) : null}
       {/* ✅ FIX (v51): جعل الاسم/المعرّف/الوقت بجوار الصورة الشخصية مباشرة بدون فجوة
           مطابقاً للصورة المرجعية الأولى. الاسم يلتصق بالصورة، والمعرف والوقت في سطر تحته على نفس السطر. */}
       <div className="yam-post-head-v2" dir="rtl">
@@ -1410,6 +1427,23 @@ function FeedDesktopInner() {
         </div>
 
         <style>{`
+          /* ✅ v89.43 FIX: تنسيق شارة إعادة النشر فوق بطاقة المنشور (سطح المكتب) */
+          .ym-repost-banner {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 18px 8px;
+            color: #9CA3AF;
+            font-size: 0.8rem;
+            font-weight: 600;
+            line-height: 1.4;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          }
+          .ym-repost-banner svg {
+            flex-shrink: 0;
+            color: var(--primary, #8B5CF6);
+          }
+
           .yam-laptop-page {
             position: relative;
             min-height: 100%;

@@ -31,6 +31,7 @@ HIGH_VOLUME_PATHS = (
     '/presence',
     '/chat_threads',
     '/messages',
+    '/chat_shared_media',
     '/update_online',
     '/typing',
     '/live',

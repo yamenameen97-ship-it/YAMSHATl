@@ -5,7 +5,7 @@ import bleach
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.content_scanner import scan_content
 from app.core.dependencies import get_current_user, get_db
@@ -139,12 +139,20 @@ def get_messages(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # دعم دردشة المجموعات: إذا بدأ المستلم بـ "group:"
+    # ✅ v89.47 ROOT FIX — CHAT_SETTINGS_SHARED_MEDIA:
+    # المشكلة الجذرية: relationship attachments كان lazy='select' وكانت
+    # المرفقات أحياناً لا تُحمَّل قبل تسلسل JSON (خاصة بعد إغلاق الـ session
+    # ضمن request scope)، مما يجعل صفحة إعدادات المحادثة تعرض 0 وسائط/ملفات/روابط
+    # حتى مع وجود رسائل تحتوي مرفقات فعلية. الحل: eager loading صريح بـ
+    # selectinload لكل الاستعلامات التي تخدم الواجهة.
     is_group = str(receiver).startswith('group:')
-    
+
     if is_group:
-        # في الوقت الحالي، نستخدم جدول الرسائل نفسه للمجموعات مع وضع معرف المجموعة في حقل receiver
-        query = db.query(Message).filter(Message.receiver == receiver)
+        query = (
+            db.query(Message)
+            .options(selectinload(Message.attachments))
+            .filter(Message.receiver == receiver)
+        )
     else:
         other_user = _find_active_user_by_username(db, receiver)
         if other_user is None:
@@ -152,14 +160,27 @@ def get_messages(
 
         _assert_can_chat(db, current_user.id, other_user.id)
 
-        query = db.query(Message).filter(
-            or_(
-                and_(Message.sender_id == current_user.id, Message.receiver_id == other_user.id),
-                and_(Message.sender_id == other_user.id, Message.receiver_id == current_user.id),
+        query = (
+            db.query(Message)
+            .options(selectinload(Message.attachments))
+            .filter(
+                or_(
+                    and_(Message.sender_id == current_user.id, Message.receiver_id == other_user.id),
+                    and_(Message.sender_id == other_user.id, Message.receiver_id == current_user.id),
+                )
             )
         )
     if before_id is not None:
         query = query.filter(Message.id < before_id)
+
+    # ✅ v89.47: استبعاد الرسائل المحذوفة كلياً من الطرفين (deleted_for_everyone)
+    # حتى لا تسبب فراغات في العدادات وتغلّف مرفقاتها بصمت.
+    query = query.filter(
+        or_(
+            Message.deleted_for_everyone.is_(False),
+            Message.deleted_for_everyone.is_(None),
+        )
+    )
 
     messages = list(reversed(query.order_by(Message.id.desc()).limit(limit).all()))
     items = [serialize_message(message, db) for message in messages]
@@ -169,6 +190,189 @@ def get_messages(
             'limit': limit,
             'has_more': len(messages) >= limit,
             'next_before_id': messages[0].id if messages else None,
+        },
+    }
+
+
+# ============================================================
+# ✅ v89.47 — endpoint موحّد للوسائط/الملفات/الروابط المشتركة
+#   يُستخدم من صفحة إعدادات المحادثة مباشرةً بدل استخراجها من الرسائل
+#   عبر polling. يُرجع مصفوفات مفصولة جاهزة للعرض مع عدادات صحيحة.
+# ============================================================
+import re as _re_shared
+
+_SHARED_URL_RE = _re_shared.compile(r'(https?://[^\s]+|www\.[^\s]+)', _re_shared.IGNORECASE)
+_SHARED_IMG_RE = _re_shared.compile(r'\.(jpg|jpeg|png|gif|webp|svg|avif|bmp|heic|heif)(?:$|\?)', _re_shared.IGNORECASE)
+_SHARED_VID_RE = _re_shared.compile(r'\.(mp4|webm|mov|m4v|mkv|avi|3gp)(?:$|\?)', _re_shared.IGNORECASE)
+_SHARED_AUD_RE = _re_shared.compile(r'\.(mp3|wav|ogg|m4a|opus|aac|flac|amr)(?:$|\?)', _re_shared.IGNORECASE)
+
+
+def _classify_shared_kind(url: str, kind_hint: str = '', mime: str = '') -> str:
+    k = (kind_hint or '').strip().lower()
+    m = (mime or '').strip().lower()
+    u = (url or '').strip().lower()
+    if k in ('video', 'media_video', 'clip', 'reel') or m.startswith('video/') or _SHARED_VID_RE.search(u):
+        return 'video'
+    if k in ('image', 'photo', 'media_image', 'sticker', 'gif', 'animated_gif') or m.startswith('image/') or _SHARED_IMG_RE.search(u):
+        return 'image'
+    if k in ('audio', 'voice', 'voice_note', 'voice_message', 'audio_message', 'media_audio') or m.startswith('audio/') or _SHARED_AUD_RE.search(u):
+        return 'audio'
+    if k in ('file', 'document', 'attachment', 'pdf', 'doc') or u:
+        return 'file'
+    return ''
+
+
+@router.get('/chat_shared_media')
+@router.get('/messages/shared_media')  # alias
+def get_shared_media(
+    peer: str = Query(..., min_length=1),
+    limit: int = Query(default=2400, ge=1, le=5000),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """إرجاع الوسائط والملفات والروابط المشتركة بين المستخدم الحالي و peer.
+
+    ✅ v89.47 ROOT FIX — قبل هذا الإصلاح كانت الواجهة تعتمد على استخراج
+    المرفقات من كل رسالة عبر /messages مع polling، وهذا كان يفشل عندما
+    لا تُحمَّل علاقة attachments بسبب lazy loading أو انتهاء الـ session.
+    الآن نعيد كل شيء في نداء واحد مع eager loading.
+    """
+    peer_name = (peer or '').strip()
+    is_group = peer_name.startswith('group:')
+
+    if is_group:
+        base_query = (
+            db.query(Message)
+            .options(selectinload(Message.attachments))
+            .filter(Message.receiver == peer_name)
+        )
+    else:
+        other_user = _find_active_user_by_username(db, peer_name)
+        if other_user is None:
+            return {'media': [], 'files': [], 'links': [], 'counts': {'media': 0, 'files': 0, 'links': 0}}
+        _assert_can_chat(db, current_user.id, other_user.id)
+        base_query = (
+            db.query(Message)
+            .options(selectinload(Message.attachments))
+            .filter(
+                or_(
+                    and_(Message.sender_id == current_user.id, Message.receiver_id == other_user.id),
+                    and_(Message.sender_id == other_user.id, Message.receiver_id == current_user.id),
+                )
+            )
+        )
+
+    base_query = base_query.filter(
+        or_(
+            Message.deleted_for_everyone.is_(False),
+            Message.deleted_for_everyone.is_(None),
+        )
+    )
+
+    messages = list(reversed(base_query.order_by(Message.id.desc()).limit(limit).all()))
+
+    media_items: list[dict] = []
+    file_items: list[dict] = []
+    links_map: dict[str, dict] = {}
+    seen_urls: set[str] = set()
+
+    for msg in messages:
+        if getattr(msg, 'deleted_at', None):
+            continue
+        sender_name = None
+        try:
+            s = db.query(User).filter(User.id == msg.sender_id).first()
+            sender_name = s.username if s else (getattr(msg, 'sender', None) or '')
+        except Exception:
+            sender_name = getattr(msg, 'sender', None) or ''
+
+        # 1) المرفقات الرسمية
+        atts = list(getattr(msg, 'attachments', None) or [])
+        rows = []
+        for a in atts:
+            rows.append({
+                'url': normalize_media_url(a.url) if a.url else '',
+                'thumbnail_url': normalize_media_url(a.thumbnail_url) if a.thumbnail_url else '',
+                'kind': (a.kind or '').lower(),
+                'mime': (a.mime_type or '').lower(),
+                'file_name': a.file_name or '',
+                'file_size': a.file_size,
+                'duration_seconds': a.duration_seconds,
+            })
+
+        # 2) media_url المفرد (للتوافق مع الرسائل القديمة)
+        if getattr(msg, 'media_url', None) and not rows:
+            rows.append({
+                'url': normalize_media_url(msg.media_url),
+                'thumbnail_url': '',
+                'kind': (msg.message_type or '').lower(),
+                'mime': '',
+                'file_name': '',
+                'file_size': None,
+                'duration_seconds': None,
+            })
+
+        for row in rows:
+            url = row['url']
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            kind = _classify_shared_kind(url, row['kind'], row['mime'])
+            payload = {
+                'id': f"{msg.id}::{url}",
+                'message_id': msg.id,
+                'url': url,
+                'thumbnail_url': row['thumbnail_url'] or None,
+                'sender': sender_name,
+                'created_at': msg.created_at.isoformat() if msg.created_at else None,
+                'kind': kind,
+                'file_name': row['file_name'] or None,
+                'file_size': row['file_size'],
+                'duration_seconds': row['duration_seconds'],
+            }
+            if kind in ('image', 'video'):
+                media_items.append(payload)
+            elif kind in ('audio', 'file'):
+                file_items.append(payload)
+
+        # 3) الروابط النصية داخل الرسالة
+        raw_content = ''
+        try:
+            raw_content = getattr(msg, 'message', None) or ''
+            if not raw_content and msg.content:
+                raw_content = decrypt_message(msg.content) or ''
+        except Exception:
+            raw_content = getattr(msg, 'message', None) or ''
+
+        if raw_content:
+            for match in _SHARED_URL_RE.findall(raw_content):
+                normalized = match if match.startswith('http') else f'https://{match}'
+                if normalized in seen_urls:
+                    continue
+                if normalized in links_map:
+                    continue
+                links_map[normalized] = {
+                    'id': f"{msg.id}::link::{normalized}",
+                    'message_id': msg.id,
+                    'url': normalized,
+                    'sender': sender_name,
+                    'created_at': msg.created_at.isoformat() if msg.created_at else None,
+                }
+
+    # الأحدث أولاً
+    media_items.reverse()
+    file_items.reverse()
+    link_items = list(links_map.values())
+    link_items.reverse()
+
+    return {
+        'media': media_items,
+        'files': file_items,
+        'links': link_items,
+        'counts': {
+            'media': len(media_items),
+            'files': len(file_items),
+            'links': len(link_items),
         },
     }
 

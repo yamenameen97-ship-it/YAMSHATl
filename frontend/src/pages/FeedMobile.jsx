@@ -132,6 +132,10 @@ function normalizePost(p, i) {
     // ✅ v88.85 FIX: تمرير بيانات كارت المصدر الخارجي + شارة "موثق لدى Yamshat"
     link_card: p.link_card || p.linkCard || null,
     verified_by_yamshat: Boolean(p.verified_by_yamshat || p.verifiedByYamshat),
+    // ✅ v89.43 FIX: تمرير حقول إعادة النشر لتظهر شارة «أعاد نشر هذا المنشور» فوق البطاقة
+    is_repost: Boolean(p.is_repost),
+    original_post_id: p.original_post_id ?? null,
+    reposter: p.reposter || null,
   };
 }
 

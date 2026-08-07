@@ -61,7 +61,13 @@ def _require_member(group_id: str, username: str):
 # ============================================================
 @router.get('')
 def list_groups(current_user: User = Depends(get_current_user)):
-    return group_store.list_groups()
+    """
+    v89.44 PRIVACY FIX — إرجاع فقط المجموعات التي يملكها
+    المستخدم أو التي هو عضو فيها. باقي المجموعات تبقى
+    مخفيّة — يمكن الوصول إليها فقط عبر البحث أو رابط الدعوة.
+    """
+    is_admin = str(getattr(current_user, 'role', 'user') or 'user').lower() in ('admin', 'superadmin', 'owner')
+    return group_store.list_groups(username=current_user.username, include_all=is_admin)
 
 
 @router.get('/search')
@@ -70,8 +76,11 @@ def search_groups(
     limit: int = Query(50, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ):
-    """البحث في المجموعات حسب الاسم/الوصف/التصنيف."""
-    return group_store.search_groups(query, limit)
+    """
+    البحث في المجموعات حسب الاسم/الوصف/التصنيف.
+    v89.44: المجموعات الخاصّة لا تظهر في نتائج البحث لغير الأعضاء.
+    """
+    return group_store.search_groups(query, limit, username=current_user.username)
 
 
 @router.post('')

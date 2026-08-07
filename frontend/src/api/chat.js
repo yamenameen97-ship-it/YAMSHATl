@@ -16,6 +16,18 @@ export const getMessages = (receiver, limit = 40, before_id, options = {}) =>
     forceRefresh: Boolean(options.forceRefresh),
   });
 
+// ✅ v89.47 ROOT FIX — endpoint موحّد للوسائط/الملفات/الروابط المشتركة
+//   يُستخدم مباشرةً من صفحة إعدادات المحادثة بدل تجميع النتائج من /messages.
+//   يُعيد { media:[], files:[], links:[], counts:{media,files,links} }
+export const getChatSharedMedia = (peer, options = {}) =>
+  API.get('/chat_shared_media', {
+    params: { peer, limit: options.limit || 2400 },
+    signal: options.signal,
+    cache: options.forceRefresh ? false : true,
+    cacheTtlMs: 8_000,
+    forceRefresh: Boolean(options.forceRefresh),
+  });
+
 export const sendMessageApi = (payload) => API.post('/send_message', payload);
 export const markMessagesSeen = (sender) => API.post('/message_seen', { sender });
 export const getChatThreads = (options = {}) => API.get('/chat_threads', { signal: options.signal, cache: true, cacheTtlMs: 10_000 });

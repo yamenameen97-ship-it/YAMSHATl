@@ -12,6 +12,8 @@ from app.models.audit_log import AuditLog
 from app.models.close_friend import CloseFriend
 from app.models.hidden_story_user import HiddenStoryUser
 from app.models.follow import Follow
+from app.models.friendship import FRIENDSHIP_STATUS_ACCEPTED, Friendship
+from sqlalchemy import and_, or_
 from app.models.like import Like
 from app.models.post import Post
 from app.models.post_save import PostSave
@@ -107,6 +109,11 @@ def _profile_completion(user: User, profile: UserProfile | None) -> int:
 def _user_payload(db: Session, user: User, following: bool | None = None) -> dict:
     profile = _get_or_create_profile(db, user.id)
     wallet = _get_or_create_wallet(db, user.id)
+    # ✅ v89.45 ROOT FIX: مزامنة العدادات مع المصدر الحقيقي قبل إرسالها للواجهة
+    try:
+        _sync_user_counts(db, user)
+    except Exception:
+        pass
     # اسم العرض يأتي من بيانات الهوية المحفوظة في قاعدة البيانات، مع fallback ثابت لاسم المستخدم.
     # إعادته من كل استجابات الملف يجعل كل واجهات المنصة تتحدث من مصدر سحابي واحد.
     full_name = ' '.join(part for part in (profile.first_name, profile.father_name, profile.last_name) if part).strip()
@@ -304,8 +311,74 @@ def _serialize_post_card(db: Session, post: Post, current_user: User | None = No
     }
 
 
+# ============================================================================
+# ✅ v89.45 ROOT FIX — عدادات المتابعة تُحسب من المصدر الحقيقي (جدول Follow +
+# جدول Friendship المقبول) بدل الاعتماد على أعمدة مخزّنة قد تصبح مغشوشة.
+# الصداقة المقبولة تُعتبر متابعة ثنائية (كلا الطرفين يتابع الآخر تلقائياً).
+# ============================================================================
+
+def _friend_ids_of(db: Session, user_id: int) -> set[int]:
+    """معرّفات الأصدقاء المقبولين (الصداقة = متابعة ثنائية)."""
+    rows = (
+        db.query(Friendship)
+        .filter(
+            Friendship.status == FRIENDSHIP_STATUS_ACCEPTED,
+            or_(Friendship.requester_id == user_id, Friendship.addressee_id == user_id),
+        )
+        .all()
+    )
+    ids: set[int] = set()
+    for row in rows:
+        ids.add(row.addressee_id if row.requester_id == user_id else row.requester_id)
+    return ids
+
+
+def _real_followers_ids(db: Session, target_id: int) -> set[int]:
+    """مجموعة معرّفات كل من يتابع المستخدم = متابعون صريحون + أصدقاؤه المقبولون."""
+    follower_ids = {row.follower_id for row in db.query(Follow).filter(Follow.following_id == target_id).all()}
+    return follower_ids | _friend_ids_of(db, target_id)
+
+
+def _real_following_ids(db: Session, user_id: int) -> set[int]:
+    """مجموعة معرّفات كل من يتابعه المستخدم = متابَعون صريحون + أصدقاؤه المقبولون."""
+    following_ids = {row.following_id for row in db.query(Follow).filter(Follow.follower_id == user_id).all()}
+    return following_ids | _friend_ids_of(db, user_id)
+
+
+def _real_followers_count(db: Session, target_id: int) -> int:
+    return len(_real_followers_ids(db, target_id))
+
+
+def _real_following_count(db: Session, user_id: int) -> int:
+    return len(_real_following_ids(db, user_id))
+
+
+def _sync_user_counts(db: Session, user: User, *, commit: bool = True) -> User:
+    """مزامنة العمودَين المخزّنَين مع المصدر الحقيقي حتى لا يظلا صفراً."""
+    followers = _real_followers_count(db, user.id)
+    following = _real_following_count(db, user.id)
+    if int(user.followers_count or 0) != followers or int(user.following_count or 0) != following:
+        user.followers_count = followers
+        user.following_count = following
+        if commit:
+            db.commit()
+            db.refresh(user)
+    return user
+
+
 def _relationship_flags(db: Session, viewer: User, target: User) -> dict:
-    following = db.query(Follow).filter(Follow.follower_id == viewer.id, Follow.following_id == target.id).first() is not None
+    # ✅ v89.45: صديق مقبول = متابع تلقائياً (نظرة ثنائية)
+    explicit_follow = db.query(Follow).filter(Follow.follower_id == viewer.id, Follow.following_id == target.id).first() is not None
+    friend = False
+    if not explicit_follow and viewer.id != target.id:
+        friend = db.query(Friendship).filter(
+            Friendship.status == FRIENDSHIP_STATUS_ACCEPTED,
+            or_(
+                and_(Friendship.requester_id == viewer.id, Friendship.addressee_id == target.id),
+                and_(Friendship.requester_id == target.id, Friendship.addressee_id == viewer.id),
+            ),
+        ).first() is not None
+    following = explicit_follow or friend
     blocked = db.query(UserBlock).filter(UserBlock.blocker_id == viewer.id, UserBlock.blocked_id == target.id).first() is not None
     muted = db.query(UserMute).filter(UserMute.muter_id == viewer.id, UserMute.muted_id == target.id).first() is not None
     close_friend = db.query(CloseFriend).filter(CloseFriend.owner_id == viewer.id, CloseFriend.friend_id == target.id).first() is not None
@@ -314,6 +387,7 @@ def _relationship_flags(db: Session, viewer: User, target: User) -> dict:
         'blocked': blocked,
         'muted': muted,
         'close_friend': close_friend,
+        'friend': friend,
     }
 
 
@@ -468,7 +542,8 @@ def list_users(
         return db.query(User).filter(User.is_active.is_(True)).order_by(User.created_at.desc()).offset(offset).limit(limit).all()
 
     def _load_following_ids():
-        return {follow.following_id for follow in db.query(Follow).filter(Follow.follower_id == current_user.id).all()}
+        # ✅ v89.45: المتابَعون = متابعون صريحون + أصدقاء مقبولون معاً
+        return _real_following_ids(db, current_user.id)
 
     try:
         users = _load_users()
@@ -815,21 +890,136 @@ async def follow_or_unfollow(payload: dict = Body(...), db: Session = Depends(ge
     following = False
     if existing is None:
         db.add(Follow(follower_id=current_user.id, following_id=target_user.id))
-        current_user.following_count = (current_user.following_count or 0) + 1
-        target_user.followers_count = (target_user.followers_count or 0) + 1
         db.commit()
-        db.refresh(current_user)
-        db.refresh(target_user)
         following = True
         await create_and_send_notification(db=db, user_id=target_user.id, notification_type='FOLLOW', data={'from_user_id': current_user.id, 'username': current_user.username})
     else:
         db.delete(existing)
-        current_user.following_count = max((current_user.following_count or 0) - 1, 0)
-        target_user.followers_count = max((target_user.followers_count or 0) - 1, 0)
         db.commit()
-        db.refresh(current_user)
-        db.refresh(target_user)
-    return {'username': target_user.username, 'following': following, 'followers': int(target_user.followers_count or 0), 'following_count': int(target_user.following_count or 0)}
+
+    # ✅ v89.45 ROOT FIX: احتساب العدادات من المصدر الحقيقي بعد كل عملية
+    # (متابعون صريحون + أصدقاء مقبولون) ثم مزامنة العمود المخزّن.
+    _sync_user_counts(db, current_user)
+    _sync_user_counts(db, target_user)
+
+    return {
+        'username': target_user.username,
+        'following': following,
+        'is_following': following,
+        'followers': int(target_user.followers_count or 0),
+        'followers_count': int(target_user.followers_count or 0),
+        'following_count': int(target_user.following_count or 0),
+        'current_user': {
+            'username': current_user.username,
+            'followers_count': int(current_user.followers_count or 0),
+            'following_count': int(current_user.following_count or 0),
+        },
+    }
+
+
+# ============================================================================
+# ✅ v89.45 — نقاط النهاية التي كانت مفقودة من الواجهة الأمامية
+# (كانت الواجهة تستوردها ثم يفشل الاستيراد فيظل العداد صفراً بشكل دائم).
+# ============================================================================
+
+def _mini_user_card(user: User) -> dict:
+    return {
+        'id': user.id,
+        'username': user.username,
+        'avatar': user.avatar,
+        'name': user.username,
+        'followers_count': int(user.followers_count or 0),
+        'following_count': int(user.following_count or 0),
+    }
+
+
+@router.get('/{username}/followers')
+def list_user_followers(username: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """قائمة المتابِعين الحقيقية (متابعون صريحون + أصدقاء مقبولون)."""
+    _ = current_user
+    user = _find_active_user_by_username(db, username)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    ids = _real_followers_ids(db, user.id)
+    if not ids:
+        return {'items': [], 'total': 0}
+    rows = db.query(User).filter(User.id.in_(ids), User.is_active.is_(True)).all()
+    items = [_mini_user_card(u) for u in rows]
+    # مزامنة العمود المخزّن حتى تعود العدادات صحيحة على الفور
+    _sync_user_counts(db, user)
+    return {'items': items, 'total': len(items)}
+
+
+@router.get('/{username}/following')
+def list_user_following(username: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """قائمة المتابَعين الحقيقية (متابَعون صريحون + أصدقاء مقبولون)."""
+    _ = current_user
+    user = _find_active_user_by_username(db, username)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    ids = _real_following_ids(db, user.id)
+    if not ids:
+        return {'items': [], 'total': 0}
+    rows = db.query(User).filter(User.id.in_(ids), User.is_active.is_(True)).all()
+    items = [_mini_user_card(u) for u in rows]
+    _sync_user_counts(db, user)
+    return {'items': items, 'total': len(items)}
+
+
+@router.get('/{username}/mutual')
+def list_user_mutual(username: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """الأصدقاء/المتابَعون المشتركون بين المستخدم الحالي ومستخدم آخر."""
+    user = _find_active_user_by_username(db, username)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    mine = _real_following_ids(db, current_user.id)
+    theirs = _real_following_ids(db, user.id)
+    common = mine & theirs
+    if not common:
+        return {'items': [], 'total': 0}
+    rows = db.query(User).filter(User.id.in_(common), User.is_active.is_(True)).all()
+    return {'items': [_mini_user_card(u) for u in rows], 'total': len(rows)}
+
+
+@router.get('/{username}/follow-status')
+def get_follow_status(username: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """حالة المتابعة الحقيقية + العدادات المحسوبة من الجدول (وليس من العمود).
+
+    هذه هي النقطة التي تنادى من useFollow.js لتحصيل الحقيقة.
+    """
+    target = _find_active_user_by_username(db, username)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+
+    # نُزامن أولاً حتى يعكس العمود المخزّن الواقع.
+    _sync_user_counts(db, target)
+    if current_user.id != target.id:
+        _sync_user_counts(db, current_user)
+
+    flags = _relationship_flags(db, current_user, target) if current_user.id != target.id else {
+        'following': False, 'blocked': False, 'muted': False, 'close_friend': False, 'friend': False,
+    }
+    return {
+        'username': target.username,
+        'is_following': bool(flags.get('following')),
+        'is_friend': bool(flags.get('friend')),
+        'followers_count': int(target.followers_count or 0),
+        'following_count': int(target.following_count or 0),
+    }
+
+
+@router.post('/counts/resync')
+def resync_my_counts(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """مزامنة عدادات الحساب الحالي يدوياً (زر تشخيصي/إصلاح ذاتي).
+
+    يستخدم عندما يبلّغ المستخدم أن العدادات ظلت صفراً رغم وجود متابعات/صداقات.
+    """
+    _sync_user_counts(db, current_user)
+    return {
+        'username': current_user.username,
+        'followers_count': int(current_user.followers_count or 0),
+        'following_count': int(current_user.following_count or 0),
+    }
 
 
 @router.get('/user_posts/{username}')

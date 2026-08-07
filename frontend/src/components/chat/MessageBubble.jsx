@@ -357,6 +357,8 @@ function MessageBubble({
   const isImage = mediaKind === 'image';
   const isVideo = mediaKind === 'video';
   const isFile = mediaKind === 'file';
+  // ✅ v89.46 FIX — نقل isDeleted للأعلى لمنع TDZ (Cannot access 'isDeleted' before initialization)
+  const isDeleted = Boolean(message?.deleted);
   // ✅ v89.39 — كارت الرابط الغني (يُعرض داخل الفقاعة)
   const linkCard = resolveMessageLinkCard(message);
   const hasLinkCard = Boolean(linkCard && !isDeleted);
@@ -408,7 +410,7 @@ function MessageBubble({
   const isMediaOnly = isImageOnly || isVideoOnly;
   // ✅ v88.63 FIX (2026-07-25): علامة الحذف النهائي — تمنع أي إظهار للصورة/الفيديو/الصوت/الملف/الرد/المكالمة
   //    وتُطبَّق كلاس is-deleted على الفقاعة لإزالة الخلفية والحواف بالكامل.
-  const isDeleted = Boolean(message?.deleted);
+  //    v89.46: تم نقل isDeleted للأعلى لتفادي خطأ TDZ.
 
   // === القائمة السياقية: فتح + إغلاق ===
   // v60: على الجوال نستخدم popupAnchor (MessageContextPopup) ، وعلى السطح نستخدم contextMenu القديم

@@ -17,8 +17,13 @@ router = APIRouter()
 
 @router.get('')
 def list_groups(current_user: User = Depends(get_current_user)):
-    """جلب قائمة المجموعات"""
-    return group_store.list_groups()
+    """
+    v89.44 PRIVACY FIX — جلب قائمة المجموعات التي يملكها المستخدم
+    أو التي هو عضو فيها فقط. باقي المجموعات مخفيّة إلا عبر البحث
+    أو رابط الدعوة.
+    """
+    is_admin = str(getattr(current_user, 'role', 'user') or 'user').lower() in ('admin', 'superadmin', 'owner')
+    return group_store.list_groups(username=current_user.username, include_all=is_admin)
 
 
 @router.post('')

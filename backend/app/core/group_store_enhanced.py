@@ -293,19 +293,61 @@ class GroupStore:
         self._save()
         return self.serialize_group(group)
 
-    def list_groups(self) -> List[dict]:
-        groups = sorted(self._groups.values(), key=lambda i: i.created_at, reverse=True)
+    def list_groups(self, username: Optional[str] = None, include_all: bool = False) -> List[dict]:
+        """
+        v89.44 PRIVACY FIX — قائمة المجموعات مقيّدة بالخصوصية.
+        - إذا مُرِّر `username` ولم يكن `include_all=True` (وضع الأدمن):
+            تُعاد فقط المجموعات التي:
+              * أنشأها المستخدم (owner_username == username)، أو
+              * هو عضو فيها (username in group.members)، ولم يكن محظوراً.
+        - أي مجموعة أخرى تبقى مخفيّة تماماً؛ الوصول إليها يتم
+          فقط عبر البحث (search_groups) أو رابط الدعوة
+          (join_group / accept_invitation).
+        - `include_all=True` يُستخدم من لوحة الأدمن فقط.
+        """
+        groups_iter = self._groups.values()
+        if username and not include_all:
+            filtered: List[GroupItem] = []
+            for g in groups_iter:
+                # مالك المجموعة
+                if g.owner_username == username:
+                    filtered.append(g)
+                    continue
+                # عضو نشط (غير محظور)
+                member = g.members.get(username)
+                if member and not getattr(member, 'is_banned', False):
+                    filtered.append(g)
+            groups_iter = filtered
+        groups = sorted(groups_iter, key=lambda i: i.created_at, reverse=True)
         return [self.serialize_group(g) for g in groups]
 
-    def search_groups(self, query: str, limit: int = 50) -> List[dict]:
+    def search_groups(self, query: str, limit: int = 50, username: Optional[str] = None) -> List[dict]:
+        """
+        v89.44 PRIVACY FIX — البحث في المجموعات.
+        - يبحث في كل المجموعات العامّة (public) بغض النظر عن العضوية،
+          حتى يستطيع المستخدم اكتشاف مجموعات جديدة والانضمام إليها.
+        - المجموعات الخاصّة (is_private=True) تظهر فقط لأعضائها
+          أو لمالكها؛ لغير الأعضاء تبقى مخفيّة إلا عبر رابط الدعوة.
+        - إذا كان `query` فارغاً: يعيد قائمة المستخدم الشخصية (نفس list_groups).
+        """
         q = (query or "").strip().lower()
         if not q:
-            return self.list_groups()[:limit]
+            # لا نُسرِّب كل المجموعات عند بحث فارغ — نعيد ما يخص المستخدم فقط.
+            return self.list_groups(username=username)[:limit]
         results: List[GroupItem] = []
         for g in self._groups.values():
             haystack = f"{g.name} {g.description} {g.category}".lower()
-            if q in haystack:
-                results.append(g)
+            if q not in haystack:
+                continue
+            # مجموعة خاصّة: لا تظهر في البحث لغير الأعضاء / غير المالك
+            if g.settings.get("is_private"):
+                if not username:
+                    continue
+                if g.owner_username != username:
+                    member = g.members.get(username)
+                    if not member or getattr(member, 'is_banned', False):
+                        continue
+            results.append(g)
         results.sort(key=lambda i: i.created_at, reverse=True)
         return [self.serialize_group(g) for g in results[:limit]]
 

@@ -1,5 +1,20 @@
 /**
- * ChatSettings.jsx — v88.76 (2026-07-26)
+ * ChatSettings.jsx — v89.47 (2026-08-06) — CHAT_SETTINGS_SHARED_MEDIA_ROOT_FIX
+ *
+ * ✅ v89.47 ROOT FIX — لماذا كانت الوسائط/الملفات/الروابط والعدادات 0 فعلياً:
+ *   السبب الجذري: endpoint /messages كان يُرجع الرسائل مع relationship
+ *   `attachments` مضبوط على lazy='select'، وأحياناً لا تُحمَّل المرفقات قبل
+ *   تسلسل JSON (خاصة بعد إغلاق الـ session ضمن request scope) فيصل الفرونت
+ *   قائمة رسائل بدون مرفقات → كل الصناديق تظهر فارغة والعدادات 0.
+ *   الحل الجذري:
+ *     1) Backend: إضافة selectinload(Message.attachments) في /messages.
+ *     2) Backend: endpoint جديد /chat_shared_media يُعيد media/files/links
+ *        مع counts موثوقة في نداء واحد.
+ *     3) Frontend: مصدر الحقيقة هو /chat_shared_media؛ classification من
+ *        /messages يبقى fallback لالتقاط رسائل socket الحديثة.
+ *     4) استبعاد الرسائل المحذوفة كلياً (deleted_for_everyone) من الاستعلام.
+ *
+ * ✅ إصلاحات جذرية سابقة (v88.76):
  *
  * ✅ إصلاحات جذرية نهائية — لماذا كانت الوسائط/الملفات/الروابط تظهر 0
  *    والصناديق فارغة رغم الرسائل الفعلية:
@@ -49,6 +64,7 @@ import {
   getMessages,
   getPresence,
   unblockUserApi,
+  getChatSharedMedia,
 } from '../api/chat.js';
 import { formatLastSeen } from '../components/yamshat/YamshatDesign.js';
 import { getChatPreferences, toggleChatPreference } from '../utils/chatPreferences.js';
@@ -171,6 +187,11 @@ export default function ChatSettings() {
   const messagesMapRef = useRef(new Map());
   const dataReceivedRef = useRef(false);
 
+  // ✅ v89.47 ROOT FIX — مصدر الحقيقة الوحيد للوسائط المشتركة يأتي من endpoint
+  //   مخصص (/chat_shared_media) مع eager loading للمرفقات، بدل تجميعها من الرسائل.
+  const [sharedMedia, setSharedMedia] = useState({ media: [], files: [], links: [] });
+  const [sharedLoaded, setSharedLoaded] = useState(false);
+
   useEffect(() => {
     if (!peer) return;
     const prefs = getChatPreferences();
@@ -232,17 +253,40 @@ export default function ChatSettings() {
     return mutated;
   }, [rebuildFromMap]);
 
+  // ✅ v89.47: جلب الوسائط/الملفات/الروابط من endpoint موحَّد (مصدر حقيقي موثوق)
+  const fetchSharedMedia = useCallback(async (signal, { force = false } = {}) => {
+    if (!peer) return;
+    try {
+      const res = await getChatSharedMedia(peer, { signal, forceRefresh: force });
+      const data = res?.data || res || {};
+      setSharedMedia({
+        media: Array.isArray(data.media) ? data.media : [],
+        files: Array.isArray(data.files) ? data.files : [],
+        links: Array.isArray(data.links) ? data.links : [],
+      });
+      setSharedLoaded(true);
+      dataReceivedRef.current = true;
+    } catch (err) {
+      if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
+      // فشل صامت — سيظل الفولباك من messages classification في الخلفية
+    }
+  }, [peer]);
+
   const doRefresh = useCallback(async () => {
     if (!peer) return;
     setRefreshing(true);
     const pulseController = new AbortController();
     try {
-      const res = await fetchPage(undefined, pulseController.signal);
+      // ✅ v89.47: نحديث الرسائل + الوسائط المشتركة معاً
+      const [res] = await Promise.all([
+        fetchPage(undefined, pulseController.signal),
+        fetchSharedMedia(pulseController.signal, { force: true }),
+      ]);
       const { items } = extractItemsFromResponse(res);
       mergeMessages(items);
     } catch { /* تجاهل */ }
     finally { setRefreshing(false); }
-  }, [peer, fetchPage, mergeMessages]);
+  }, [peer, fetchPage, mergeMessages, fetchSharedMedia]);
 
   useEffect(() => {
     if (!peer) return undefined;
@@ -255,12 +299,25 @@ export default function ChatSettings() {
       // ✅ v88.76: initialLoading يبقى true حتى نستقبل أول دفعة أو نُقر بأن لا رسائل
       setInitialLoading(true);
       try {
-        const [historyRes, presenceRes, blockRes, threadsRes] = await Promise.allSettled([
+        const [historyRes, presenceRes, blockRes, threadsRes, sharedRes] = await Promise.allSettled([
           loadAllMessages(controller.signal),
           getPresence(peer, { signal: controller.signal }),
           getBlockStatus(peer, { signal: controller.signal }),
           getChatThreads({ signal: controller.signal }),
+          getChatSharedMedia(peer, { signal: controller.signal, forceRefresh: true }),
         ]);
+
+        // ✅ v89.47: دمج نتيجة endpoint الوسائط الموحّد
+        if (sharedRes.status === 'fulfilled') {
+          const data = sharedRes.value?.data || sharedRes.value || {};
+          setSharedMedia({
+            media: Array.isArray(data.media) ? data.media : [],
+            files: Array.isArray(data.files) ? data.files : [],
+            links: Array.isArray(data.links) ? data.links : [],
+          });
+          setSharedLoaded(true);
+          dataReceivedRef.current = true;
+        }
 
         if (!active) return;
 
@@ -320,7 +377,11 @@ export default function ChatSettings() {
       if (!active || document.hidden) return;
       const pulseController = new AbortController();
       try {
-        const res = await fetchPage(undefined, pulseController.signal);
+        // ✅ v89.47: مزامنة الرسائل + مصدر الوسائط الموحَّد في كل نبضة
+        const [res] = await Promise.all([
+          fetchPage(undefined, pulseController.signal),
+          fetchSharedMedia(pulseController.signal, { force: true }),
+        ]);
         if (!active) return;
         const { items } = extractItemsFromResponse(res);
         mergeMessages(items);
@@ -331,7 +392,10 @@ export default function ChatSettings() {
       if (document.hidden || !active) return;
       const pulseController = new AbortController();
       try {
-        const res = await fetchPage(undefined, pulseController.signal);
+        const [res] = await Promise.all([
+          fetchPage(undefined, pulseController.signal),
+          fetchSharedMedia(pulseController.signal, { force: true }),
+        ]);
         if (!active) return;
         const { items } = extractItemsFromResponse(res);
         mergeMessages(items);
@@ -355,9 +419,11 @@ export default function ChatSettings() {
       window.removeEventListener('yamshat:message', handleWindowMessage);
       window.removeEventListener('chat:message', handleWindowMessage);
     };
-  }, [peer, pushToast, loadAllMessages, rebuildFromMap, mergeMessages, fetchPage]);
+  }, [peer, pushToast, loadAllMessages, rebuildFromMap, mergeMessages, fetchPage, fetchSharedMedia]);
 
-  // ✅ v88.76: تصنيف صارم + reverse مرة واحدة (الأحدث أولاً)
+  // ✅ v89.47 ROOT FIX — ناتج موحّد:
+  //   إذا وصل sharedMedia من الـ endpoint الجديد نستخدمه مباشرة (مصدر حقيقي).
+  //   وإلا نستخدم التصنيف الداخلي من messages كـ fallback حتى لا يفرغ العرض.
   const classified = useMemo(() => {
     const mediaItems = [];
     const fileItems = [];
@@ -450,7 +516,44 @@ export default function ChatSettings() {
     return { mediaItems, fileItems, sharedLinks };
   }, [messages]);
 
-  const { mediaItems, fileItems, sharedLinks } = classified;
+  // ✅ v89.47: دمج مصدر الحقيقة مع الـ fallback
+  const merged = useMemo(() => {
+    if (sharedLoaded) {
+      const media = (sharedMedia.media || []).map((m) => ({
+        id: m.id || `${m.message_id}::${m.url}`,
+        url: m.url,
+        type: m.kind === 'video' ? 'video' : 'image',
+        caption: '',
+        sender: m.sender || '',
+      }));
+      const files = (sharedMedia.files || []).map((f) => ({
+        id: f.id || `${f.message_id}::${f.url}`,
+        url: f.url,
+        kind: f.kind === 'audio' ? 'audio' : 'file',
+        name: f.file_name || (() => {
+          try { return decodeURIComponent(String(f.url || '').split('?')[0].split('/').pop() || 'ملف مرفق'); }
+          catch { return 'ملف مرفق'; }
+        })(),
+        sender: f.sender || '',
+      }));
+      const links = (sharedMedia.links || []).map((l) => ({
+        id: l.id || `${l.message_id}::${l.url}`,
+        url: l.url,
+        sender: l.sender || 'غير معروف',
+      }));
+      // دمج مع fallback الداخلي لالتقاط أي رسائل socket لم تصل للـ endpoint بعد
+      const seenUrls = new Set(media.map((x) => x.url));
+      classified.mediaItems.forEach((m) => { if (m.url && !seenUrls.has(m.url)) { seenUrls.add(m.url); media.push(m); } });
+      const seenFileUrls = new Set(files.map((x) => x.url));
+      classified.fileItems.forEach((f) => { if (f.url && !seenFileUrls.has(f.url)) { seenFileUrls.add(f.url); files.push(f); } });
+      const seenLinks = new Set(links.map((x) => x.url));
+      classified.sharedLinks.forEach((l) => { if (l.url && !seenLinks.has(l.url)) { seenLinks.add(l.url); links.push(l); } });
+      return { mediaItems: media, fileItems: files, sharedLinks: links };
+    }
+    return classified;
+  }, [sharedLoaded, sharedMedia, classified]);
+
+  const { mediaItems, fileItems, sharedLinks } = merged;
 
   // ✅ v88.76: helper — اعرض الرقم دائماً إن كان > 0، وإلا اعرض … عند الجلب الأول فقط
   const showCount = (n) => {

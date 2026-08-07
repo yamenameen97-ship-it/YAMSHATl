@@ -70,7 +70,20 @@ function MobilePostCard({
     liked = false,
     saved = false,
     isLive = false,
+    /* ✅ v89.43 FIX: حقول إعادة النشر — لعرض شارة «أعاد نشر هذا المنشور» فوق البطاقة
+       حتى تبقى ملكية المنشور الأصلي محفوظة لصاحبه ويكون المُعيد واضحاً */
+    is_repost = false,
+    reposter = null,
   } = post;
+
+  // اسم المُعيد الناشر للشارة (مع سقوط آمن لأي شكل بيانات)
+  const reposterName = (
+    reposter?.display_name
+    || reposter?.full_name
+    || reposter?.author_name
+    || reposter?.username
+    || authorName
+  );
 
   /* ✅ v88.83 (2026-07-27): مطابقة صفحة ويب سطح المكتب (FeedEnhanced.jsx)
      أضفنا لبطاقة الويب-جوال زرَّين إضافيَّين:
@@ -192,6 +205,19 @@ function MobilePostCard({
 
   return (
     <article className="ym-post-card" dir="rtl">
+      {/* ✅ v89.43 FIX: شارة إعادة النشر — تظهر فوق المنشور عند كونه معاد نشره
+          لتوضيح أن المستخدم أعاد نشره مع بقاء ملكية المحتوى لصاحبه الأصلي */}
+      {is_repost ? (
+        <div className="ym-repost-banner" dir="rtl">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M17 2l4 4-4 4" />
+            <path d="M3 11v-1a4 4 0 014-4h14" />
+            <path d="M7 22l-4-4 4-4" />
+            <path d="M21 13v1a4 4 0 01-4 4H3" />
+          </svg>
+          <span>{reposterName} أعاد نشر هذا المنشور</span>
+        </div>
+      ) : null}
       {/* === الهيدر === */}
       <header className="ym-post-header">
         {/* أقصى اليسار: زر المزيد */}
@@ -546,6 +572,24 @@ function MobilePostCard({
            - قيم clamp() تضمن ملاءمة ديناميكية لجميع الشاشات (320px → 768px)
            - overflow مقفول على كل المستويات لمنع الفيضان
            =================================================================== */
+        /* ✅ v89.43 FIX: تنسيق شارة إعادة النشر فوق بطاقة المنشور */
+        .ym-repost-banner {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 2px var(--ym-pad-x, 12px) 8px;
+          margin-bottom: 6px;
+          color: #9CA3AF;
+          font-size: clamp(0.72rem, 3vw, 0.8rem);
+          font-weight: 600;
+          line-height: 1.4;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .ym-repost-banner svg {
+          flex-shrink: 0;
+          color: var(--primary, #8B5CF6);
+        }
+
         .ym-post-card {
           /* متغيرات موحدة */
           --ym-radius: 14px;

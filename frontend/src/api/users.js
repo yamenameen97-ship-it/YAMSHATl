@@ -44,6 +44,47 @@ export const getRelationship = (username) => API.get(`/users/relationship/${enco
 export const followUser = (username) => API.post('/users/follow', { following: username });
 // ✅ v88.32: نسخة ack-friendly تستخدم لتثبيت حالة المتابعة (تعيد follow: true/false من الـ backend)
 export const toggleFollow = (username) => API.post('/users/follow', { following: username });
+
+// ============================================================================
+// ✅ v89.45 ROOT FIX — دوال المتابعة/المتابَعين + الأصدقاء كمتابعين
+// كانت مفقودة نهائياً من هذا الملف رغم أن useFollow.js يستوردها → استيراد فاشل
+// كان يمنع الهوك من العمل، فيظل العداد صفراً بشكل دائم.
+// ============================================================================
+
+/** إلغاء متابعة مستخدم — يستدعي POST /users/follow نفسه (toggle) */
+export const unfollowUser = (username) => API.post('/users/follow', { following: username });
+
+/** جلب قائمة المتابِعين (Followers) لمستخدم — تشمل الأصدقاء المقبولين */
+export const getFollowers = (username, params = {}) =>
+  API.get(`/users/${encodeURIComponent(username)}/followers`, {
+    params,
+    cache: false,
+    forceRefresh: true,
+  });
+
+/** جلب قائمة المتابَعين (Following) لمستخدم — تشمل الأصدقاء المقبولين */
+export const getFollowing = (username, params = {}) =>
+  API.get(`/users/${encodeURIComponent(username)}/following`, {
+    params,
+    cache: false,
+    forceRefresh: true,
+  });
+
+/** الأصدقاء المشتركون بين المستخدم الحالي ومستخدم آخر */
+export const getMutualFriends = (username, params = {}) =>
+  API.get(`/users/${encodeURIComponent(username)}/mutual`, {
+    params,
+    cache: false,
+    forceRefresh: true,
+  });
+
+/** فحص حالة المتابعة لمستخدم معيّن + جلب العدادات الحقيقية من الخادم */
+export const checkIsFollowing = (username) =>
+  API.get(`/users/${encodeURIComponent(username)}/follow-status`, {
+    cache: false,
+    forceRefresh: true,
+  });
+
 export const getUserPosts = (username) => API.get(`/users/user_posts/${encodeURIComponent(username)}`);
 export const updateMyProfile = (payload) => API.patch('/users/me', payload);
 export const sendPhoneVerification = () => API.post('/users/me/phone/send-verification');
